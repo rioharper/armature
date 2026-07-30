@@ -1,6 +1,6 @@
 # Review Checklist — Gap Taxonomy
 
-The families below are where robotics designs actually fail review. Work them in roughly this order — the early ones are cheap to check and expensive to miss. For every probe the rule from SKILL.md holds: do the check, show the evidence, rank by severity. A probe you can't resolve because an input is missing becomes a **Question**, not a silent pass.
+The families below are where robotics designs actually fail review. Work them in roughly this order — the early ones are cheap to check and expensive to miss. For every probe the rule from the agent prompt holds: do the check, show the evidence, rank by severity. A probe you can't resolve because an input is missing becomes a **Question**, not a silent pass.
 
 ## 1. Requirements
 
