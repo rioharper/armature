@@ -75,7 +75,7 @@ In `03_results.md`: this is the old Section 7 — the derivation exists to chang
 - A mass, inertia, or reduction that breaks a spec budget.
 - Loads or speeds that violate an assumption the derivation rests on (the numbered assumptions from `00_setup.md`).
 
-For each finding: state the problem physically, name the specific spec or part it collides with, and lay out the levers (relax the requirement, resize the component, change the architecture). If the cleanest fix wants a mechanism you don't have on hand, that's the cue to hand off to **armature-inventor**, then bring the surviving candidate back here to re-derive.
+For each finding: state the problem physically, name the specific spec or part it collides with, and lay out the levers (relax the requirement, resize the component, change the architecture). If the cleanest fix wants a mechanism you don't have on hand, that's the cue to hand off to the **armature-inventor** agent, then bring the surviving candidate back here to re-derive.
 
 In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test, and a worst-case-static-torque workspace search to size actuators against. `run_all.py` imports `params`, `kinematics`, `dynamics`, and `verification` and runs every self-test in sequence — the single command that proves the whole model is internally consistent.
 
@@ -101,6 +101,17 @@ that's the point of the layout. When a Milestone 3 finding sends work
 upstream (a requirement, part, or BOM number must change → armature-spec; a
 mechanism gap → armature-inventor agent), say which number broke and what it
 collides with, and update `docs/decisions.md` when the change is accepted.
+
+As each REQ's analysis lands, move its row in `docs/01-spec/traceability.md`
+from `open` to `analyzed` (Analysis column pointing at the derivation file
+and section) — that's the row's contract, and it's what lets armature-plan
+and the red-team check coverage without re-reading the math.
+
+When Milestone 3's branch is merged and its findings resolved, close out the
+stage: update `CLAUDE.md`'s **Stage** to `cad` and **Latest artifacts** to
+`analysis/derivation/03_results.md` and `analysis/model/`, append a
+`docs/decisions.md` line summarizing the analysis' conclusions, and offer
+**armature-cad** as the next stage.
 
 ## Calibration — when hardware exists
 
