@@ -286,7 +286,7 @@ and BOM cross-checking; the plugin gains an `.mcp.json` when it exists.
 - Strip handoff-prompt sections from all six stage skills; rewrite their
   input/output sections against the §3 paths and §4 `CLAUDE.md` contract.
 - Convert red-team and inventor SKILL.md files to agent definitions.
-- Write `commands/init.md`; extend spec/plan/math/cad templates and references
+- Write `skills/init/SKILL.md`; extend spec/plan/math/cad templates and references
   for §6 artifacts; add the assembly/stack-up reference to armature-cad.
 - `plugin.json` → 1.0.0 with corrected description; new README describing the
   pipeline, install, and the init flow; delete `MANIFEST.md5` and snapshot
