@@ -11,7 +11,7 @@ Read `references/design-foundations.md` before your first round of questions. It
 
 ## Inputs
 
-Check for an existing concept brief (from **armature-concept**) before starting the interrogation. If one exists, its audience, differentiation, and RC-numbered requirements are settled — pull them in rather than re-asking, and translate each RC (outcome-level) into one or more numbered REQ-0xx (verifiable, with a method) as part of Phase 1's Mission question. If no brief exists and the idea is genuinely early-stage — no clear audience, no stated reason to prefer this over what already exists — say so and suggest **armature-concept** first; a five-minute pitch-check now is cheaper than discovering at Phase 2 that nobody asked who this is for. If the user wants to proceed anyway, that's fine — just don't silently skip the question, ask it plainly as part of Mission below.
+Read `docs/00-concept/concept-brief.md` and `CLAUDE.md` if they exist. If a concept brief exists, its audience, differentiation, and RC-numbered requirements are settled — pull them in rather than re-asking, and translate each RC (outcome-level) into one or more numbered REQ-0xx (verifiable, with a method) as part of Phase 1's Mission question. If no brief exists and the idea is genuinely early-stage — no clear audience, no stated reason to prefer this over what already exists — say so and suggest **armature-concept** first; a five-minute pitch-check now is cheaper than discovering at Phase 2 that nobody asked who this is for. If the user wants to proceed anyway, that's fine — just don't silently skip the question, ask it plainly as part of Mission below.
 
 ## The process
 
@@ -41,11 +41,22 @@ Adapt questions to the project, but you are not done until you can answer these 
 
 Once requirements are pinned, generate 2-4 genuinely distinct architecture concepts (not one concept and two strawmen). For each: how it satisfies the driving requirements, dominant risks, rough cost/complexity, and what it forecloses. Build a trade-off matrix scored against the *weighted* requirements — get the weights from the user, don't invent them. Recommend one, and say why in engineering terms. Disagreement from the user is welcome; update the matrix, not just the conclusion.
 
-If the design space feels stale or the requirements are unusually hard, this is the moment to suggest invoking the **armature-inventor** skill (if installed) to scout cutting-edge approaches before locking in.
+If the design space feels stale or the requirements are unusually hard, dispatch the **armature-inventor** agent — several in parallel, one per idea family, each prompt carrying the one-sentence design tension and the constraint numbers. Run the filter and the boring-baseline comparison here with the user when the briefs come back.
+
+#### Parallel exploration (optional, for 2–3 genuine finalists)
+
+When the trade study has two or three finalists that each deserve real
+feasibility work — not one favorite and strawmen — offer to explore them in
+parallel: one git worktree per candidate, a subagent in each developing a
+feasibility sketch (rough sizing arithmetic, dominant risks, cost order of
+magnitude) written to `docs/01-spec/candidates/<name>.md` in its worktree.
+Compare the sketches in the trade matrix, merge the winner's sketch, and
+record the losers as rejected alternatives in the spec. Worktrees only when
+the work is actually parallel; otherwise it's ceremony.
 
 ### Phase 3: Write the spec
 
-Write the document to a markdown file using the structure in `references/spec-template.md`. Rules:
+Write the document to `docs/01-spec/spec.md` using the structure in `references/spec-template.md`. Rules:
 
 - Every requirement is numbered (REQ-001…), verifiable, and has a verification method (test, analysis, inspection, demonstration).
 - Recommendations come with rationale and rejected alternatives — a spec that only records the winner is useless in six months when someone asks "why didn't we just...".
@@ -54,46 +65,27 @@ Write the document to a markdown file using the structure in `references/spec-te
 - Risks get a table: risk, likelihood, impact, mitigation, trigger for revisiting.
 - Open questions are a first-class section, not shame. An honest "TBD pending prototype" beats a confident guess.
 - Write like an engineer, not a marketer. No "cutting-edge synergy." Short declarative sentences. Numbers with units, always SI (imperial in parentheses only if the user's shop works in it).
+- Seed `docs/01-spec/budgets.md` from `references/budgets-template.md` — a line per major mass/power/cost item with budget and margin; downstream skills debit it as estimates harden.
+- Seed `docs/01-spec/traceability.md` from `references/traceability-template.md` with one row per REQ (design element/analysis/test columns open).
+- Fill the spec template's mechanical-safety section — scaled to consequence, per the capability assessment.
 
 ### Phase 4: Lock the major parts and capture their datasheets
 
 A spec that names "a NEMA 23 stepper" or "3 mm 6061 plate" without the numbers behind them has deferred the risk, not retired it. Once the trade study has settled the architecture and the feasibility math has picked the major commercial-off-the-shelf (COTS) parts — actuators, gearboxes, bearings, drive electronics, batteries — and the structural materials (which metal, which polymer, which filament and print process), pin down the actual parts and the datasheets that back them.
 
-- **Ask first, hunt second.** Request the datasheets the user already has for the parts they've named. For anything missing, you may search for the public datasheet yourself — but show the user the exact part number and source you landed on and get confirmation before treating its numbers as real. Vendors reuse model names across revisions; the wrong datasheet is more dangerous than none.
+- **Ask first, hunt second.** Request datasheets the user already has. For anything missing, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter); it reports P/N + source for your confirmation with the user, then caches the PDF and key numbers into `docs/datasheets/index.md`. Cite index rows, never memory.
 - **When a number can't be sourced, stop and say so.** If a design-critical spec (stall torque, continuous current, rotor inertia, yield strength, max operating temperature) isn't available from the user or a trustworthy public source, don't paper over it: log it as an open question and pause for the user rather than inventing a plausible value. A guessed datasheet number is a latent failure wearing a confident face.
 - Materials get the same treatment as parts: the design-driving properties of the chosen stock (yield and modulus for metals; glass-transition and layer-adhesion for prints; thickness and impact behavior for polycarbonate) belong on the record, not in your head.
 
-Then write the **design-driver BOM** to a separate markdown file using `references/bom-template.md`. This is deliberately *not* the full procurement BOM — that comes later in detail design (see **armature-plan**), with every fastener and its cost. It is the short list of items whose specifications actually constrain the design, each carrying only the handful of numbers that drive decisions plus the datasheet they came from, so that when the math or the CAD later bumps into one of those numbers, its provenance is one glance away.
+Then write the **design-driver BOM** to `docs/01-spec/bom.md` using `references/bom-template.md`. This is deliberately *not* the full procurement BOM — that comes later in detail design (see **armature-plan**), with every fastener and its cost. It is the short list of items whose specifications actually constrain the design, each carrying only the handful of numbers that drive decisions plus the datasheet they came from, so that when the math or the CAD later bumps into one of those numbers, its provenance is one glance away.
 
 ### Hand-off
 
-When the spec is accepted, the routes onward are: **armature-plan** (converts the spec into a phased implementation plan with analysis and CAD milestones); **armature-math** (derives the kinematics/dynamics the chosen architecture implies); and **armature-red-team** (stress-tests the spec before it locks work downstream). The design-driver BOM travels with the spec into all of them — the plan expands it into a full procurement BOM, the mathematician draws its inertias, torque limits, and material properties straight from it, and the red team audits the numbers against it.
+When the spec is accepted, the routes onward are: **armature-plan** (converts the spec into a phased implementation plan with analysis and CAD milestones); **armature-math** (derives the kinematics/dynamics the chosen architecture implies); and the **armature-red-team** agent (stress-tests the spec before it locks work downstream). The design-driver BOM travels with the spec into all of them — the plan expands it into a full procurement BOM, the mathematician draws its inertias, torque limits, and material properties straight from it, and the red team audits the numbers against it.
 
-Red-team is different from the other two in one way that matters: recommend it for a **new conversation**, never this one. Its value comes specifically from a reader who wasn't in the room for the trade-offs and rationalizations that produced the document; reviewing it here, right after writing it, means the reviewer already holds — and will unconsciously defend — the reasoning that produced it, which is the opposite of adversarial. That's exactly why the handoff below is a paste-into-fresh-chat prompt: the files are the interface, and the transcript neither is needed nor should come along.
+Dispatch the **armature-red-team** agent with the spec, BOM, budgets, and traceability paths — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds. armature-plan and armature-math are different: they can run right here in this same session once it's clear which route the user's taking, since the files on disk are what those skills need, not the conversation that produced them.
 
-### The handoff prompt
-
-The whole suite runs on one rule — *the saved files are the state; the transcript is not.* So don't end by telling the user to go start the next step; hand them a prompt that starts it for them. Once the spec and BOM are written and it's clear where they're headed (ask if it isn't — the routes are listed above), emit a single fenced block for **the path they're actually taking**, nothing else:
-
-```
-── Next step: <next-skill> · new chat ──
-Attach: <exact filenames you just wrote>
-Paste:
-  <first-person prompt: name the next skill, say what to do with the attached
-   files, and carry the decisions and open questions that live only in this
-   conversation>
-```
-
-The paste text changes with the route the user picked — for example:
-- **→ armature-plan:** "Run armature-plan on the attached spec + design-driver BOM for `<project>`. Expand the design-driver BOM into a full procurement BOM rather than starting over. Chosen architecture: `<the one the trade study picked>`. Available build hours/week and any hard deadline: `<if known>`."
-- **→ armature-math:** "Run armature-math on the attached spec + BOM for `<project>`. Reuse the spec's frames, symbols, and Section 6 kinematic envelope verbatim — don't invent competing conventions. Goal: `<FK / Jacobian / dynamics for sizing / …>`. Draw inertias, torque limits, and material properties from the BOM datasheets. Frozen decisions: `<chosen architecture and any locked numbers>`."
-- **→ armature-red-team:** "Red-team the attached spec + design-driver BOM for `<project>`. Treat every number as unverified until it traces to a datasheet in the BOM. Design decisions already locked: `<architecture, key REQs>`. Known open questions / TBDs: `<the spec's open-questions section>`."
-
-Keep the block honest and paste-ready:
-- **Name real files.** Use the actual saved filenames (spec, BOM, and the concept brief if one exists), not "the spec" — the user attaches them blind in a chat that has none of this context.
-- **Carry what the files don't.** A file records *what* the design is; the prompt carries *what we just decided and what's still open* — the architecture the trade study settled on, any numbers frozen this session, the open questions and unverified specs the next step should resume from. That's the part lost when the transcript closes, so it's the part that has to travel.
-- **Write it in the user's voice**, first person, so it reads naturally when pasted.
-- **One block, no commentary inside it.** If the user is genuinely running two routes in parallel (a plan *and* the derivations, say), emit one block per route, clearly separated; otherwise just the one.
+Update `CLAUDE.md` (Stage → `plan`, Latest artifacts) and log the architecture decision in `docs/decisions.md`.
 
 ## Scope boundaries
 

@@ -93,6 +93,21 @@ Numbered, each with a plan to resolve (prototype, calculation, vendor query).
 ## 11. Out of Scope / Version 2
 What was deliberately excluded, so nobody re-litigates it weekly.
 
+## Mechanical safety
+
+Scale to consequence — a desk toy is not a cobot. Answer each; "n/a" needs
+one honest clause of why.
+
+- **Pinch/crush points:** where, and what keeps fingers out during operation
+  and maintenance.
+- **Stored energy on power loss:** springs, gravity loads, flywheels — what
+  moves when power drops, and what arrests it.
+- **Tip-over stability:** worst-case CG excursion vs. support polygon,
+  including payload and acceleration.
+- **Payload drop path:** if the gripper/holder fails, what does the payload
+  hit.
+- **Sharp edges / hot surfaces** near any human touchpoint.
+
 ## Revision History
 | Rev | Date | Notes |
 ```
