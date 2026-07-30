@@ -13,20 +13,20 @@ Defining a part is not decoration on a design that's already done — it is the 
 
 ## Inputs — assemble the frozen state, then confirm the shop
 
-The saved files are the state; the transcript is not. Before defining anything, read — in this order:
+Read these files first, in this order:
 
-- **The plan's Section 1 glossary** (from **armature-plan**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
-- **The spec + design-driver BOM** (from **armature-spec**): the chosen actuators, bearings, materials, and their datasheet numbers — the interfaces and stock you build to.
-- **The derivation's `03_results.md` and `params.py`** (from **armature-math**): the worst-case joint torques and reaction forces this part must carry, and the mass, COM, and inertia the dynamics *assumed* for each body. Those assumed values are the target you close the loop against.
+- **`CLAUDE.md`'s Glossary** (written by **armature-plan**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
+- **`docs/01-spec/spec.md` and `docs/01-spec/bom.md`** (from **armature-spec**): the chosen actuators, bearings, materials, and their datasheet numbers — the interfaces and stock you build to.
+- **`analysis/derivation/03_results.md` and `analysis/model/params.py`** (from **armature-math**): the worst-case joint torques and reaction forces this part must carry, and the mass, COM, and inertia the dynamics *assumed* for each body. Those assumed values are the target you close the loop against.
 
-If no plan glossary exists, reuse the frames and symbols from the mathematician's `00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** Section 1 first if the project is substantial. SI internally, always.
+If `CLAUDE.md` has no Glossary section, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** write one first if the project is substantial. SI internally, always.
 
 Then confirm with the user two things the files rarely pin: **which CAD package** (this picks the software reference), and the **fabrication reality** — in-house machining envelope and tolerances, printer and filament, sheet stock and bend capability, minimum tool/drill sizes. Geometry that the shop can't make is a redraw, so learn its limits before drawing to them.
 
 **Gate — don't fabricate an input.** Two numbers a part can't be responsibly defined without:
 
 - *Loads.* If the dynamics this part needs aren't derived yet, you cannot set wall thickness or close the inertia loop from a guess. Say so and route to **armature-math**; a wall sized from an invented load is a part that looks finished and isn't.
-- *Interfaces.* If a mating interface depends on a COTS datasheet not in the BOM — an actuator's output-flange bolt circle, a bearing's bore and width — get it, or mark it TBD and route to **armature-spec**. A guessed bolt pattern is the bracket that doesn't bolt on.
+- *Interfaces.* If a mating interface depends on a COTS datasheet not in the BOM — an actuator's output-flange bolt circle, a bearing's bore and width — dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter) for the datasheet and, if the geometry itself is needed, the OTS CAD model; it reports back for your confirm-then-cache before either is trusted. A guessed bolt pattern is the bracket that doesn't bolt on.
 
 ## Order of work — interfaces first, base outward
 
@@ -34,7 +34,7 @@ Define parts in load-path order: the ones carrying the most interfaces and the h
 
 ## The part definition — the output
 
-Write each to a markdown file (or a section per part in one parts document). Every element carries its provenance, because a number whose source is one glance away survives a design review and a number from memory does not. Full depth for each is in `references/documentation-standards.md`.
+Write each to `cad/parts/<PART-ID>.md` (or a section per part in one parts document, still under `cad/parts/`). Every element carries its provenance, because a number whose source is one glance away survives a design review and a number from memory does not. Full depth for each is in `references/documentation-standards.md`.
 
 ```markdown
 # <PART-ID> <name> — Part Definition
@@ -84,10 +84,11 @@ assembly, and can each sensor be swapped without a teardown?
 
 ## CAD build recipe
 The ordered feature-tree approach for the user's package, from
-references/<package>.md: base feature, datums placed on the frames, how
-the COTS model is referenced, and which dimensions are *driven* by the
-parameter table so a parameter change propagates instead of silently
-going stale.
+references/<package>.md: base feature, datums placed on the frames, and
+which dimensions are *driven* by the parameter table so a parameter change
+propagates instead of silently going stale. COTS geometry is referenced
+from `cad/ots-parts/` — fetched by the **armature-librarian** agent and
+indexed there alongside its datasheet row — never modeled from memory.
 
 ## Manufacturing deliverable
 What leaves CAD: a dimensioned, toleranced drawing with title block and
@@ -96,49 +97,35 @@ callout for printed parts; and the export (STEP AP242 for the shop, STL
 for print, DXF for sheet/laser) with its settings.
 ```
 
+## The assembly definition
+
+Parts that are each correct can still fail to become a machine. Once a
+subassembly's parts are defined, write `cad/assemblies/<ASM-ID>.md` per
+`references/assembly-definition.md`: the mate scheme, fastener table with
+torques, the assembly *order* (with the tool-access check at each step),
+jigs/fixtures needed, and the worst-case tolerance stack-up for each
+critical fit. The stack-up is the assembly-level twin of the part
+definition's inertia loop: per-part tolerances can all be met while the
+assembly still doesn't go together.
+
 ## Close the loop — realized against assumed
 
 This is the move that makes the skill worth more than a modeling tutorial. The mathematician *assumed* a mass and inertia for each body; the CAD part *realizes* them. Once the geometry exists — or is modeled closely enough to trust — extract its real mass properties **about the same point and axes the dynamics used** (COM vs. joint origin, and frame orientation; getting this wrong makes the comparison meaningless, so state which the number is about). Compare to the `params.py` block:
 
-- Within tolerance → record the realized values and freeze them.
-- Beyond it → the derivation is now validating a robot the CAD no longer builds. Route to **armature-math** with the measured mass, COM, and inertia so the dynamics — and any actuator sizing that rode on them — re-run against reality.
+- Within tolerance → update `analysis/model/params.py` with the realized mass, COM, and inertia (mark the source), and run `python analysis/model/run_all.py` via Bash to confirm the model still passes its self-tests with the realized values in place.
+- Beyond it → the derivation is now validating a robot the CAD no longer builds. That's an **armature-math** re-derivation: hand off the measured mass, COM, and inertia so the dynamics — and any actuator sizing that rode on them — re-run against reality.
 
-Never leave a part definition claiming an inertia the model doesn't actually have.
+Either way, update the part's mass rows in `docs/01-spec/budgets.md` (Source: model or measured). Never leave a part definition claiming an inertia the model doesn't actually have.
 
 ## Red-team before the CAD hours pile up
 
-Once a coherent batch of definitions is written — before you spend a weekend modeling to them — hand them to **armature-red-team** in a fresh chat (its value is fresh eyes, so never the same conversation). Interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop actually checked: these seams between documents are exactly what red-team is built to catch, and its own description names "before locking a design into CAD" as the moment to run it. A bolt pattern caught on paper is free; the same error caught after modeling costs the rebuild.
+Once a coherent batch of definitions is written — before you spend a weekend modeling to them — dispatch the **armature-red-team** agent with the batch's part-definition paths plus `analysis/derivation/03_results.md` and `docs/01-spec/bom.md`. Interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop actually checked: these seams between documents are exactly what red-team is built to catch, and its own description names "before locking a design into CAD" as the moment to run it. A bolt pattern caught on paper is free; the same error caught after modeling costs the rebuild.
 
 ## Hand-offs
 
-- Realized mass/inertia diverges from the assumed → **armature-math** (re-derive on the real number)
-- A part won't carry its load, or a load looks wrong → **armature-math**
-- An interface or envelope proves a chosen part unworkable (pattern won't fit, part can't take the moment) → **armature-spec** (change the part, material, or architecture)
-- Batch of definitions ready to commit to CAD → **armature-red-team**, new chat
-- A part resists being made manufacturable and wants a cleverer mechanism → **armature-inventor**
-- The user wants to *understand* a concept a definition turns on (a press fit, k-factor, why a datum order) → **armature-teacher**
+Realized mass/inertia diverging from the assumed, or a part that won't carry its load, routes to **armature-math** to re-derive on the real number. An interface or envelope that proves a chosen part unworkable — a pattern that won't fit, a part that can't take the moment — routes to **armature-spec** to change the part, material, or architecture. A batch of definitions ready to commit to CAD goes to the **armature-red-team** agent. A part that resists being made manufacturable and wants a cleverer mechanism routes to the **armature-inventor** agent. A user who wants to *understand* a concept a definition turns on (a press fit, k-factor, why a datum order) routes to **armature-teacher**.
 
-### The handoff prompt
-
-Don't end by telling the user what to do next — hand them a prompt that does it. Once the definitions are written and the route is clear (ask if it isn't — routes above), emit a single fenced block for **the path they're actually taking**, nothing else:
-
-```
-── Next step: <next-skill> · new chat ──
-Attach: <the part definition(s) you just wrote, + the derivation/BOM if the next step reads them>
-Paste:
-  <first-person prompt: name the next skill, say what to do with the attached
-   files, and carry the decisions and numbers that live only in this
-   conversation>
-```
-
-The paste text is keyed to the route — for example:
-- **→ armature-math** (the loop-closer): "The `<PART-ID>` I modeled comes out to mass `<m>`, COM `<x,y,z>`, inertia `<I>` about `<point/axes>` — the attached part definition has the details. `00_setup.md` assumed `<the assumed values>`. Re-run the dynamics and check whether the actuator sizing in `03_results.md` still holds. Keep the existing frames and symbols."
-- **→ armature-red-team:** "Red-team the attached part definitions for `<project>` before I model them. Check that every interface is defined on both sides and agrees, that each load traces to a mathematician result, that fits have a functional basis, and that the inertia-loop check is present. Frames and part-numbering are per the attached plan's Section 1; loads per the attached derivation."
-
-Keep it honest and paste-ready:
-- **Name real files.** Use the saved filenames, and attach the derivation/BOM when the next step reads them — the next chat opens blind.
-- **Carry what the files don't.** The definition records the part; the prompt carries *which* part, the CAD package chosen, the measured-vs-assumed gap you found, and any interface still TBD — the parts that vanish when the transcript closes.
-- **Write it in the user's voice**, first person, so it pastes naturally. One block, no commentary inside it.
+Work each batch on an `armature/cad-<batch>` branch and merge it once the batch's definitions are red-teamed and any findings resolved. Then update `CLAUDE.md`'s Latest artifacts to point at the new part/assembly definitions, and log any design decisions the batch settled in `docs/decisions.md`.
 
 ## Scope
 
