@@ -1,7 +1,7 @@
 # Concept Brief Template
 
 Short, on purpose. A concept brief that runs past a page or two has let
-technical detail creep in — push that content to **robotics-spec-design**
+technical detail creep in — push that content to **armature-spec**
 instead of padding this file. Omit a section only if genuinely
 inapplicable, and say so rather than silently dropping it.
 

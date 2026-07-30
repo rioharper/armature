@@ -1,5 +1,5 @@
 ---
-name: robotics-mathematician
+name: armature-math
 description: Derive robot kinematics and dynamics rigorously — forward/inverse kinematics, Jacobians, Euler-Lagrange or Newton-Euler dynamics, workspace and singularity analysis — cross-verified with SymPy and SciPy, delivered as milestone-sized derivation notes plus a parameterized, re-runnable Python model, with a red-team audit at each milestone. Use whenever a robotics project needs equations of motion, a Jacobian, DH parameters, torque/actuator sizing math, trajectory or statics analysis, or when the user mentions kinematics, dynamics, sympy/scipy modeling, or "do the math" for a mechanism.
 ---
 
@@ -35,7 +35,7 @@ Start from `scripts/model_template/` (copy the whole folder into the project, re
 
 ## Step 0: Establish the model
 
-Before deriving anything, pin down — from the project's spec/plan if they exist (robotics-spec-design / robotics-writing-plans outputs define frames and symbols; **reuse their conventions verbatim**, don't invent competing ones):
+Before deriving anything, pin down — from the project's spec/plan if they exist (armature-spec / armature-plan outputs define frames and symbols; **reuse their conventions verbatim**, don't invent competing ones):
 
 - Mechanism topology: links, joints (R/P), DOF, any closed loops
 - Convention: modified DH, standard DH, or product of exponentials — state which and why
@@ -54,7 +54,7 @@ In `01_kinematics.md`: frame assignment with justification, DH table (or PoE scr
 
 In `kinematics.py`: `forward_kinematics()`, `geometric_jacobian()`, lambdified numeric versions, and the self-test that Jacobian columns match finite-difference FK. Run it — it must pass before you move on.
 
-**Checkpoint: red-team Milestone 1.** Hand `00_setup.md` + `01_kinematics.md` + `kinematics.py` to **robotics-red-team** now — in a fresh chat, via the handoff block in **Handing off** (the review needs eyes that weren't in the room for the derivation) — before dynamics is built on top of them. A wrong frame, a mislabeled joint, or a Jacobian that doesn't actually match the mechanism is far cheaper to fix here than after the dynamics and sizing that depend on it. Resolve or explicitly accept every finding before starting Milestone 2; log the resolution in `01_kinematics.md`'s revision note.
+**Checkpoint: red-team Milestone 1.** Hand `00_setup.md` + `01_kinematics.md` + `kinematics.py` to **armature-red-team** now — in a fresh chat, via the handoff block in **Handing off** (the review needs eyes that weren't in the room for the derivation) — before dynamics is built on top of them. A wrong frame, a mislabeled joint, or a Jacobian that doesn't actually match the mechanism is far cheaper to fix here than after the dynamics and sizing that depend on it. Resolve or explicitly accept every finding before starting Milestone 2; log the resolution in `01_kinematics.md`'s revision note.
 
 ## Milestone 2: Dynamics
 
@@ -62,7 +62,7 @@ In `02_dynamics.md`: Euler-Lagrange by default (state T and V explicitly, show t
 
 In `dynamics.py`: `lagrangian_dynamics()` building on `kinematics.py`'s frames, plus `static_torques()` and `total_energy()`. Self-tests: mass-matrix symmetric-positive-definite, skew-symmetry, and energy conservation under SciPy integration (`solve_ivp`). All must pass, or the discrepancy gets hunted down — a mismatch between hand derivation and SymPy is a finding, not an embarrassment; document which was wrong and the fix, in the `.md`, not just fixed silently in the `.py`.
 
-**Checkpoint: red-team Milestone 2.** Hand the M2 files (plus M0/M1 for context) to **robotics-red-team** — fresh chat, handoff block per **Handing off** — before moving to results and sizing. This is the pass most likely to catch a sign error, a dropped term, or an assumption (frictionless joints, rigid links) that's about to get load-bearing weight put on it in Section 3-equivalent findings.
+**Checkpoint: red-team Milestone 2.** Hand the M2 files (plus M0/M1 for context) to **armature-red-team** — fresh chat, handoff block per **Handing off** — before moving to results and sizing. This is the pass most likely to catch a sign error, a dropped term, or an assumption (frictionless joints, rigid links) that's about to get load-bearing weight put on it in Section 3-equivalent findings.
 
 ## Milestone 3: Verification & results
 
@@ -73,7 +73,7 @@ In `03_results.md`: this is the old Section 7 — the derivation exists to chang
 - A mass, inertia, or reduction that breaks a spec budget.
 - Loads or speeds that violate an assumption the derivation rests on (the numbered assumptions from `00_setup.md`).
 
-For each finding: state the problem physically, name the specific spec or part it collides with, and lay out the levers (relax the requirement, resize the component, change the architecture). If the cleanest fix wants a mechanism you don't have on hand, that's the cue to hand off to **robotics-inventor**, then bring the surviving candidate back here to re-derive.
+For each finding: state the problem physically, name the specific spec or part it collides with, and lay out the levers (relax the requirement, resize the component, change the architecture). If the cleanest fix wants a mechanism you don't have on hand, that's the cue to hand off to **armature-inventor**, then bring the surviving candidate back here to re-derive.
 
 In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test, and a worst-case-static-torque workspace search to size actuators against. `run_all.py` imports `params`, `kinematics`, `dynamics`, and `verification` and runs every self-test in sequence — the single command that proves the whole model is internally consistent.
 
@@ -108,9 +108,9 @@ Paste:
 
 Three boundaries, three shapes:
 
-- **Red-team checkpoint** (after a milestone's self-tests pass) → **robotics-red-team**, new chat — the fresh-eyes rule is the whole point, so this is never the same conversation. Attach that milestone's `.md` and `.py` plus the earlier milestones for context. Paste, e.g.: "Red-team Milestone 1 (kinematics) of the attached derivation for `<project>`. Check the frame assignment and DH table against the mechanism, and that the Jacobian matches finite-difference FK. Numbered assumptions are in `00_setup.md`. Current parameter values: `<the frozen numbers>`." Bring the findings note back and log its resolution before the next milestone.
-- **Milestone pause / resume** (clean boundary, thread getting long) → **robotics-mathematician**, the *next* milestone, new chat. Attach every `.md`/`.py` written so far plus the last milestone's red-team note. Paste, e.g.: "Resume robotics-mathematician at Milestone 2 (dynamics) for `<project>` from the attached files. Milestone 1 is done and red-teamed — resolution logged in `01_kinematics.md`. Reuse its frames and symbols verbatim. Parameter block as frozen: `<numbers>`."
-- **A result forces a change** (a Milestone 3 finding sends work upstream) → **robotics-spec-design** (a requirement, part, or BOM number must change) or **robotics-inventor** (the fix needs a mechanism you don't have on hand). Attach `03_results.md` and the model. Carry the specific number that broke and the spec or part it collides with.
+- **Red-team checkpoint** (after a milestone's self-tests pass) → **armature-red-team**, new chat — the fresh-eyes rule is the whole point, so this is never the same conversation. Attach that milestone's `.md` and `.py` plus the earlier milestones for context. Paste, e.g.: "Red-team Milestone 1 (kinematics) of the attached derivation for `<project>`. Check the frame assignment and DH table against the mechanism, and that the Jacobian matches finite-difference FK. Numbered assumptions are in `00_setup.md`. Current parameter values: `<the frozen numbers>`." Bring the findings note back and log its resolution before the next milestone.
+- **Milestone pause / resume** (clean boundary, thread getting long) → **armature-math**, the *next* milestone, new chat. Attach every `.md`/`.py` written so far plus the last milestone's red-team note. Paste, e.g.: "Resume armature-math at Milestone 2 (dynamics) for `<project>` from the attached files. Milestone 1 is done and red-teamed — resolution logged in `01_kinematics.md`. Reuse its frames and symbols verbatim. Parameter block as frozen: `<numbers>`."
+- **A result forces a change** (a Milestone 3 finding sends work upstream) → **armature-spec** (a requirement, part, or BOM number must change) or **armature-inventor** (the fix needs a mechanism you don't have on hand). Attach `03_results.md` and the model. Carry the specific number that broke and the spec or part it collides with.
 
 Same rules as everywhere in the suite: name the real files, write the paste text in the user's voice, keep it to one copy-whole block, and carry what the files don't — here that's the numbered assumptions still in force and the current frozen parameter values, since a `.py` shows the numbers but not which of them were *decided this session* versus inherited.
 
@@ -118,8 +118,8 @@ Same rules as everywhere in the suite: name the real files, write the paste text
 
 1. `<project>_derivation/00_setup.md` … `03_results.md` — four files per `references/derivation-standards.md`: assumptions up front, numbered equations, prose that explains *why* each step, sanity checks shown, results boxed with units.
 2. `<project>_model/params.py`, `kinematics.py`, `dynamics.py`, `verification.py`, `run_all.py` — the adapted, passing, parameterized modules. Confirm `run_all.py` ran clean, all self-tests included.
-3. A red-team findings note per milestone (from **robotics-red-team**), or an explicit statement of what was found and resolved if the note wasn't saved as its own file.
+3. A red-team findings note per milestone (from **armature-red-team**), or an explicit statement of what was found and resolved if the note wasn't saved as its own file.
 
 ## Scope notes
 
-Statics, kinematics, dynamics, and the math for actuator sizing and simple trajectory analysis are in scope. Full controller synthesis, FEA, and CFD are not — flag where they're needed. If the user mostly wants to *understand* the math rather than have it produced, hand intuition duty to **robotics-teacher** and keep the rigor here. The red-team checkpoints above assume **robotics-red-team** is installed; if it isn't, say so once and fall back to your own adversarial pass at each milestone boundary rather than skipping the check.
+Statics, kinematics, dynamics, and the math for actuator sizing and simple trajectory analysis are in scope. Full controller synthesis, FEA, and CFD are not — flag where they're needed. If the user mostly wants to *understand* the math rather than have it produced, hand intuition duty to **armature-teacher** and keep the rigor here. The red-team checkpoints above assume **armature-red-team** is installed; if it isn't, say so once and fall back to your own adversarial pass at each milestone boundary rather than skipping the check.

@@ -9,7 +9,7 @@ Rev 0.1 — [date] — Status: Draft
 ## 1. Problem Statement & Mission
 One paragraph: what problem, for whom, and what the machine must accomplish
 as observable outcomes. No mechanisms in this section. If a
-robotics-concept-design brief exists, this is that brief's problem and
+armature-concept brief exists, this is that brief's problem and
 audience restated in engineering terms, not re-derived from scratch —
 name the brief and its rev.
 
@@ -70,10 +70,10 @@ than leaving the field blank.
 How the base is mounted and which way gravity points relative to the
 mechanism (horizontal reach, vertical stack, tilted, mobile-on-a-slope).
 
-This section is the raw material **robotics-mathematician** and
-**robotics-writing-plans** consume for the parameter table and frame
+This section is the raw material **armature-math** and
+**armature-plan** consume for the parameter table and frame
 assignment — it does not itself choose a kinematic convention (mDH/sDH/
-PoE) or name coordinate frames; that's **robotics-writing-plans**'s job.
+PoE) or name coordinate frames; that's **armature-plan**'s job.
 
 ## 7. System Architecture
 Subsystem breakdown, interfaces between subsystems (mechanical, electrical,

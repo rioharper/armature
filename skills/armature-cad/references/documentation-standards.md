@@ -109,7 +109,7 @@ This element is what makes the part definition answer back to the math. Record t
 
 ## 9. Envelope, clearance, service access
 
-The space the part may occupy, and the space it must leave alone: the swept volumes of moving neighbours through the full range of motion, the keep-outs for wiring and connectors, and — the one that bites at assembly — **service access**. For every fastener, can a tool actually reach and turn it once the part is in place? For every sensor and bearing, can it be replaced without dismantling half the machine? Access is a design-time dimension, not something you discover with a wrench at 2 a.m.; the design-foundations doctrine (from robotics-spec-design) is blunt about this and it's right.
+The space the part may occupy, and the space it must leave alone: the swept volumes of moving neighbours through the full range of motion, the keep-outs for wiring and connectors, and — the one that bites at assembly — **service access**. For every fastener, can a tool actually reach and turn it once the part is in place? For every sensor and bearing, can it be replaced without dismantling half the machine? Access is a design-time dimension, not something you discover with a wrench at 2 a.m.; the design-foundations doctrine (from armature-spec) is blunt about this and it's right.
 
 ## 10. The manufacturing deliverable
 

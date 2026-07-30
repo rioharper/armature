@@ -1,6 +1,6 @@
 # Design-Driver BOM Template
 
-This captures the *major* items whose specifications constrain the design — actuators, gearboxes, bearings, drive electronics, power source, and the structural materials — together with the datasheet each number came from. It is intentionally short. The exhaustive procurement BOM (every fastener, standoff, and connector, with quantities and costs against budget) belongs to detail design in **robotics-writing-plans**; do not try to make this that.
+This captures the *major* items whose specifications constrain the design — actuators, gearboxes, bearings, drive electronics, power source, and the structural materials — together with the datasheet each number came from. It is intentionally short. The exhaustive procurement BOM (every fastener, standoff, and connector, with quantities and costs against budget) belongs to detail design in **armature-plan**; do not try to make this that.
 
 The one job of this file: when the kinematics math, the CAD, or a design review later trips over "wait, what's the rotor inertia?" or "can this bracket take that moment?", the answer and its source are one glance away — not reconstructed from memory.
 

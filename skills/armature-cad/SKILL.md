@@ -1,6 +1,6 @@
 ---
-name: robotics-cad-parts
-description: Turn frozen kinematic/dynamic parameters, chosen parts, and coordinate frames into CAD-ready part definitions — each part's interfaces, loads, material, datums, tolerances, and inertia target — plus a build recipe for the user's CAD package (SOLIDWORKS, Fusion 360, Onshape). Use whenever the user is ready to model a mechanical part and asks what it needs, says "how do I CAD/model this bracket/housing/link", wants a bolt pattern or bearing fit worked out from a datasheet, wants worst-case joint loads translated into wall thickness and material, wants to check that a modeled part's mass and inertia match what the dynamics assumed, or is executing a plan's detail-design/DFM task for a specific part. Also reach here from robotics-writing-plans when a detail-design task comes due.
+name: armature-cad
+description: Turn frozen kinematic/dynamic parameters, chosen parts, and coordinate frames into CAD-ready part definitions — each part's interfaces, loads, material, datums, tolerances, and inertia target — plus a build recipe for the user's CAD package (SOLIDWORKS, Fusion 360, Onshape). Use whenever the user is ready to model a mechanical part and asks what it needs, says "how do I CAD/model this bracket/housing/link", wants a bolt pattern or bearing fit worked out from a datasheet, wants worst-case joint loads translated into wall thickness and material, wants to check that a modeled part's mass and inertia match what the dynamics assumed, or is executing a plan's detail-design/DFM task for a specific part. Also reach here from armature-plan when a detail-design task comes due.
 ---
 
 # Robotics CAD Parts
@@ -15,18 +15,18 @@ Defining a part is not decoration on a design that's already done — it is the 
 
 The saved files are the state; the transcript is not. Before defining anything, read — in this order:
 
-- **The plan's Section 1 glossary** (from **robotics-writing-plans**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
-- **The spec + design-driver BOM** (from **robotics-spec-design**): the chosen actuators, bearings, materials, and their datasheet numbers — the interfaces and stock you build to.
-- **The derivation's `03_results.md` and `params.py`** (from **robotics-mathematician**): the worst-case joint torques and reaction forces this part must carry, and the mass, COM, and inertia the dynamics *assumed* for each body. Those assumed values are the target you close the loop against.
+- **The plan's Section 1 glossary** (from **armature-plan**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
+- **The spec + design-driver BOM** (from **armature-spec**): the chosen actuators, bearings, materials, and their datasheet numbers — the interfaces and stock you build to.
+- **The derivation's `03_results.md` and `params.py`** (from **armature-math**): the worst-case joint torques and reaction forces this part must carry, and the mass, COM, and inertia the dynamics *assumed* for each body. Those assumed values are the target you close the loop against.
 
-If no plan glossary exists, reuse the frames and symbols from the mathematician's `00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **robotics-writing-plans** Section 1 first if the project is substantial. SI internally, always.
+If no plan glossary exists, reuse the frames and symbols from the mathematician's `00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** Section 1 first if the project is substantial. SI internally, always.
 
 Then confirm with the user two things the files rarely pin: **which CAD package** (this picks the software reference), and the **fabrication reality** — in-house machining envelope and tolerances, printer and filament, sheet stock and bend capability, minimum tool/drill sizes. Geometry that the shop can't make is a redraw, so learn its limits before drawing to them.
 
 **Gate — don't fabricate an input.** Two numbers a part can't be responsibly defined without:
 
-- *Loads.* If the dynamics this part needs aren't derived yet, you cannot set wall thickness or close the inertia loop from a guess. Say so and route to **robotics-mathematician**; a wall sized from an invented load is a part that looks finished and isn't.
-- *Interfaces.* If a mating interface depends on a COTS datasheet not in the BOM — an actuator's output-flange bolt circle, a bearing's bore and width — get it, or mark it TBD and route to **robotics-spec-design**. A guessed bolt pattern is the bracket that doesn't bolt on.
+- *Loads.* If the dynamics this part needs aren't derived yet, you cannot set wall thickness or close the inertia loop from a guess. Say so and route to **armature-math**; a wall sized from an invented load is a part that looks finished and isn't.
+- *Interfaces.* If a mating interface depends on a COTS datasheet not in the BOM — an actuator's output-flange bolt circle, a bearing's bore and width — get it, or mark it TBD and route to **armature-spec**. A guessed bolt pattern is the bracket that doesn't bolt on.
 
 ## Order of work — interfaces first, base outward
 
@@ -101,22 +101,22 @@ for print, DXF for sheet/laser) with its settings.
 This is the move that makes the skill worth more than a modeling tutorial. The mathematician *assumed* a mass and inertia for each body; the CAD part *realizes* them. Once the geometry exists — or is modeled closely enough to trust — extract its real mass properties **about the same point and axes the dynamics used** (COM vs. joint origin, and frame orientation; getting this wrong makes the comparison meaningless, so state which the number is about). Compare to the `params.py` block:
 
 - Within tolerance → record the realized values and freeze them.
-- Beyond it → the derivation is now validating a robot the CAD no longer builds. Route to **robotics-mathematician** with the measured mass, COM, and inertia so the dynamics — and any actuator sizing that rode on them — re-run against reality.
+- Beyond it → the derivation is now validating a robot the CAD no longer builds. Route to **armature-math** with the measured mass, COM, and inertia so the dynamics — and any actuator sizing that rode on them — re-run against reality.
 
 Never leave a part definition claiming an inertia the model doesn't actually have.
 
 ## Red-team before the CAD hours pile up
 
-Once a coherent batch of definitions is written — before you spend a weekend modeling to them — hand them to **robotics-red-team** in a fresh chat (its value is fresh eyes, so never the same conversation). Interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop actually checked: these seams between documents are exactly what red-team is built to catch, and its own description names "before locking a design into CAD" as the moment to run it. A bolt pattern caught on paper is free; the same error caught after modeling costs the rebuild.
+Once a coherent batch of definitions is written — before you spend a weekend modeling to them — hand them to **armature-red-team** in a fresh chat (its value is fresh eyes, so never the same conversation). Interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop actually checked: these seams between documents are exactly what red-team is built to catch, and its own description names "before locking a design into CAD" as the moment to run it. A bolt pattern caught on paper is free; the same error caught after modeling costs the rebuild.
 
 ## Hand-offs
 
-- Realized mass/inertia diverges from the assumed → **robotics-mathematician** (re-derive on the real number)
-- A part won't carry its load, or a load looks wrong → **robotics-mathematician**
-- An interface or envelope proves a chosen part unworkable (pattern won't fit, part can't take the moment) → **robotics-spec-design** (change the part, material, or architecture)
-- Batch of definitions ready to commit to CAD → **robotics-red-team**, new chat
-- A part resists being made manufacturable and wants a cleverer mechanism → **robotics-inventor**
-- The user wants to *understand* a concept a definition turns on (a press fit, k-factor, why a datum order) → **robotics-teacher**
+- Realized mass/inertia diverges from the assumed → **armature-math** (re-derive on the real number)
+- A part won't carry its load, or a load looks wrong → **armature-math**
+- An interface or envelope proves a chosen part unworkable (pattern won't fit, part can't take the moment) → **armature-spec** (change the part, material, or architecture)
+- Batch of definitions ready to commit to CAD → **armature-red-team**, new chat
+- A part resists being made manufacturable and wants a cleverer mechanism → **armature-inventor**
+- The user wants to *understand* a concept a definition turns on (a press fit, k-factor, why a datum order) → **armature-teacher**
 
 ### The handoff prompt
 
@@ -132,8 +132,8 @@ Paste:
 ```
 
 The paste text is keyed to the route — for example:
-- **→ robotics-mathematician** (the loop-closer): "The `<PART-ID>` I modeled comes out to mass `<m>`, COM `<x,y,z>`, inertia `<I>` about `<point/axes>` — the attached part definition has the details. `00_setup.md` assumed `<the assumed values>`. Re-run the dynamics and check whether the actuator sizing in `03_results.md` still holds. Keep the existing frames and symbols."
-- **→ robotics-red-team:** "Red-team the attached part definitions for `<project>` before I model them. Check that every interface is defined on both sides and agrees, that each load traces to a mathematician result, that fits have a functional basis, and that the inertia-loop check is present. Frames and part-numbering are per the attached plan's Section 1; loads per the attached derivation."
+- **→ armature-math** (the loop-closer): "The `<PART-ID>` I modeled comes out to mass `<m>`, COM `<x,y,z>`, inertia `<I>` about `<point/axes>` — the attached part definition has the details. `00_setup.md` assumed `<the assumed values>`. Re-run the dynamics and check whether the actuator sizing in `03_results.md` still holds. Keep the existing frames and symbols."
+- **→ armature-red-team:** "Red-team the attached part definitions for `<project>` before I model them. Check that every interface is defined on both sides and agrees, that each load traces to a mathematician result, that fits have a functional basis, and that the inertia-loop check is present. Frames and part-numbering are per the attached plan's Section 1; loads per the attached derivation."
 
 Keep it honest and paste-ready:
 - **Name real files.** Use the saved filenames, and attach the derivation/BOM when the next step reads them — the next chat opens blind.
@@ -142,4 +142,4 @@ Keep it honest and paste-ready:
 
 ## Scope
 
-You size wall and section from the loads with hand calculations and rules of thumb, and you name where a stress concentration, a fatigue life, or a buckling mode genuinely needs FEA — that analysis itself is out of scope here, like it is for the mathematician; flag it rather than fake it. You don't choose the architecture or the major parts (**robotics-spec-design**) or compute the loads and inertias (**robotics-mathematician**) — you consume them and check the geometry against them. You execute the detail-design/DFM phase that **robotics-writing-plans** schedules, part by part; you don't write the plan. If the software reference for the user's package isn't the one they use, work from the closest one and the universal principles in `documentation-standards.md`, and say which you leaned on.
+You size wall and section from the loads with hand calculations and rules of thumb, and you name where a stress concentration, a fatigue life, or a buckling mode genuinely needs FEA — that analysis itself is out of scope here, like it is for the mathematician; flag it rather than fake it. You don't choose the architecture or the major parts (**armature-spec**) or compute the loads and inertias (**armature-math**) — you consume them and check the geometry against them. You execute the detail-design/DFM phase that **armature-plan** schedules, part by part; you don't write the plan. If the software reference for the user's package isn't the one they use, work from the closest one and the universal principles in `documentation-standards.md`, and say which you leaned on.
