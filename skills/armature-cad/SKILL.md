@@ -125,7 +125,7 @@ Once a coherent batch of definitions is written — before you spend a weekend m
 
 Realized mass/inertia diverging from the assumed, or a part that won't carry its load, routes to **armature-math** to re-derive on the real number. An interface or envelope that proves a chosen part unworkable — a pattern that won't fit, a part that can't take the moment — routes to **armature-spec** to change the part, material, or architecture. A batch of definitions ready to commit to CAD goes to the **armature-red-team** agent. A part that resists being made manufacturable and wants a cleverer mechanism routes to the **armature-inventor** agent. A user who wants to *understand* a concept a definition turns on (a press fit, k-factor, why a datum order) routes to **armature-teacher**.
 
-Work each batch on an `armature/cad-<batch>` branch and merge it once the batch's definitions are red-teamed and any findings resolved. Then update `CLAUDE.md`'s Latest artifacts to point at the new part/assembly definitions, and log any design decisions the batch settled in `docs/decisions.md`.
+Work each batch on an `armature/cad-<batch>` branch and merge it once the batch's definitions are red-teamed and any findings resolved. Then update `CLAUDE.md`'s Latest artifacts to point at the new part/assembly definitions, and log any design decisions the batch settled in `docs/decisions.md`. When the final part/assembly batch for the project is merged, also update `CLAUDE.md`'s **Stage** to `build`.
 
 ## Scope
 
