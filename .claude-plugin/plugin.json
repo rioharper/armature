@@ -1,16 +1,7 @@
 {
   "name": "armature",
-  "version": "0.0.0",
-  "description": "Robotics engineering skill suite: concept through red-team. Eight skills covering concept design, engineering spec, implementation planning, kinematics/dynamics derivation, CAD part definition, adversarial review, concept teaching, and state-of-the-art research.",
-  "author": {
-    "name": "Rio"
-  },
-  "keywords": [
-    "robotics",
-    "mechanical-engineering",
-    "kinematics",
-    "dynamics",
-    "cad",
-    "design-review"
-  ]
+  "version": "1.0.0",
+  "description": "Robotics engineering suite for Claude Code: /armature:init scaffolds a standardized project, then six interactive stage skills (concept, spec, plan, math, CAD, teacher) and three agents (red-team, inventor, librarian) run the pipeline the way a real engineering team would — budgets, traceability, datasheet provenance, and adversarial review included.",
+  "author": { "name": "Rio" },
+  "keywords": ["robotics", "mechanical-engineering", "kinematics", "dynamics", "cad", "design-review", "systems-engineering"]
 }

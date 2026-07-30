@@ -41,13 +41,12 @@ parallel exploration and milestone gating, and locally-executed verification.
 ```
 armature/
   .claude-plugin/plugin.json      name "armature", version 1.0.0
-  commands/
-    init.md                       /armature:init
   agents/
     red-team.md                   adversarial reviewer, fresh context
     inventor.md                   frontier research, parallelizable
     librarian.md                  datasheet hunter + cache keeper
   skills/
+    init/                         /armature:init
     armature-concept/             was robotics-concept-design
     armature-spec/                was robotics-spec-design
     armature-plan/                was robotics-writing-plans
@@ -59,8 +58,11 @@ armature/
 
 `robotics-red-team` and `robotics-inventor` cease to be skills; their SKILL.md
 content becomes the corresponding agent's system prompt (with their
-`references/` files moved alongside). Commands, agents, and skills are
-auto-discovered from these directories.
+`references/` files moved alongside). `init` ships as a user-invocable skill
+(`skills/init/`, `disable-model-invocation: true`) rather than a `commands/`
+entry, since `commands/` is legacy in Claude Code; the invocation stays
+`/armature:init`. Agents and skills are auto-discovered from these
+directories.
 
 ## 3. `/armature:init`
 

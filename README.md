@@ -1,64 +1,85 @@
-# Armature — robotics engineering skill suite
+# Armature — robotics engineering plugin for Claude Code
 
-Snapshot taken 2026-07-30 from the installed skill set. Eight skills, 23 files.
+Armature is a robotics engineering pipeline packaged as a Claude Code plugin.
+Install it once, then run `/armature:init` in a blank folder — it scaffolds a
+standard project, stamps a `CLAUDE.md`, and rolls into the concept interview.
+From there you work concept → spec → plan → analysis → CAD the way a real
+engineering team would: budgets tracked, requirements traced, decisions
+logged, and a red-team pass before anything gets built or bought.
 
 ## The pipeline
 
-Five skills form the main path, each handing off to the next:
+Six stage skills form the main path, each an interactive interview run in the
+main conversation, handing its output to the next:
 
 | Stage | Skill | Produces |
 |---|---|---|
-| 1 | `robotics-concept-design` | Concept brief — who it's for, why it beats what exists. Interrogates *why*, not *how*. |
-| 2 | `robotics-spec-design` | Engineering spec, trade studies, design-driver BOM. Assumes the concept question is settled. |
-| 3 | `robotics-writing-plans` | Phased implementation plan plus shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
-| 4 | `robotics-mathematician` | Milestone-sized derivation notes and a re-runnable parameterized Python model, cross-verified in SymPy/SciPy. |
-| 5 | `robotics-cad-parts` | Per-part definitions — interfaces, loads, material, datums, tolerances, inertia targets — plus a build recipe for the chosen CAD package. |
+| 1 | `armature-concept` | `docs/00-concept/concept-brief.md` — who it's for, why it beats what exists. Interrogates *why*, not *how*. |
+| 2 | `armature-spec` | `docs/01-spec/spec.md`, `bom.md`, `budgets.md`, `traceability.md` — engineering spec, trade studies, design-driver BOM, living budgets, requirements traceability. |
+| 3 | `armature-plan` | `docs/02-plan/plan.md` plus the glossary written into `CLAUDE.md` — phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
+| 4 | `armature-math` | `analysis/derivation/*.md` + `analysis/model/*.py` — milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
+| 5 | `armature-cad` | `cad/parts/`, `cad/assemblies/` — per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 
-Three are cross-cutting, pulled in at any stage:
+Cross-cutting skill and agents, pulled in from any stage:
 
-| Skill | Role |
-|---|---|
-| `robotics-red-team` | Adversarial review of an existing artifact. Finds gaps and routes fixes; never authors the spec itself. Run before locking CAD or spending money. |
-| `robotics-teacher` | Explains a concept, equation, or design decision. Analogy first, then formalism. |
-| `robotics-inventor` | Researches papers, novel mechanisms, unusual actuators/materials, emerging products when the obvious solution isn't good enough. |
+| Name | Kind | Role |
+|---|---|---|
+| `armature-teacher` | skill | Explains a concept, equation, or design decision using this project's own artifacts. Analogy first, then formalism. |
+| `armature-red-team` | agent | Adversarial review of an existing artifact — writes findings to `docs/reviews/`. Fresh context by construction; run before CAD hours or purchases. |
+| `armature-inventor` | agent | Frontier research — papers, novel mechanisms, unusual actuators/materials — writes briefs to `docs/research/`. |
+| `armature-librarian` | agent | Hunts datasheets and OTS CAD models, verifies part numbers, caches results to `docs/datasheets/` and `cad/ots-parts/`. |
 
-## Contents
+## The project layout
+
+`/armature:init` scaffolds this tree:
 
 ```
-skills/
-  robotics-concept-design/     SKILL.md + concept-brief-template.md
-  robotics-spec-design/        SKILL.md + spec-template, bom-template, design-foundations
-  robotics-writing-plans/      SKILL.md
-  robotics-mathematician/      SKILL.md + derivation-standards
-                               scripts/model_template/ — params, kinematics,
-                               dynamics, verification, run_all
-  robotics-cad-parts/          SKILL.md + documentation-standards
-                               references/solidworks.md, fusion360.md, onshape.md
-                               (SKILL.md routes to one via references/<package>.md)
-  robotics-red-team/           SKILL.md + review-checklist.md
-  robotics-teacher/            SKILL.md
-  robotics-inventor/           SKILL.md
+<project>/
+  CLAUDE.md                  project constitution (§4)
+  docs/
+    00-concept/
+      concept-brief.md       armature-concept output (RC-xxx requirements)
+    01-spec/
+      spec.md                armature-spec output (REQ-xxx requirements)
+      bom.md                 design-driver BOM → grows into procurement BOM
+      budgets.md             living mass/power/cost budgets with margins (§6.1)
+      traceability.md        REQ → design element → analysis → test → status (§6.2)
+    02-plan/
+      plan.md                armature-plan output
+    testing/                 test procedures + reports (§6.3)
+    reviews/                 red-team findings, dated
+    research/                inventor briefs
+    datasheets/
+      index.md               P/N, source URL, retrieval date, key numbers
+      *.pdf                  cached datasheets
+    decisions.md             one-line-per-decision log (§6.7)
+  analysis/                  armature-math derivations (.md) + model (.py)
+  cad/
+    parts/                   part definitions
+    assemblies/              assembly definitions (§6.5)
+    ots-parts/
+      index.md               model file → P/N → datasheet entry
+      *                      vendor STEP/native models
+  .gitignore
 ```
 
-Every `references/` and `scripts/` path named inside a SKILL.md resolves to a file
-present in this archive — verified at snapshot time.
+(Section numbers refer to the design spec at
+`docs/superpowers/specs/2026-07-30-armature-claude-code-redesign-design.md`.)
+
+## How state works
+
+Files are the state — every stage reads its inputs from the paths above and
+writes its outputs there, so a fresh session can pick up exactly where the
+last one left off. `CLAUDE.md` is loaded automatically every session and
+carries the glossary and standing rules forward, replacing paste-prompt
+handoffs. `budgets.md`, `traceability.md`, and `decisions.md` are living
+documents that every later stage debits or updates, not one-time snapshots.
 
 ## Install
 
-**As a plugin.** Keep the layout as-is; the `.claude-plugin/plugin.json` at the root
-makes the directory loadable as a plugin.
+Install as a Claude Code plugin — via a marketplace, or locally with
+`--plugin-dir` pointed at this repo. Loose-skill copying into
+`~/.claude/skills/` is no longer supported: agents and `/armature:init` are
+plugin components, not standalone skill directories.
 
-**As loose skills.** Copy the eight directories out of `skills/` straight into
-`~/.claude/skills/` (or `%USERPROFILE%\.claude\skills\` on Windows). Each skill
-directory is self-contained.
-
-## Two caveats
-
-**`plugin.json` is reconstructed, not recovered.** Installed skills carry only `name`
-and `description` in frontmatter — no version, no author, no plugin manifest. The
-manifest here was written fresh for this archive with `version: 0.0.0`. Replace it with
-the real one from the git repo rather than trusting this copy.
-
-**This is the installed state, which may lag the repo.** `MANIFEST.md5` holds checksums
-for all 23 files so you can diff this snapshot against the working tree and see whether
-anything drifted.
+Once installed, run `/armature:init` in a blank folder to start everything.
