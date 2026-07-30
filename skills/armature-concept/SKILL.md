@@ -29,36 +29,23 @@ Grill in rounds of 2-4 questions, reflecting back what you've learned between ro
 
 ## The concept brief
 
-Once the interview has nothing useful left to ask, write the brief to a markdown file using `references/concept-brief-template.md`. Keep it short — this is a pitch, not a spec; if it's running past a page or two, something technical has crept in and belongs in the next skill instead.
+Once the interview has nothing useful left to ask, write the brief to `docs/00-concept/concept-brief.md` using `references/concept-brief-template.md`. Keep it short — this is a pitch, not a spec; if it's running past a page or two, something technical has crept in and belongs in the next skill instead.
 
 Requirements in the brief are abstract and outcome-level, numbered **RC-001…** (concept-level requirement) — deliberately a different scheme from **armature-spec**'s **REQ-0xx**, so nobody mistakes "sorts 95% of recyclables correctly" for a verified engineering requirement with a test method behind it. `armature-spec` translates each RC into one or more REQs once the technical work starts.
 
 ## Hand-off
 
-When the brief is solid, the next step is **armature-spec**, which takes this brief's audience, differentiation, and RC-level requirements and turns them into an engineering spec — architecture trade study, kinematic envelope, feasibility calculations, and a design-driver BOM with real datasheets. It should treat the audience and differentiation as settled (spot-check, don't re-litigate) unless the technical work later contradicts them.
+When the brief is written: update the project `CLAUDE.md` — set the Stage
+line to `spec` and point Latest artifacts at the brief — and add a line to
+`docs/decisions.md` naming the concept as settled. Then offer to continue
+straight into **armature-spec** in this same session; the interview is with
+the user, not a fresh reader, so nothing is gained by switching sessions.
+(Fresh eyes are for review — that's the armature-red-team agent's job, later.)
 
-If, partway through the interview, it becomes clear the idea is basically sound and the person already knows their audience and differentiation cold, say so and offer to skip straight to **armature-spec** instead of writing a brief neither of you needs.
-
-### The handoff prompt
-
-The whole suite runs on one rule — *the saved files are the state; the transcript is not.* So don't end by telling the user to go start the next step; hand them a prompt that starts it for them. Once the brief is written, emit a single fenced block they can paste into a fresh chat:
-
-```
-── Next step: armature-spec · new chat ──
-Attach: <the concept-brief file you just wrote>
-Paste:
-  Run armature-spec on the attached concept brief for <project — the
-  one-line description>. Treat its audience, differentiation, and
-  RC-numbered requirements as settled — spot-check, don't relitigate. Start
-  at Phase 1, translating each RC into one or more verifiable REQ-0xx.
-  Open questions to carry in: <the brief's open questions, or "none">
-```
-
-Keep the block honest and paste-ready:
-- **Name the real file.** Use the actual saved filename, not "the brief" — the user attaches it blind in a chat that has none of this context.
-- **Carry what the file doesn't.** The brief records *what* the concept is; this prompt carries the open questions the spec work should resume from, so nothing gets silently dropped when the transcript closes.
-- **Write it in the user's voice**, first person, so it reads naturally when pasted.
-- **One block, no commentary inside it** — it's meant to be copied whole.
+If, partway through the interview, it becomes clear the idea is basically
+sound and the person already knows their audience and differentiation cold,
+say so and offer to skip straight to armature-spec instead of writing a
+brief neither of you needs.
 
 ## Scope boundaries
 
