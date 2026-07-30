@@ -42,6 +42,11 @@ Seed these files:
   `| P/N | Manufacturer | Key numbers | Source URL | Retrieved | File |`.
 - `cad/ots-parts/index.md`: header + empty table
   `| File | P/N | Datasheet row | Source URL | Retrieved |`.
+- `.gitkeep` in every scaffolded directory that gets no seeded file above
+  (docs/00-concept, docs/01-spec, docs/02-plan, docs/testing, docs/reviews,
+  docs/research, analysis/derivation, analysis/model, cad/parts,
+  cad/assemblies) — git doesn't track empty directories, and the tree needs
+  to survive the first commit.
 - `.gitignore`:
 
 ```
@@ -87,6 +92,8 @@ of done are written here by armature-plan. Once set, they are law. -->
 - Every design decision gets a line in docs/decisions.md.
 - OTS CAD models live in cad/ots-parts/ with an index row linking
   model → P/N → datasheet.
+- Every artifact write ends in a git commit — the git log plus
+  docs/decisions.md is the project history.
 
 ## Builder profile
 
