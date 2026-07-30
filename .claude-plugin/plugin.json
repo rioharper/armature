@@ -1,9 +1,16 @@
 {
   "name": "armature",
-  "version": "2.0.0",
-  "description": "Robotics engineering workflow: concept, spec, plan, derivations, CAD part definitions, adversarial review. Numbers trace to datasheets and are checked by script.",
-  "author": { "name": "Rio Harper" },
-  "repository": "https://github.com/REPLACE-ME/armature",
-  "license": "MIT",
-  "keywords": ["robotics", "kinematics", "dynamics", "cad", "engineering", "design-review"]
+  "version": "0.0.0",
+  "description": "Robotics engineering skill suite: concept through red-team. Eight skills covering concept design, engineering spec, implementation planning, kinematics/dynamics derivation, CAD part definition, adversarial review, concept teaching, and state-of-the-art research.",
+  "author": {
+    "name": "Rio"
+  },
+  "keywords": [
+    "robotics",
+    "mechanical-engineering",
+    "kinematics",
+    "dynamics",
+    "cad",
+    "design-review"
+  ]
 }
