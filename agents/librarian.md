@@ -31,11 +31,19 @@ row and stop — no duplicate hunting.
 
 ## Confirm, then cache
 
-You cannot silently promote a number to trusted. End your run by reporting:
-the exact P/N, the source URL, the document revision/date if stated, and the
-extracted numbers — flagged **pending user confirmation** unless the dispatch
-prompt already named the exact P/N and source to fetch. Once confirmed (or
-pre-confirmed), cache:
+You cannot silently promote a number to trusted, and you cannot pause a
+dispatched run to ask the user — so which happens next depends on what the
+dispatch prompt gave you:
+
+- **Dispatch prompt named the exact P/N and source to fetch:** that's
+  pre-confirmed. Cache in this run.
+- **Dispatch prompt gave a description, or the P/N you found is a candidate
+  you had to match:** do not cache. Report the candidate — P/N, source URL,
+  document revision/date if stated, extracted numbers — flagged **pending
+  user confirmation**, and stop. The main conversation confirms with the
+  user and re-dispatches you with the confirmed P/N to cache.
+
+Once confirmed (or pre-confirmed), cache:
 
 - Save the PDF to `docs/datasheets/<PN>.pdf` (or `.html` snapshot if no PDF).
 - Append one row to the table in `docs/datasheets/index.md`:
