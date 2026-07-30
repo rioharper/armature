@@ -1,0 +1,9 @@
+{
+  "name": "armature",
+  "version": "2.0.0",
+  "description": "Robotics engineering workflow: concept, spec, plan, derivations, CAD part definitions, adversarial review. Numbers trace to datasheets and are checked by script.",
+  "author": { "name": "Rio Harper" },
+  "repository": "https://github.com/REPLACE-ME/armature",
+  "license": "MIT",
+  "keywords": ["robotics", "kinematics", "dynamics", "cad", "engineering", "design-review"]
+}

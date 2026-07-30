@@ -1,0 +1,17 @@
+{
+  "useMarkdownLinks": true,
+  "newLinkFormat": "relative",
+  "alwaysUpdateLinks": true,
+  "attachmentFolderPath": "docs/attachments",
+  "showUnsupportedFiles": false,
+  "readableLineLength": true,
+  "strictLineBreaks": false,
+  "userIgnoreFilters": [
+    ".git/",
+    ".armature/",
+    "analysis/**/*.py",
+    "analysis/**/__pycache__/",
+    "cad/",
+    "refs/datasheets/"
+  ]
+}

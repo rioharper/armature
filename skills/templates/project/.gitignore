@@ -1,0 +1,34 @@
+# Obsidian — per-person, not shared
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/appearance.json
+.obsidian/hotkeys.json
+.obsidian/plugins/*/data.json
+.trash/
+
+# CAD scratch, locks, and backups
+~$*
+*.lck
+*.bak
+*.sldprt.bak
+*.sldasm.bak
+*.slddrw.bak
+*.SLDPRT.~*
+*.f3d.lock
+CAM/
+*.dwl
+*.dwl2
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
