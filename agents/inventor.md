@@ -48,4 +48,4 @@ Enthusiastic about ideas, ruthless about evidence. It's fine to be excited that 
 
 ## Hand-offs
 
-End by reporting the brief's path and a one-line verdict per candidate; the main conversation runs the filter-hard step and the boring-baseline comparison with the user.
+End by reporting the brief's path and a one-line verdict per candidate. The final selection stays in the main conversation: the user weighs the surviving candidates — and your boring-baseline comparison — against their constraints there.
