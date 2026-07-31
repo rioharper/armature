@@ -1,0 +1,19 @@
+{
+    "name": "armature-plugins",
+    "description": "Claude Code plugins for robotics engineering workflows, from concept and specs through analysis, CAD planning, and review.",
+    "owner": {
+      "name": "Rio Harper"
+    },
+    "plugins": [
+      {
+        "name": "armature",
+        "source": "./",
+        "description": "Robotics engineering suite for Claude Code",
+        "version": "1.0.0",
+        "author": {
+          "name": "Rio Harper"
+        },
+        "tags": ["robotics", "mechanical-engineering", "cad", "systems-engineering"]
+      }
+    ]
+  }

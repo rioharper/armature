@@ -2,9 +2,13 @@
 
 Armature is a robotics engineering pipeline packaged as a Claude Code plugin.
 
-AI has permeated every part of software engineering… but not so much in robotic design. As someone who dabbles in both, I felt like a suite for rapidly iterating on robotic concepts, creating SpecOps, and crunching the dynamics and kinematics with you was sorely missing.
+AI has permeated every part of software engineering… but not so much in robotic design. 
+As someone who dabbles in both, I felt like a suite for rapidly iterating on robotic concepts, 
+creating SpecOps, and crunching the dynamics and kinematics with you was sorely missing.
 
-Will this replace a mechanical engineer? Hell no. However, it will make your life a little easier and get past some of the monotony. I’ve found it extremely helpful for my own projects, and I think engineers deserve the beauty of Claude Code too.
+Will this replace a mechanical engineer? Hell no. However, it will make your life a little easier 
+and get past some of the monotony. I’ve found it extremely helpful for my own projects, and 
+I think engineers deserve the beauty of Claude Code too.
 
 Install it once, then run `/armature:init` in a blank folder. It'll scaffold a
 standard project, stamp `CLAUDE.md`, and roll right into the concept interview.
