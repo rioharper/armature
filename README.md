@@ -38,6 +38,16 @@ Cross-cutting skill and agents, pulled in from any stage:
 | `armature-inventor` | agent | Frontier research: papers, novel mechanisms, unusual actuators/materials, it'll write briefs to `docs/research/`. |
 | `armature-librarian` | agent | Hunts datasheets and OTS CAD models, verifies part numbers, caches results to `docs/datasheets/` and `cad/ots-parts/`. |
 
+## Example output
+
+From a real project run with Armature — the Ibex rover, a squatting camera platform. Each card is generated from the `armature-math` stage's re-runnable Python model:
+
+| | |
+|---|---|
+| ![Hip gravity compensation: worst hold torque drops 9.4x with a gas strut](media/ibex-card-1-gravity.png) | ![Mirror-leg four-bar keeps the wheel under the hip across seven postures](media/ibex-card-2-fourbar.png) |
+
+![Hip hold power over a 45-minute scan mission: 0.38 W vs 431 W uncompensated](media/ibex-card-3-power.png)
+
 ## The project layout
 
 `/armature:init` scaffolds this tree:
@@ -74,7 +84,11 @@ Cross-cutting skill and agents, pulled in from any stage:
 
 ## Install
 
-Install as a Claude Code plugin — via a marketplace, or locally with
+Install as a Claude Code plugin — via a marketplace:
+/plugin marketplace add rioharper/armature
+/plugin install armature@armature-plugins
+
+...Or locally with
 `--plugin-dir` pointed at this repo.
 
 Once installed, run `/armature:init` in a blank folder to start everything.
