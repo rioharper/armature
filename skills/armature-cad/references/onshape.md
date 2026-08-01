@@ -1,12 +1,13 @@
 # CAD Build Recipe — Onshape
 
-How to realize a part definition in Onshape so the model captures **design intent** — structured so an upstream parameter change updates the geometry rather than stranding a stale number. Onshape's Part Studio model makes top-down design the natural default; lean into it. Build in the order below.
+How to realize a part definition in Onshape. The part definition's build recipe says *what* to model — the feature sequence and its dimensions; this file says *how* — where the tools live and the habits that keep the model honest.
 
-## 1. Part Studio as the skeleton — top-down by default
+## 1. Part Studio scope — shared sketches only when they pay
 
-A Part Studio holds *multiple parts built from shared sketches*, which is top-down design without extra ceremony:
+A Part Studio holds *multiple parts built from shared sketches*, which makes top-down cheap — but scope it to what actually shares geometry:
 
-- Lay the controlling geometry — frames, joint axes, link lengths — as sketches in the Part Studio, then build each part from that shared geometry. The kinematic dimensions live once, in those driving sketches, and every part follows them.
+- A part that shares nothing gets its own Part Studio, built off the origin planes. Driving sketches earn their existence only when **three or more parts share kinematic dimensions** (link lengths, joint axes) or a driving length is still expected to move; for a one-off bracket they're ceremony.
+- When they do pay: lay the controlling geometry — frames, joint axes, link lengths — as sketches in the Part Studio, then build each part from that shared geometry. The kinematic dimensions live once, in those driving sketches, and every part follows them.
 - Carry the project frames as **mate connectors** placed at each joint origin and named for the plan's Section 1 frames. Mate connectors are Onshape's idiomatic frame carriers: they define a point *and* an orientation, they're exactly what the Assembly mates against, and they map one-to-one onto the coordinate frames the derivation uses.
 - Keep genuinely separate assemblies of parts in their own Part Studios and bring them together in an Assembly via those mate connectors.
 
@@ -18,7 +19,7 @@ The part's datum scheme (documentation-standards §5) is its base sketch plane a
 
 This is where design intent is won or lost in Onshape:
 
-- Declare **Variables** for each kinematic/dynamic parameter with a `#` prefix and units — `#link_len = 200 mm`, `#bolt_circle = 45 mm`, `#wall = 4 mm` — using the Variable feature at the top of the feature list, or a shared **Variable Studio** if several Part Studios need the same values (the cloud-native echo of one `params.py` feeding everything).
+- Declare **Variables** only for dimensions that trace to `params.py` or an interface contract, with a `#` prefix and units — `#link_len = 200 mm`, `#bolt_circle = 45 mm` — using the Variable feature at the top of the feature list, or a shared **Variable Studio** if several Part Studios need the same values (the cloud-native echo of one `params.py` feeding everything). Every other dimension is a plain typed number — parametrizing a value nothing else depends on adds fragility, not intent.
 - Reference the variable in any dimension or field by name or expression (`#bolt_circle / 2`). The dimension follows the variable; editing the variable updates every reference on regen.
 - For size families, use **Configurations** driven off variables rather than copies.
 - Because Onshape is cloud-native with real version control, the driving sketches and variables are the authoritative geometry — branch and merge design changes rather than saving alternate files.

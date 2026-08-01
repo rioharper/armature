@@ -1,14 +1,14 @@
 # CAD Build Recipe — Fusion 360
 
-How to realize a part definition in Fusion 360 so the model captures **design intent** — structured so an upstream parameter change updates the geometry instead of leaving a stale number behind. Build in the order below.
+How to realize a part definition in Fusion 360. The part definition's build recipe says *what* to model — the feature sequence and its dimensions; this file says *how* — where the tools live and the habits that keep the model honest.
 
-## 1. Component structure and a base skeleton
+## 1. Component structure — a skeleton only when it pays
 
 Fusion mixes bodies and components in one file, so discipline matters:
 
 - Make every real part a **Component** (not a loose body), named per the project part scheme. Components are what get their own origin, joints, and eventually drawings.
-- Create a **base/skeleton component** anchored at the world origin holding the controlling sketches and construction geometry — the frames, joint axes, and link lengths — nothing solid. Other components reference it, so the kinematic dimensions live in one place.
-- Ground the base component. Represent the project frames as **construction planes/axes and a construction point** per joint (Construct menu), named for the plan's Section 1 frames so the model is legible against the glossary.
+- Model a part off its own component origin unless shared geometry earns more. A **base/skeleton component** earns its existence only when **three or more components share kinematic dimensions** (link lengths, joint axes) or a driving length is still expected to move; for a one-off bracket it's ceremony — skip it.
+- When a skeleton does pay: make it a component anchored at the world origin holding only the controlling sketches and construction geometry — nothing solid — and ground it. Represent the project frames as **construction planes/axes and a construction point** per joint (Construct menu), named for the plan's Section 1 frames so the model is legible against the glossary.
 
 ## 2. Origin, base feature = datum scheme
 
@@ -18,7 +18,7 @@ The part's datum scheme (documentation-standards §5) is its component origin pl
 
 This is where design intent is won or lost in Fusion:
 
-- **Modify → Change Parameters** opens the parameters table. Add **User Parameters** for each kinematic/dynamic value (`link_len = 200 mm`, `bolt_circle = 45 mm`, `wall = 4 mm`) with units and an optional comment.
+- **Modify → Change Parameters** opens the parameters table. Add **User Parameters** only for dimensions that trace to `params.py` or an interface contract (`link_len = 200 mm`, `bolt_circle = 45 mm`) with units and an optional comment; every other dimension is a plain typed number — parametrizing a value nothing else depends on adds fragility, not intent.
 - In any sketch dimension or feature input, type the parameter name (or an expression like `bolt_circle/2`) instead of a raw number. The dimension now follows the parameter.
 - Editing a User Parameter updates every dimension that references it on the next compute — the model-side echo of `params.py`. Keep one parameter per real design driver and reference it everywhere, rather than typing the same number in three sketches.
 - For size families, drive a **Configuration** (Fusion's configurations table) from the parameters rather than saving copies.

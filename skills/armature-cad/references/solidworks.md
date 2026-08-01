@@ -1,10 +1,10 @@
 # CAD Build Recipe — SOLIDWORKS
 
-How to realize a part definition in SOLIDWORKS so the model captures **design intent** — structured so that when a parameter changes upstream, the geometry updates instead of quietly going wrong. The order below is the order to build in.
+How to realize a part definition in SOLIDWORKS. The part definition's build recipe says *what* to model — the feature sequence and its dimensions; this file says *how* — where the tools live and the habits that keep the model honest.
 
-## 1. Skeleton first — top-down, driven by a layout
+## 1. Standalone by default — a skeleton only when it pays
 
-Don't model the part in isolation and hope it fits. Build the assembly's controlling geometry once and let parts reference it, so an envelope change propagates:
+Model a part off its own origin planes unless shared geometry earns more. A skeleton earns its existence only when **three or more parts share kinematic dimensions** (link lengths, joint spacing) or a driving length is still expected to move; for a one-off bracket it's ceremony — sketch on the part's own origin and go. When it does pay:
 
 - Create a **skeleton part** (or a layout sketch in the assembly): sketches and reference geometry that carry the frames, joint locations, and key link lengths — nothing solid. This is the single place the kinematic dimensions live.
 - Bring frames in as **coordinate systems** and **reference planes/axes** (Insert → Reference Geometry), named for the project frames (`{B}_base`, `{2}_hip`, …) so the assembly's geometry is legible against the plan's Section 1.
@@ -16,7 +16,7 @@ The part's datum scheme (documentation-standards §5) becomes its opening featur
 
 ## 3. Drive dimensions from the parameter table
 
-This is where design intent is won or lost. Any dimension that traces to a kinematic/dynamic parameter must be *driven*, not typed as a loose number that goes stale the moment the math updates:
+This is where design intent is won or lost. Any dimension that traces to a kinematic/dynamic parameter or an interface contract must be *driven*, not typed as a loose number that goes stale the moment the math updates. Every other dimension is a plain typed number — parametrizing a wall thickness nothing else depends on adds fragility, not intent:
 
 - Open **Tools → Equations** and create **global variables** for the parameters — link length, bolt-circle diameter, bore, wall thickness (`"link_len" = 200mm`).
 - Drive sketch dimensions from them: double-click the dimension, enter `= "link_len"`. The dimension now shows a Σ and follows the variable.

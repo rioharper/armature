@@ -3,7 +3,7 @@
 The depth behind SKILL.md's part-definition structure: what each element is *for*, how to fill it well, and the handful of tables you'll reach for repeatedly. The governing idea is that a mechanical part is defined by its **interfaces, its loads, and the few dimensions that must be controlled** — everything else is consequence. Document those three precisely and the part almost draws itself; document them vaguely and no amount of modeling saves it.
 
 Contents:
-1. Function & load path
+1. At a glance — shape, function, load path
 2. Interfaces — the contract
 3. Loads, factor of safety, and first-pass sizing
 4. Material & process → geometry rules
@@ -13,12 +13,15 @@ Contents:
 8. Mass & inertia target — closing the loop
 9. Envelope, clearance, service access
 10. The manufacturing deliverable
+11. Done when — baseline checks
 
 *Which* fit or tolerance to choose lives here; *how* to call it out in a given CAD package lives in that package's reference file. Keep the split — one source of truth each.
 
-## 1. Function & load path
+## 1. At a glance — shape, function, load path
 
-One paragraph, but the one that governs the rest: what the part does, what it connects, and the path forces take through it. Naming the load path is not a formality — it tells you where the material has to be (along the path, at the corners where moment peaks) and where it can be removed (everywhere the path doesn't run). A bracket whose load path you can't state in a sentence is a bracket you're about to over-build in the wrong places.
+The opening lines are for the modeler's mental picture, and they earn their position by answering "what am I making?" in ten seconds. Name the shape as a familiar primitive first — "an L-bracket", "a clevis", "a flanged tube", "a plate with two bosses" — then the envelope dimensions, material and process, and what it connects. A part named as a primitive is a part the modeler can already see; a part introduced by its datum scheme is a mystery with tables. If words don't carry the profile, add a small dimensioned sketch (Mermaid, inline SVG, ASCII orthographic) — crude is fine, orienting is the job.
+
+Then one sentence for the load path: what the part does and the path forces take through it. Naming the load path is not a formality — it tells you where the material has to be (along the path, at the corners where moment peaks) and where it can be removed (everywhere the path doesn't run). A bracket whose load path you can't state in a sentence is a bracket you're about to over-build in the wrong places.
 
 ## 2. Interfaces — the contract
 
@@ -73,6 +76,8 @@ Pick datums by *function*, and tie them to the project's coordinate frames so th
 
 Build the CAD feature tree on these same references (the software reference shows how): the model's base feature and datum planes *are* the datum scheme, so a well-chosen scheme and a clean feature tree are the same decision made once. A part modeled off arbitrary planes and then dimensioned off functional ones will fight you at every revision.
 
+For a simple part, all of this collapses to one line in the build recipe — "base sketch on the mounting face" — and that line is the whole scheme. Spend the full primary/secondary/tertiary treatment only on parts that get inspected against their datums or carry GD&T; a three-datum ceremony on a spacer is noise.
+
 ## 6. Tolerances & fits
 
 Control only the dimensions with a function behind them; leave the rest at a general tolerance block. Over-tolerancing buys nothing and costs money — a ±0.01 mm callout on a face that mates nothing is pure waste, and it hides the dimensions that *do* matter in a sea of tight numbers.
@@ -119,3 +124,15 @@ The definition ends in something the shop or printer can consume:
 - **Printed part → a critical-dimension callout.** The STL carries the geometry, but the few fits and interfaces that matter (a bearing bore, an insert boss) need called-out dimensions and the print settings (orientation, walls, infill) that make them come out right.
 - **Sheet part → a flat pattern / DXF** with bend lines and the bend table (k-factor from the shop or a test bend), plus the folded drawing.
 - **Export formats:** STEP (AP242 preferred, it carries PMI) for solid handoff to a shop or another CAD; STL (with a resolution fine enough that facets don't show on fit surfaces) for print; DXF for laser/waterjet/sheet. State the format and settings, because a default STL export that's too coarse on a bearing bore is a part that won't press together.
+
+## 11. Done when — baseline checks
+
+Every part definition ends with its acceptance list: the measurable checks that confirm the modeled geometry actually follows the definition. This section is never omitted — it is what separates "I modeled something" from "I modeled the part." Five or so lines, each one checkable in the CAD package in under a minute:
+
+- Each **critical dimension** from §6 measures its callout in the model (measure the bore, don't trust the feature name).
+- Each **interface** matches its source row — bolt circle diameter and count against the datasheet page, bore against the bearing table. Check against the *source*, not against your memory of the source.
+- **Mass properties** are within tolerance of the §8 target, taken about the stated point and axes.
+- The model **rebuilds cleanly after changing each driven parameter** and the geometry follows — this is the one-minute test that the driven dimensions are actually driven and a future upstream change won't strand a stale number.
+- **Clearance holds**: neighbours and swept volumes from §9 still clear at the extremes of motion.
+
+Write the checks concretely for the part at hand ("bore measures 22.000–22.021", "4× holes on Ø45.0 ± 0.1 BC per iC-MU datasheet p.12"), not as generic reminders — a check the modeler can tick without thinking is a check that gets ticked.

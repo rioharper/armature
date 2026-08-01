@@ -36,12 +36,21 @@ Define parts in load-path order: the ones carrying the most interfaces and the h
 
 Write each to `cad/parts/<PART-ID>.md` (or a section per part in one parts document, still under `cad/parts/`). Every element carries its provenance, because a number whose source is one glance away survives a design review and a number from memory does not. Full depth for each is in `references/documentation-standards.md`.
 
+The document answers four questions in the order a modeler asks them: *what am I making* (At a glance), *what must be exact* (interfaces, critical dimensions), *how do I build it* (the recipe), and *why is it this way, and how do I know it's right* (loads, material, targets, checks). Lead with the shape; the rationale follows it, never precedes it.
+
 ```markdown
 # <PART-ID> <name> — Part Definition
 Rev — date — project · frames per <plan §1> · loads/inertia per <derivation rev> · CAD: <package>
 
-## Function & load path
-What the part does, what it connects, where it sits in the chain of forces.
+## At a glance
+Three or four lines that let the modeler see the part before any table:
+the shape named as a familiar primitive ("an L-bracket", "a flanged
+tube", "a clevis", "a plate with two bosses"), the overall envelope
+dimensions, material and process, and one sentence of what it connects
+and why it exists. If the profile isn't obvious from words, add a small
+dimensioned sketch (Mermaid, inline SVG, or an ASCII orthographic view)
+— a crude picture orients faster than a paragraph. A reader should know
+what they are modeling in ten seconds.
 
 ## Interfaces — the contract
 One row per mating part or COTS item: interface type, the controlling
@@ -50,26 +59,39 @@ fit class), and the source (datasheet P/N, or the adjacent part it mates).
 This table is the contract with everything the part touches; get it wrong
 and nothing else matters.
 
-## Loads
-The worst-case forces and moments the part carries, at named points, in a
-named frame, each traced to the mathematician result it came from. State
-the factor of safety and why that value for this consequence.
-
-## Material & process
-Chosen stock and manufacturing method (from the BOM), and the geometry
-rules that follow — minimum wall, fillet/bend radii, draft, tool access,
-print orientation and its strength anisotropy.
-
-## Datum scheme
-Primary/secondary/tertiary datums (or the reference geometry the model is
-built on), tied to the project frames. This is the CAD feature-tree
-backbone and the basis the part is inspected against.
-
 ## Critical dimensions & tolerances
 Only the handful that are controlled, each with its tolerance and a
 functional basis (an ISO fit for a bearing seat, a center distance for a
 gear mesh). Everything else is nominal — over-tolerancing is a cost with
 no function behind it.
+
+## Build recipe
+A numbered feature sequence for THIS part — sketch, extrude, hole,
+pattern — one line per feature with concrete dimensions in line:
+"1. Sketch on the mounting face plane: 80×50 rect centered on origin.
+2. Extrude 6 mm. 3. 4× M4 clearance on Ø45 BC (driven: #bolt_circle).
+4. Bore Ø22 H7 through the boss." Start by naming the functional face
+the base sketch sits on — for a simple part, that one line IS the datum
+scheme; give datums their own paragraph only when the part earns full
+three-datum inspection (documentation-standards §5). Mark which
+dimensions are *driven* (only those traced to the parameter table or an
+interface contract) and type the rest as plain numbers. The software
+reference (references/<package>.md) supplies the *how* — where the
+tools live in the user's package; this section supplies the *what*.
+COTS geometry is referenced from `cad/ots-parts/` — fetched by the
+**armature-librarian** agent and indexed there alongside its datasheet
+row — never modeled from memory.
+
+## Loads
+The worst-case forces and moments the part carries, at named points, in a
+named frame, each traced to the mathematician result it came from. State
+the factor of safety and why that value for this consequence, and how the
+load sized the sections the recipe just drew.
+
+## Material & process
+Chosen stock and manufacturing method (from the BOM), and the geometry
+rules that follow — minimum wall, fillet/bend radii, draft, tool access,
+print orientation and its strength anisotropy.
 
 ## Mass & inertia target
 The mass budget for this part, and the mass, COM, and inertia the dynamics
@@ -82,20 +104,24 @@ The space the part may occupy, the motion sweeps and neighbours it must
 not foul, and service access — can a tool reach every fastener after
 assembly, and can each sensor be swapped without a teardown?
 
-## CAD build recipe
-The ordered feature-tree approach for the user's package, from
-references/<package>.md: base feature, datums placed on the frames, and
-which dimensions are *driven* by the parameter table so a parameter change
-propagates instead of silently going stale. COTS geometry is referenced
-from `cad/ots-parts/` — fetched by the **armature-librarian** agent and
-indexed there alongside its datasheet row — never modeled from memory.
-
 ## Manufacturing deliverable
 What leaves CAD: a dimensioned, toleranced drawing with title block and
 material note for anything machined or outsourced; a critical-dimension
 callout for printed parts; and the export (STEP AP242 for the shop, STL
 for print, DXF for sheet/laser) with its settings.
+
+## Done when — baseline checks
+Five or so measurable acceptance lines the modeler ticks before calling
+the part done: each critical fit measures its callout, each bolt pattern
+matches its datasheet source, mass properties are within tolerance of
+the target (about the stated point and axes), the model rebuilds cleanly
+after changing each driven parameter, and every neighbour still clears
+through the full range of motion. This is the part's self-test — never
+omit it; a definition without it is a part nobody can finish with
+confidence.
 ```
+
+**Earn the skeleton, earn the parameter.** Model a part standalone off its own origin by default. A skeleton/layout earns its existence only when three or more parts share kinematic dimensions, or a driving length is still expected to change — a one-off bracket built on a master skeleton is ceremony, not intent. The same rule gates driven dimensions: only those traced to `params.py` or an interface contract are driven; everything else is a typed number. A fully parametrized one-off is fragility dressed as rigor.
 
 ## The assembly definition
 
