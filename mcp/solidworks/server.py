@@ -52,5 +52,22 @@ def sw_mass_properties(doc: str, coord_system: str | None = None) -> dict:
     return sw.mass_properties(sw.resolve_doc(app, doc), coord_system)
 
 
+@mcp.tool()
+def sw_get_dimensions(doc: str, names: list[str]) -> dict:
+    """Named model dimensions ('d1@Sketch1') with SI values and tolerance settings —
+    verify against the part definition's interface contract."""
+    app = sw.attach()
+    return sw.get_dimensions(sw.resolve_doc(app, doc), names)
+
+
+@mcp.tool()
+def sw_set_tolerance(doc: str, dim_name: str, tol_type: str, values: dict) -> dict:
+    """Set a dimension tolerance. tol_type: bilateral|symmetric|fit.
+    values: {"max": m, "min": m} in SI meters, or {"hole": "H7", "shaft": "p6"} for fit.
+    The drawing inherits it from the model."""
+    app = sw.attach()
+    return sw.set_tolerance(sw.resolve_doc(app, doc), dim_name, tol_type, values)
+
+
 if __name__ == "__main__":
     mcp.run()

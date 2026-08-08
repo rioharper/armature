@@ -136,6 +136,35 @@ def main():
             raise AssertionError("NameNotFound not raised")
         check("mass props lists coordinate systems on bad name", t_mass_bad_cs)
 
+        def t_dimensions():
+            d = sw.get_dimensions(doc, ["bore@Sketch2"])["dimensions"]["bore@Sketch2"]
+            assert abs(d["value"] - 0.010) < 1e-9, d  # SystemValue is meters
+        check("read named dimension in SI", t_dimensions)
+
+        def t_tolerance_roundtrip():
+            try:
+                sw.set_tolerance(doc, "bore@Sketch2", "fit", {"hole": "H7", "shaft": ""})
+                d = sw.get_dimensions(doc, ["bore@Sketch2"])["dimensions"]["bore@Sketch2"]
+                assert d["tolerance"] and d["tolerance"]["type"] == "fit", d
+                sw.set_tolerance(doc, "bore@Sketch2", "bilateral",
+                                 {"max": 0.0001, "min": -0.0001})
+                d = sw.get_dimensions(doc, ["bore@Sketch2"])["dimensions"]["bore@Sketch2"]
+                assert d["tolerance"]["type"] == "bilateral"
+                assert abs(d["tolerance"]["max"] - 0.0001) < 1e-9
+            finally:
+                # restore tolerance state so repeated smoke runs stay idempotent
+                sw.set_tolerance(doc, "bore@Sketch2", "none", {})
+        check("tolerance set/read round-trip", t_tolerance_roundtrip)
+
+        def t_dimension_not_found():
+            try:
+                sw.get_dimensions(doc, ["no_such_dim@Sketch2"])
+            except sw.NameNotFound as e:
+                assert "no_such_dim@Sketch2" in str(e)
+                return
+            raise AssertionError("NameNotFound not raised")
+        check("get_dimensions raises NameNotFound for bad name", t_dimension_not_found)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)

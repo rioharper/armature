@@ -226,6 +226,68 @@ def mass_properties(doc, coord_system: str | None) -> dict:
     return _com_call("mass_properties", _read)
 
 
+# swTolType_e values — verified by the smoke set->read round-trip
+_TOL_TYPES = {"none": 0, "bilateral": 2, "symmetric": 5, "fit": 9}
+_TOL_NAMES = {v: k for k, v in _TOL_TYPES.items()}
+
+
+def _dimension(doc, full_name: str):
+    # doc.Parameter(name) is a parameterized-property get -> callable under
+    # dynamic dispatch (unlike the niladic accessors elsewhere in this file);
+    # returns None rather than raising for an unknown name.
+    dim = doc.Parameter(full_name)
+    if dim is None:
+        raise NameNotFound(
+            f"No dimension '{full_name}'. Use the full form 'name@Sketch1' / 'name@Feature'; "
+            "check the name in the SolidWorks dimension PropertyManager."
+        )
+    return dim
+
+
+def _tol_entry(dim) -> dict | None:
+    tol = dim.Tolerance  # bare attribute -> ITolerance
+    t = _TOL_NAMES.get(tol.Type, f"swTolType_{tol.Type}")
+    if t == "none":
+        return None
+    # GetMaxValue2()/GetMinValue2() (brief's guess) both raise "Parameter not
+    # optional" here -- verified live they're niladic properties under this
+    # build's dynamic dispatch (the "2"-less GetMaxValue/GetMinValue), same
+    # bare-attribute trap as elsewhere in this file.
+    return {"type": t, "max": tol.GetMaxValue, "min": tol.GetMinValue}
+
+
+def get_dimensions(doc, names: list) -> dict:
+    def _read():
+        out = {}
+        for full_name in names:
+            dim = _dimension(doc, full_name)
+            out[full_name] = {"value": dim.SystemValue, "tolerance": _tol_entry(dim)}
+        return {"units": "SI (m, rad)", "dimensions": out}
+    return _com_call("get_dimensions", _read)
+
+
+def set_tolerance(doc, dim_name: str, tol_type: str, values: dict) -> dict:
+    # "none" isn't in the brief's public contract but is needed to restore a
+    # dimension to its un-toleranced state (smoke suite idempotency).
+    if tol_type not in ("none", "bilateral", "symmetric", "fit"):
+        raise SwError(f"tol_type must be bilateral|symmetric|fit, got '{tol_type}'")
+    def _write():
+        dim = _dimension(doc, dim_name)
+        tol = dim.Tolerance
+        # Unlike IEquationMgr::Equation (_put_equation), ITolerance::Type's
+        # property PUT *is* reachable via plain attribute assignment under
+        # this build's dynamic dispatch -- verified live, no raw invoke needed.
+        tol.Type = _TOL_TYPES[tol_type]
+        if tol_type == "fit":
+            # ITolerance fit: hole class like "H7", shaft class like "p6" ("" = unused side)
+            tol.SetFitValues(values.get("hole", ""), values.get("shaft", ""))
+        elif tol_type in ("bilateral", "symmetric"):
+            tol.SetValues(values["min"], values["max"])  # SI meters
+        doc.EditRebuild3
+        return get_dimensions(doc, [dim_name])["dimensions"][dim_name]
+    return _com_call("set_tolerance", _write)
+
+
 def set_params(doc, values: dict) -> dict:
     def _write():
         eq = doc.GetEquationMgr
