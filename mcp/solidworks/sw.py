@@ -171,6 +171,61 @@ def rebuild(doc) -> dict:
     return _com_call("rebuild", _do)
 
 
+def feature_by_name(doc, name: str, type_filter: str | None = None):
+    # FirstFeature/GetNextFeature/GetFirstSubFeature/GetNextSubFeature/GetTypeName2
+    # are niladic under dynamic dispatch (no gencache) -> bare attribute access,
+    # calling them with () raises "Member not found" (verified live).
+    names = []
+    feat = doc.FirstFeature
+    while feat:
+        for f in _with_subfeatures(feat):
+            if type_filter is None or f.GetTypeName2 == type_filter:
+                if f.Name == name:
+                    return f
+                names.append(f.Name)
+        feat = feat.GetNextFeature
+    kind = f" of type {type_filter}" if type_filter else ""
+    raise NameNotFound(f"No feature '{name}'{kind}. Available: {names}")
+
+
+def _with_subfeatures(feat):
+    yield feat
+    sub = feat.GetFirstSubFeature
+    while sub:
+        yield sub
+        sub = sub.GetNextSubFeature
+
+
+# swMassPropertyMoment_e — verified by the smoke parallel-axis assertion
+_MOMENT_ABOUT_COM = 0
+_MOMENT_ABOUT_COORD_SYS = 1
+
+def mass_properties(doc, coord_system: str | None) -> dict:
+    def _read():
+        # CreateMassProperty and GetDefinition are also niladic -> bare attribute
+        # access (same "Member not found" trap as the feature-traversal accessors).
+        mp = doc.Extension.CreateMassProperty
+        mp.UseSystemUnits = True  # kg, m, kg*m^2 regardless of document units
+        about = "center_of_mass"
+        moment_kind = _MOMENT_ABOUT_COM
+        if coord_system:
+            feat = feature_by_name(doc, coord_system, type_filter="CoordSys")
+            xform = feat.GetDefinition.Transform  # ICoordinateSystemFeatureData
+            if not mp.SetCoordinateSystem(xform):
+                raise SwError(f"SetCoordinateSystem failed for '{coord_system}'")
+            about = coord_system
+            moment_kind = _MOMENT_ABOUT_COORD_SYS
+        ixx, ixy, ixz, iyx, iyy, iyz, izx, izy, izz = mp.GetMomentOfInertia(moment_kind)
+        return {
+            "units": "SI (kg, m, kg*m^2)",
+            "about": about,
+            "mass": mp.Mass,
+            "center_of_mass": list(mp.CenterOfMass),
+            "inertia_tensor": [[ixx, ixy, ixz], [iyx, iyy, iyz], [izx, izy, izz]],
+        }
+    return _com_call("mass_properties", _read)
+
+
 def set_params(doc, values: dict) -> dict:
     def _write():
         eq = doc.GetEquationMgr

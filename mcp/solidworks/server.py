@@ -43,5 +43,14 @@ def sw_rebuild(doc: str) -> dict:
     return sw.rebuild(sw.resolve_doc(app, doc))
 
 
+@mcp.tool()
+def sw_mass_properties(doc: str, coord_system: str | None = None) -> dict:
+    """Mass, COM, and inertia tensor in SI, about the named coordinate system
+    (or about the center of mass if omitted). The armature loop-closer:
+    compare against params.py assumed values."""
+    app = sw.attach()
+    return sw.mass_properties(sw.resolve_doc(app, doc), coord_system)
+
+
 if __name__ == "__main__":
     mcp.run()

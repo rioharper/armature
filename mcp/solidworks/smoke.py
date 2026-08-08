@@ -112,6 +112,30 @@ def main():
             assert sw.rebuild(doc)["problems"] == []
         check("rebuild reports problems", t_rebuild_reports_problems)
 
+        def t_mass_props():
+            m = sw.mass_properties(doc, None)
+            assert abs(m["mass"] - BLOCK_MASS_KG) / BLOCK_MASS_KG < 0.01, m["mass"]
+            t = m["inertia_tensor"]
+            for i in range(3):
+                for j in range(3):
+                    assert abs(t[i][j] - t[j][i]) < 1e-12, "tensor not symmetric"
+            mc = sw.mass_properties(doc, "CS_corner")
+            assert mc["about"] == "CS_corner"
+            # parallel axis: every diagonal moment about the corner CS must be >= about COM
+            for i in range(3):
+                assert mc["inertia_tensor"][i][i] > t[i][i], (
+                    "corner moments not larger than COM moments — moment-type enum is wrong")
+        check("mass properties + parallel-axis", t_mass_props)
+
+        def t_mass_bad_cs():
+            try:
+                sw.mass_properties(doc, "CS_nope")
+            except sw.NameNotFound as e:
+                assert "CS_corner" in str(e)
+                return
+            raise AssertionError("NameNotFound not raised")
+        check("mass props lists coordinate systems on bad name", t_mass_bad_cs)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)
