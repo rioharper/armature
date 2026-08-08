@@ -62,7 +62,7 @@ def sw_get_dimensions(doc: str, names: list[str]) -> dict:
 
 @mcp.tool()
 def sw_set_tolerance(doc: str, dim_name: str, tol_type: str, values: dict) -> dict:
-    """Set a dimension tolerance. tol_type: bilateral|symmetric|fit.
+    """Set a dimension tolerance. tol_type: bilateral|symmetric|fit|none (none clears the tolerance).
     values: {"max": m, "min": m} in SI meters, or {"hole": "H7", "shaft": "p6"} for fit.
     The drawing inherits it from the model."""
     app = sw.attach()

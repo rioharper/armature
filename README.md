@@ -41,7 +41,7 @@ Cross-cutting skill and agents, pulled in from any stage:
 ## SolidWorks MCP (bundled)
 
 Armature ships a verification-first SolidWorks MCP server (Windows +
-SolidWorks required; attaches to your running session). It does not model
+SolidWorks required; attaches to your running session). Requires [uv](https://docs.astral.sh/uv/) on PATH — the bundled server launches via `uv run`. It does not model
 for you — it measures: mass properties about your project's frames,
 parameter sync and rebuild checks, interface dimensions, tolerances, and
 title-block properties, so the armature-cad Done-when checks run against
