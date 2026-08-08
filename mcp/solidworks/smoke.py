@@ -65,6 +65,32 @@ def main():
             raise AssertionError("NameNotFound not raised")
         check("set_params refuses unknown names", t_params_no_create)
 
+        def t_params_global_only():
+            all_params = sw.get_params(doc)["params"]
+            non_global = [n for n, v in all_params.items() if not v["global"]]
+            if non_global:
+                target = non_global[0]
+                try:
+                    sw.set_params(doc, {target: 1})
+                except sw.NameNotFound as e:
+                    available = str(e).split("Available:", 1)[1]
+                    assert f"'{target}'" not in available, f"non-global name leaked into Available: {e}"
+                    return
+                raise AssertionError("NameNotFound not raised for non-global name")
+            else:
+                # part has no feature-driven equations to test against directly;
+                # pin the same contract via get_params' global flag on whatever IS listed
+                try:
+                    sw.set_params(doc, {"__does_not_exist__": 1})
+                except sw.NameNotFound as e:
+                    available = str(e).split("Available:", 1)[1]
+                    for n, v in all_params.items():
+                        if f"'{n}'" in available:
+                            assert v["global"], f"non-global {n} listed as available: {e}"
+                    return
+                raise AssertionError("NameNotFound not raised")
+        check("set_params rejects non-global names", t_params_global_only)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)

@@ -148,7 +148,7 @@ def set_params(doc, values: dict) -> dict:
         index = {}
         for i in range(eq.GetCount):
             name = _eq_name(eq.Equation(i))
-            if name:
+            if name and eq.GlobalVariable(i):  # writes are global-vars-only, never feature dims
                 index[name] = i
         missing = [n for n in values if n not in index]
         if missing:
