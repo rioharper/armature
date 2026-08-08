@@ -63,3 +63,29 @@ Mass Properties updates live as the model changes, so it doubles as a running ch
 
 - **Drawing:** create a drawing from the part, dimension **from the datum scheme** (use ordinate or baseline dimensioning off the primary datum, not chained dimensions that stack tolerance), place GD&T where §7 warrants, and fill the title block (part number and rev per the project scheme, material, finish, general-tolerance block). Add notes the geometry can't state.
 - **Export:** File → Save As → **STEP AP242** for a shop or another CAD (AP242 carries PMI if you did MBD); **STL** for printing — set the resolution fine (Options → higher deviation/angle settings) so facets don't show on a bearing bore; **DXF** from the flat pattern for laser/waterjet. State the format and settings in the definition — a coarse default STL on a fit surface is a part that won't assemble.
+
+## 9. With the armature SolidWorks MCP connected
+
+If the `solidworks` MCP server is connected (ships with this plugin; needs
+SolidWorks running on Windows), run the Done-when checks against the live
+model instead of asking the user to transcribe numbers. The server measures;
+you judge — pass/fail lives in this conversation, against `params.py` and
+the part definition.
+
+- **Mass loop (§5):** `sw_mass_properties(doc, coord_system=<the frame from
+  00_setup.md>)` → compare mass/COM/inertia to the `params.py` block, in SI,
+  about the same point and axes. Route divergence per SKILL.md's close-the-loop.
+- **Perturbation check:** for each driven parameter: `sw_set_params` to a
+  ±10% value → `sw_rebuild` (must return no problems) → `sw_set_params` back
+  → final `sw_rebuild`. Any feature in the problems list fails the check.
+- **Interface verification:** `sw_get_dimensions` on each controlling
+  dimension named in the interface contract table; compare value and
+  tolerance against the table's source column.
+- **Release metadata:** `sw_set_tolerance` for the fits documentation-
+  standards §6 chose; `sw_custom_props` to stamp part number, rev, material
+  before the drawing.
+
+Parameter names, coordinate-system names, and dimension names are the whole
+API contract — they must match the glossary and the part definition exactly,
+which §1–§3 already require. If a name lookup fails, the error lists what
+exists; fix the model's names rather than adapting to typos.
