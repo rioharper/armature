@@ -2,6 +2,7 @@
 import os
 import pythoncom
 import win32com.client
+from win32com.client import VARIANT
 
 
 class SwError(Exception):
@@ -53,15 +54,29 @@ def linear_units(doc) -> str:
     return _UNITS.get(doc.GetUserPreferenceIntegerValue(0), "unknown")
 
 
+def _com_call(op_desc, fn):
+    """Run a raw COM call and turn any failure into an actionable SwError —
+    the generic fallback shape for COM errors outside attach/resolve_doc."""
+    try:
+        return fn()
+    except pythoncom.com_error as e:
+        raise SwError(
+            f"SolidWorks COM call failed during {op_desc}: {e}. "
+            "Check for a blocking dialog in SolidWorks."
+        )
+
+
 def status(app) -> dict:
-    active = app.ActiveDoc
-    return {
-        "solidworks_version": app.RevisionNumber,
-        "open_documents": [
-            {"title": d.GetTitle, "path": d.GetPathName} for d in _docs(app)
-        ],
-        "active_document": active.GetTitle if active else None,
-    }
+    def _read():
+        active = app.ActiveDoc
+        return {
+            "solidworks_version": app.RevisionNumber,
+            "open_documents": [
+                {"title": d.GetTitle, "path": d.GetPathName} for d in _docs(app)
+            ],
+            "active_document": active.GetTitle if active else None,
+        }
+    return _com_call("status", _read)
 
 
 _DOC_TYPES = {".sldprt": 1, ".sldasm": 2, ".slddrw": 3}  # swDocumentTypes_e
@@ -72,10 +87,21 @@ def open_doc(app, path: str) -> dict:
         raise SwError(f"Unsupported extension '{ext}' — expected .SLDPRT/.SLDASM/.SLDDRW")
     if not os.path.isfile(path):
         raise SwError(f"File not found: {path}")
-    errors, warnings = 0, 0
+    # OpenDoc6's [in/out] error/warning args — dynamic dispatch needs explicit byref VARIANTs,
+    # a plain int raises "Type mismatch"; we don't read the values back.
+    errors = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
+    warnings = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
     # swOpenDocOptions_Silent = 1
-    d = app.OpenDoc6(path, _DOC_TYPES[ext], 1, "", errors, warnings)
+    d = _com_call(
+        f"OpenDoc6('{path}')",
+        lambda: app.OpenDoc6(path, _DOC_TYPES[ext], 1, "", errors, warnings),
+    )
     if d is None:
         d = resolve_doc(app, os.path.basename(path))  # already open → activate
-    app.ActivateDoc3(d.GetTitle, False, 2, 0)  # swRebuildOnActivation_e 2 = don't rebuild
+    # swRebuildOnActivation_e 2 = don't rebuild; Errors is an [out] byref long, same VARIANT need as above
+    activate_errors = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_I4, 0)
+    _com_call(
+        f"ActivateDoc3('{d.GetTitle}')",
+        lambda: app.ActivateDoc3(d.GetTitle, False, 2, activate_errors),
+    )
     return {"opened": d.GetTitle, "path": d.GetPathName, "linear_units": linear_units(d)}
