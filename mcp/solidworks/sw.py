@@ -1,4 +1,5 @@
 """Thin COM wrapper for the armature SolidWorks MCP. All COM lives here."""
+import itertools
 import os
 import pythoncom
 import win32com.client
@@ -157,10 +158,15 @@ def rebuild(doc) -> dict:
         error_codes = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
         warnings = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
         doc.Extension.GetWhatsWrong(feats, error_codes, warnings)
-        problems = [
-            {"feature": feat.Name, "kind": "warning" if warn else "error"}
-            for feat, warn in zip(feats.value or (), warnings.value or ())
-        ]
+        problems = []
+        # zip_longest + defensive .Name: a malformed/short entry must degrade
+        # to a labeled row, never crash the tool call the user needs most.
+        for feat, warn in itertools.zip_longest(feats.value or (), warnings.value or ()):
+            try:
+                name = feat.Name
+            except Exception:
+                name = str(feat) if feat is not None else "<unknown feature>"
+            problems.append({"feature": name, "kind": "warning" if warn else "error"})
         return {"rebuilt": True, "problems": problems}
     return _com_call("rebuild", _do)
 

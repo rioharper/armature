@@ -99,6 +99,19 @@ def main():
             assert sw.rebuild(doc)["problems"] == []
         check("perturb+rebuild clean", t_rebuild_perturb)
 
+        def t_rebuild_reports_problems():
+            try:
+                sw.set_params(doc, {"block_len": 0})  # degenerate extrude -> real feature fault
+                problems = sw.rebuild(doc)["problems"]
+                assert problems, "expected non-empty problems for block_len=0"
+                for p in problems:
+                    assert p["feature"], f"empty feature name: {p}"
+                    assert p["kind"] in ("error", "warning"), f"bad kind: {p}"
+            finally:
+                sw.set_params(doc, {"block_len": 40})  # must run even if asserts fail
+            assert sw.rebuild(doc)["problems"] == []
+        check("rebuild reports problems", t_rebuild_reports_problems)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)
