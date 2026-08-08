@@ -22,5 +22,19 @@ def sw_open(path: str) -> dict:
     return sw.open_doc(sw.attach(), path)
 
 
+@mcp.tool()
+def sw_get_params(doc: str) -> dict:
+    """All global variables/equations of the named open document (values in document units)."""
+    app = sw.attach()
+    return sw.get_params(sw.resolve_doc(app, doc))
+
+
+@mcp.tool()
+def sw_set_params(doc: str, values: dict[str, float]) -> dict:
+    """Set existing global variables (document units), rebuild, return new values. Never creates variables."""
+    app = sw.attach()
+    return sw.set_params(sw.resolve_doc(app, doc), values)
+
+
 if __name__ == "__main__":
     mcp.run()

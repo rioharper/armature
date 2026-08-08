@@ -105,3 +105,61 @@ def open_doc(app, path: str) -> dict:
         lambda: app.ActivateDoc3(d.GetTitle, False, 2, activate_errors),
     )
     return {"opened": d.GetTitle, "path": d.GetPathName, "linear_units": linear_units(d)}
+
+
+def _eq_name(text: str) -> str | None:
+    # global variable equations look like: "block_len" = 40
+    if text.startswith('"'):
+        return text[1 : text.index('"', 1)]
+    return None
+
+
+def get_params(doc) -> dict:
+    def _read():
+        eq = doc.GetEquationMgr  # niladic accessor -> property under dynamic dispatch, no ()
+        out = {}
+        for i in range(eq.GetCount):  # same: property, not a method call
+            text = eq.Equation(i)  # parameterized-property get form
+            name = _eq_name(text)
+            if name:
+                out[name] = {
+                    "equation": text,
+                    "value": eq.Value(i),  # document units — hence linear_units field
+                    "global": bool(eq.GlobalVariable(i)),
+                }
+        return {"linear_units": linear_units(doc), "params": out}
+    return _com_call("get_params", _read)
+
+
+def _put_equation(eq, index: int, text: str):
+    # This SolidWorks build exposes no GetEquation/SetEquation methods and no
+    # Equation[i]= item-assignment under dynamic dispatch (verified against the
+    # live COM object) — only the parameterized-property get eq.Equation(i).
+    # The property "put" side isn't reachable through normal attribute
+    # assignment either, since __setattr__ has nowhere to carry the index arg.
+    # Fall back to a raw DISPATCH_PROPERTYPUT invoke: args are (index, value).
+    dispid = eq._oleobj_.GetIDsOfNames(0, "Equation")
+    eq._oleobj_.Invoke(dispid, 0, pythoncom.DISPATCH_PROPERTYPUT, 0, index, text)
+
+
+def set_params(doc, values: dict) -> dict:
+    def _write():
+        eq = doc.GetEquationMgr
+        index = {}
+        for i in range(eq.GetCount):
+            name = _eq_name(eq.Equation(i))
+            if name:
+                index[name] = i
+        missing = [n for n in values if n not in index]
+        if missing:
+            raise NameNotFound(
+                f"No global variable(s) {missing}. Available: {sorted(index)}. "
+                "set_params never creates variables — fix the name or add it in SolidWorks."
+            )
+        for name, val in values.items():
+            _put_equation(eq, index[name], f'"{name}"= {val}')
+        doc.EditRebuild3  # also niladic -> property access triggers the rebuild
+        fresh = get_params(doc)
+        return {"linear_units": fresh["linear_units"],
+                "params": {n: fresh["params"][n] for n in values}}
+    return _com_call("set_params", _write)

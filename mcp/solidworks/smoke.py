@@ -44,7 +44,26 @@ def main():
 
     if os.path.isfile(TEST_PART):
         check("open test part", lambda: sw.open_doc(app, TEST_PART))
+        doc = sw.resolve_doc(app, "test-part")
         # later tasks append their sections here, guarded by the same if
+
+        def t_params_roundtrip():
+            p = sw.get_params(doc)["params"]
+            assert "block_len" in p, f"block_len missing; got {list(p)}"
+            assert abs(p["block_len"]["value"] - 40) < 1e-6
+            sw.set_params(doc, {"block_len": 50})
+            assert abs(sw.get_params(doc)["params"]["block_len"]["value"] - 50) < 1e-6
+            sw.set_params(doc, {"block_len": 40})  # restore
+        check("params round-trip", t_params_roundtrip)
+
+        def t_params_no_create():
+            try:
+                sw.set_params(doc, {"not_a_var": 1})
+            except sw.NameNotFound as e:
+                assert "block_len" in str(e)
+                return
+            raise AssertionError("NameNotFound not raised")
+        check("set_params refuses unknown names", t_params_no_create)
 
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
