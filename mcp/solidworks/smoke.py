@@ -1,6 +1,7 @@
 """Manual smoke test. Prereq: SolidWorks 2026 running.
 From mcp/solidworks/: uv run --with pywin32 smoke.py
 Tasks 2+ additionally require test-part.SLDPRT (same folder) to exist."""
+import math
 import os
 import sys
 import sw
@@ -18,6 +19,10 @@ def check(name, fn):
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEST_PART = os.path.join(HERE, "test-part.SLDPRT")
+
+# Known answers for test-part.SLDPRT: 40x20x10 mm block, 1060 Alloy (2700 kg/m3),
+# minus a 10 mm through-hole (10 mm deep): 8000 - pi*25*10 = 7214.6 mm^3 -> 19.48 g.
+BLOCK_MASS_KG = (40 * 20 * 10 - math.pi * 5**2 * 10) * 1e-9 * 2700  # ≈ 0.01948
 
 def main():
     app = sw.attach()
