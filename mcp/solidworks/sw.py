@@ -270,7 +270,7 @@ def set_tolerance(doc, dim_name: str, tol_type: str, values: dict) -> dict:
     # "none" isn't in the brief's public contract but is needed to restore a
     # dimension to its un-toleranced state (smoke suite idempotency).
     if tol_type not in ("none", "bilateral", "symmetric", "fit"):
-        raise SwError(f"tol_type must be bilateral|symmetric|fit, got '{tol_type}'")
+        raise SwError(f"tol_type must be bilateral|symmetric|fit|none, got '{tol_type}'")
     def _write():
         dim = _dimension(doc, dim_name)
         tol = dim.Tolerance
@@ -282,6 +282,10 @@ def set_tolerance(doc, dim_name: str, tol_type: str, values: dict) -> dict:
             # ITolerance fit: hole class like "H7", shaft class like "p6" ("" = unused side)
             tol.SetFitValues(values.get("hole", ""), values.get("shaft", ""))
         elif tol_type in ("bilateral", "symmetric"):
+            if "min" not in values or "max" not in values:
+                raise SwError(
+                    "values must contain 'min' and 'max' (SI meters) for bilateral|symmetric"
+                )
             tol.SetValues(values["min"], values["max"])  # SI meters
         doc.EditRebuild3
         return get_dimensions(doc, [dim_name])["dimensions"][dim_name]

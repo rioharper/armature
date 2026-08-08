@@ -146,11 +146,16 @@ def main():
                 sw.set_tolerance(doc, "bore@Sketch2", "fit", {"hole": "H7", "shaft": ""})
                 d = sw.get_dimensions(doc, ["bore@Sketch2"])["dimensions"]["bore@Sketch2"]
                 assert d["tolerance"] and d["tolerance"]["type"] == "fit", d
+                # ISO 286 H7 deviations for a 10 mm bore: upper +15 um, lower 0 —
+                # observed live via SolidWorks' own fit resolution, not computed here.
+                assert abs(d["tolerance"]["max"] - 1.5e-05) < 1e-9, d
+                assert d["tolerance"]["min"] == 0.0, d
                 sw.set_tolerance(doc, "bore@Sketch2", "bilateral",
                                  {"max": 0.0001, "min": -0.0001})
                 d = sw.get_dimensions(doc, ["bore@Sketch2"])["dimensions"]["bore@Sketch2"]
                 assert d["tolerance"]["type"] == "bilateral"
                 assert abs(d["tolerance"]["max"] - 0.0001) < 1e-9
+                assert abs(d["tolerance"]["min"] - (-0.0001)) < 1e-9
             finally:
                 # restore tolerance state so repeated smoke runs stay idempotent
                 sw.set_tolerance(doc, "bore@Sketch2", "none", {})
