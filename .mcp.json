@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "solidworks": {
+      "command": "uv",
+      "args": ["run", "${CLAUDE_PLUGIN_ROOT}/mcp/solidworks/server.py"]
+    }
+  }
+}
