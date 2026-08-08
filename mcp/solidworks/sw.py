@@ -142,6 +142,29 @@ def _put_equation(eq, index: int, text: str):
     eq._oleobj_.Invoke(dispid, 0, pythoncom.DISPATCH_PROPERTYPUT, 0, index, text)
 
 
+def rebuild(doc) -> dict:
+    """Force-rebuild; model errors/warnings are RETURN DATA, never exceptions.
+    Only a raw COM failure (e.g. blocking dialog) raises."""
+    def _do():
+        doc.ForceRebuild3(False)  # False = rebuild all, not just top level
+        # IModelDocExtension::GetWhatsWrong's three [out] params are declared
+        # [in/out] in the typelib, so under dynamic dispatch they must be
+        # passed as byref VARIANTs (plain VT_VARIANT, not VT_ARRAY — VT_ARRAY
+        # raises "Type mismatch"; omitting them raises "Parameter not
+        # optional") — verified live. The return bool is call-success, not
+        # "model is clean"; features/errors/warnings stay None when clean.
+        feats = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
+        error_codes = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
+        warnings = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_VARIANT, None)
+        doc.Extension.GetWhatsWrong(feats, error_codes, warnings)
+        problems = [
+            {"feature": feat.Name, "kind": "warning" if warn else "error"}
+            for feat, warn in zip(feats.value or (), warnings.value or ())
+        ]
+        return {"rebuilt": True, "problems": problems}
+    return _com_call("rebuild", _do)
+
+
 def set_params(doc, values: dict) -> dict:
     def _write():
         eq = doc.GetEquationMgr

@@ -91,6 +91,14 @@ def main():
                 raise AssertionError("NameNotFound not raised")
         check("set_params rejects non-global names", t_params_global_only)
 
+        def t_rebuild_perturb():
+            sw.set_params(doc, {"block_len": 60})
+            r = sw.rebuild(doc)
+            assert r["problems"] == [], f"unexpected problems: {r['problems']}"
+            sw.set_params(doc, {"block_len": 40})
+            assert sw.rebuild(doc)["problems"] == []
+        check("perturb+rebuild clean", t_rebuild_perturb)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)

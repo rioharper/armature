@@ -36,5 +36,12 @@ def sw_set_params(doc: str, values: dict[str, float]) -> dict:
     return sw.set_params(sw.resolve_doc(app, doc), values)
 
 
+@mcp.tool()
+def sw_rebuild(doc: str) -> dict:
+    """Force-rebuild the named document; returns features in error/warning state (empty list = clean)."""
+    app = sw.attach()
+    return sw.rebuild(sw.resolve_doc(app, doc))
+
+
 if __name__ == "__main__":
     mcp.run()
