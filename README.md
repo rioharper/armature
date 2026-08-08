@@ -38,6 +38,15 @@ Cross-cutting skill and agents, pulled in from any stage:
 | `armature-inventor` | agent | Frontier research: papers, novel mechanisms, unusual actuators/materials, it'll write briefs to `docs/research/`. |
 | `armature-librarian` | agent | Hunts datasheets and OTS CAD models, verifies part numbers, caches results to `docs/datasheets/` and `cad/ots-parts/`. |
 
+## SolidWorks MCP (bundled)
+
+Armature ships a verification-first SolidWorks MCP server (Windows +
+SolidWorks required; attaches to your running session). It does not model
+for you — it measures: mass properties about your project's frames,
+parameter sync and rebuild checks, interface dimensions, tolerances, and
+title-block properties, so the armature-cad Done-when checks run against
+the live model. See `mcp/solidworks/`.
+
 ## Example output
 
 From a real project run with Armature — the Ibex rover, a squatting camera platform. Each card is generated from the `armature-math` stage's re-runnable Python model:
