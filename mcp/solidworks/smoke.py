@@ -170,6 +170,12 @@ def main():
             raise AssertionError("NameNotFound not raised")
         check("get_dimensions raises NameNotFound for bad name", t_dimension_not_found)
 
+        def t_custom_props():
+            sw.custom_props_set(doc, {"PartNo": "ARM-TST-001", "Material": "1060 Alloy"})
+            got = sw.custom_props_get(doc)
+            assert got.get("PartNo") == "ARM-TST-001", got
+        check("custom props set/get", t_custom_props)
+
     failed = [n for n, e in RESULTS if e]
     print(f"\n{len(RESULTS) - len(failed)} passed, {len(failed)} failed")
     sys.exit(1 if failed else 0)

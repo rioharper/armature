@@ -69,5 +69,16 @@ def sw_set_tolerance(doc: str, dim_name: str, tol_type: str, values: dict) -> di
     return sw.set_tolerance(sw.resolve_doc(app, doc), dim_name, tol_type, values)
 
 
+@mcp.tool()
+def sw_custom_props(doc: str, values: dict[str, str] | None = None) -> dict:
+    """Custom properties (title block: part number, rev, material, finish).
+    Omit values to read all; pass values to create/overwrite those keys."""
+    app = sw.attach()
+    d = sw.resolve_doc(app, doc)
+    if values:
+        return sw.custom_props_set(d, values)
+    return sw.custom_props_get(d)
+
+
 if __name__ == "__main__":
     mcp.run()

@@ -292,6 +292,41 @@ def set_tolerance(doc, dim_name: str, tol_type: str, values: dict) -> dict:
     return _com_call("set_tolerance", _write)
 
 
+def _cpm(doc):
+    return doc.Extension.CustomPropertyManager("")  # "" = document-level (not config-specific)
+
+
+def custom_props_get(doc) -> dict:
+    def _read():
+        cpm = _cpm(doc)
+        out = {}
+        for name in cpm.GetNames or []:  # niladic under dynamic dispatch here -> bare attribute
+            # Get6(name, UseCached)'s 4 [out] params (ValOut/ResolvedValOut BSTR*,
+            # WasResolved/LinkToProperty VARIANT_BOOL*) are declared [out] in the
+            # typelib -- the brief's makepy tuple-unpack raises "Parameter not
+            # optional" under this build's dynamic dispatch (verified live);
+            # need explicit byref VARIANTs, same pattern as GetWhatsWrong/OpenDoc6.
+            val_out = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_BSTR, "")
+            resolved_out = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_BSTR, "")
+            was_resolved = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_BOOL, False)
+            link_to_prop = VARIANT(pythoncom.VT_BYREF | pythoncom.VT_BOOL, False)
+            cpm.Get6(name, False, val_out, resolved_out, was_resolved, link_to_prop)
+            out[name] = resolved_out.value or val_out.value
+        return out
+    return _com_call("custom_props_get", _read)
+
+
+def custom_props_set(doc, values: dict) -> dict:
+    def _write():
+        cpm = _cpm(doc)
+        for name, val in values.items():
+            # 30 = swCustomInfoText, 1 = swCustomPropertyReplaceValue
+            cpm.Add3(name, 30, str(val), 1)
+        got = custom_props_get(doc)
+        return {k: got.get(k, "") for k in values}
+    return _com_call("custom_props_set", _write)
+
+
 def set_params(doc, values: dict) -> dict:
     def _write():
         eq = doc.GetEquationMgr
