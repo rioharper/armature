@@ -17,6 +17,8 @@ Contents:
 
 *Which* fit or tolerance to choose lives here; *how* to call it out in a given CAD package lives in that package's reference file. Keep the split — one source of truth each.
 
+SKILL.md defines two grades. Sections 1–2 and 11 apply at both; sections 3–10 are **release-grade depth** — read them when the part graduates from sketch to release, not before.
+
 ## 1. At a glance — shape, function, load path
 
 The opening lines are for the modeler's mental picture, and they earn their position by answering "what am I making?" in ten seconds. Name the shape as a familiar primitive first — "an L-bracket", "a clevis", "a flanged tube", "a plate with two bosses" — then the envelope dimensions, material and process, and what it connects. A part named as a primitive is a part the modeler can already see; a part introduced by its datum scheme is a mystery with tables. If words don't carry the profile, add a small dimensioned sketch (Mermaid, inline SVG, ASCII orthographic) — crude is fine, orienting is the job.
@@ -110,7 +112,7 @@ If a plain ±dimension fully captures the requirement, use it — GD&T on featur
 
 ## 8. Mass & inertia target — closing the loop
 
-This element is what makes the part definition answer back to the math. Record two things: the **mass budget** for the part (from the spec's mass rollup), and the **mass, COM, and inertia the dynamics assumed** for this body — with the *point and axes* they were taken about (the mathematician's `params.py` and `00_setup.md` state these). The last detail is the one people drop: an inertia tensor is meaningless without the point (COM? joint origin?) and the frame it's expressed in, and a CAD mass-properties report taken about a different point will disagree with a correct derivation for a reason that has nothing to do with the part. State which, on both sides, so the comparison is real. SKILL.md's "close the loop" step is where this target gets checked against the modeled reality.
+This element is what makes the part definition answer back to the math. Record two things: the **mass budget** for the part (from the spec's mass rollup), and the **mass, COM, and inertia the dynamics assumed** for this body — with the *point and axes* they were taken about (the mathematician's `params.py` and `00_setup.md` state these). The last detail is the one people drop: an inertia tensor is meaningless without the point (COM? joint origin?) and the frame it's expressed in, and a CAD mass-properties report taken about a different point will disagree with a correct derivation for a reason that has nothing to do with the part. State which, on both sides, so the comparison is real. SKILL.md's "close the loop" step is where this target gets checked against the modeled reality. Match the loop to the model's granularity: if the dynamics lumped this part into a larger body, record the budget row and note that the check closes at the lump level — don't invent a per-part tensor the model never assumed.
 
 ## 9. Envelope, clearance, service access
 
@@ -127,7 +129,7 @@ The definition ends in something the shop or printer can consume:
 
 ## 11. Done when — baseline checks
 
-Every part definition ends with its acceptance list: the measurable checks that confirm the modeled geometry actually follows the definition. This section is never omitted — it is what separates "I modeled something" from "I modeled the part." Five or so lines, each one checkable in the CAD package in under a minute:
+Every part definition ends with its acceptance list: the measurable checks that confirm the modeled geometry actually follows the definition. This section is never omitted entirely — it is what separates "I modeled something" from "I modeled the part" — but it scales with grade: at sketch grade, 2–3 lines (interfaces measure their sources, rebuild survives a driven-parameter change) are the whole list. At release grade, five or so lines, each one checkable in the CAD package in under a minute:
 
 - Each **critical dimension** from §6 measures its callout in the model (measure the bore, don't trust the feature name).
 - Each **interface** matches its source row — bolt circle diameter and count against the datasheet page, bore against the bearing table. Check against the *source*, not against your memory of the source.
