@@ -43,7 +43,10 @@ def main():
     check("doc-not-found lists open docs", t_bad_doc)
 
     if os.path.isfile(TEST_PART):
-        check("open test part", lambda: sw.open_doc(app, TEST_PART))
+        def t_open():
+            r = sw.open_doc(app, TEST_PART)
+            assert r["linear_units"] == "mm", r  # MMGS fixture; guards the LengthUnit lookup
+        check("open test part", t_open)
         doc = sw.resolve_doc(app, "test-part")
         # later tasks append their sections here, guarded by the same if
 

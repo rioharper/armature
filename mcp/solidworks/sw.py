@@ -48,11 +48,12 @@ def resolve_doc(app, doc: str):
     )
 
 
-# swUserPreferenceIntegerValue swUnitsLinear=0 on the doc; enum swLengthUnit_e
+# swLengthUnit_e via IModelDoc2::LengthUnit (GetUserPreferenceIntegerValue(0)
+# was the wrong preference id — returned -1; LengthUnit reads 0=mm directly on an MMGS doc)
 _UNITS = {0: "mm", 1: "cm", 2: "m", 3: "in", 4: "ft", 5: "ft-in", 6: "angstrom", 7: "nm", 8: "micron", 9: "mil", 10: "uin"}
 
 def linear_units(doc) -> str:
-    return _UNITS.get(doc.GetUserPreferenceIntegerValue(0), "unknown")
+    return _UNITS.get(doc.LengthUnit, "unknown")
 
 
 def _com_call(op_desc, fn):
