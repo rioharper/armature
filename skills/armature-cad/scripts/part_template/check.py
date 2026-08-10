@@ -18,7 +18,10 @@ both of which look like plausible numbers. So:
                                           with mm(), never anywhere else
   * everything this module RETURNS is SI (m, kg, kg m^2), because that is
     what params.py and the derivation are in, and the comparison has to
-    happen in the derivation's units.
+    happen in the derivation's units — except `about`, which is echoed
+    back in the MILLIMETRES it was given in. It is a build123d-side point,
+    not a result, and a joint origin passed to it in metres gives a
+    parallel-axis shift 1000x too small.
 
 The conversions, derived once so nobody has to re-derive them at 3am:
 
@@ -138,13 +141,18 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
 
     Raises on a target that cannot check anything — empty, or all typos.
     Every branch below is `if "<key>" in target`, so an unvalidated target
-    is a gate that reports green forever: `{"masss": 0.0001}` used to pass.
-    Also raises on a modifier left stranded without the key it modifies
-    (`com_tol` without `com`, `about` without `inertia`), and on a
-    `target["com"]` that doesn't carry all three axes — `zip()` truncates,
-    so a 1-tuple used to check x and silently skip y and z. In every case
-    the check the author was reaching for is not the check they would have
-    gotten.
+    is a gate that reports green forever, and `{"masss": 0.0001}` is a
+    gate that never fires. Also raises on:
+
+      * a modifier stranded without the key it modifies (`com_tol` without
+        `com`), and on `inertia` without `about`, which would compare a
+        tensor against whatever point `mass_properties` happened to use;
+      * a `target["com"]` that doesn't carry all three axes — `zip()`
+        truncates, so a 1-tuple checks x and silently skips y and z;
+      * a `target["inertia"]` that isn't 3x3.
+
+    In every case the check the author was reaching for is not the check
+    they would have gotten.
     """
     _validate_target(target)
     fails = []
@@ -175,25 +183,31 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
                 )
 
     if "inertia" in target:
-        scale = max(abs(target["inertia"][k][k]) for k in range(3))
+        rows = target["inertia"]
+        if len(rows) != 3 or any(not hasattr(r, "__len__") or len(r) != 3 for r in rows):
+            raise ValueError(
+                f"compare_to_target: target['inertia'] must be a 3x3 tensor in "
+                f"kg m^2, got {rows!r}"
+            )
+        scale = max(abs(rows[k][k]) for k in range(3))
         for i in range(3):
             for j in range(3):
-                want = target["inertia"][i][j]
+                want = rows[i][j]
                 got = props["inertia"][i][j]
                 # OFF-DIAGONAL products of inertia are routinely ~0; a
                 # fractional tolerance on them is meaningless, so gate those
                 # against the trace scale instead.
                 #
-                # The DIAGONAL never gets that treatment (`i != j`), even
-                # when it is small. A slender body — every robot link — has
-                # an axial moment legitimately below 1% of its transverse
-                # ones, and an absolute tolerance of tol*scale there exceeds
-                # the term itself by orders of magnitude. A 400x8x8 bar
-                # target vs a realized 30 mm OD tube is 20x wrong on Ixx and
-                # used to report a clean pass. A diagonal that is EXACTLY
-                # zero has no fraction to take (and no solid body has one),
-                # so it gets the absolute floor and nothing else does.
-                if (i != j and abs(want) < 0.01 * scale) or (i == j and want == 0.0):
+                # The DIAGONAL never gets that treatment, at any magnitude.
+                # A slender body — every robot link — has an axial moment
+                # legitimately below 1% of its transverse ones, and an
+                # absolute tolerance of tol*scale there exceeds the term
+                # itself by orders of magnitude. Nor does a diagonal target
+                # of EXACTLY zero earn that floor: no solid body has one, so
+                # a zero on the diagonal is a dropped term or a typo, never
+                # a tolerance question. `_off_by` then reduces to
+                # `abs(got) > 0` and says so loudly.
+                if i != j and abs(want) < 0.01 * scale:
                     if abs(got - want) > tol * scale:
                         fails.append(
                             f"inertia[{i}][{j}] {got:.3e} vs target ~0 "
@@ -204,7 +218,7 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
                         f"inertia[{i}][{j}] {got:.3e} vs target {want:.3e} "
                         f"({_pct(got, want)}, tol {tol:.0%})"
                     )
-        if _about_key(props["about"]) != _about_key(target.get("about", props["about"])):
+        if _about_key(props["about"]) != _about_key(target["about"]):
             fails.append(
                 f"inertia taken about {_about_label(props['about'])} but target is "
                 f"about {_about_label(_about_key(target['about']))} - not comparable"
@@ -215,8 +229,11 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
 
 _TARGET_KEYS = ("mass", "com", "com_tol", "inertia", "about")
 # Keys that only mean something alongside another key; alone they are read
-# by nothing, which is the same silent pass as a typo.
-_TARGET_NEEDS = (("com_tol", "com"), ("about", "inertia"))
+# by nothing, which is the same silent pass as a typo. `inertia` needs
+# `about` in the other direction too: a tensor with no stated point is
+# compared against whatever point the props were taken about, with nothing
+# asserting the two agree.
+_TARGET_NEEDS = (("com_tol", "com"), ("about", "inertia"), ("inertia", "about"))
 
 
 def _validate_target(target: dict) -> None:
@@ -350,43 +367,25 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             (see below — most pairs don't), so the excuse is sized to
             what the envelope actually does at rest, not picked by feel.
             Overlap ABOVE the threshold is reported like any other pair,
-            at whatever posture it happens.
-
-            This replaces a plain set of always-ignored pairs, which hid
-            the dominant self-collision class on a worked 2R arm (F7): a
-            pair sharing a joint also has the widest range of legitimate
-            relative motion, so a blanket "never report this pair"
-            suppressed the elbow's actual fold-in collision at every
-            posture, not only the one where the design excuses it — a
-            link1<->link2 overlap that grew to 18689 mm^3 partway through
-            the swept range went unreported while a smaller, unrelated
-            5321.8 mm^3 base<->link2 fold WAS reported, because only the
-            latter pair happened not to be on the blanket list. (Fix round
-            4: this read "300000 mm^3 base<->link2" and was wrong twice
-            over. 300000 was link1<->link2's OWN fully-folded overlap, not
-            base<->link2's — misattributed, and large enough to make the
-            sentence call it "smaller" than the 18689 it was contrasted
-            with. base<->link2's fold measures 5321.8 mm^3, unchanged by
-            JOINT_TRIM, which trims the elbow end of link2 rather than the
-            far end that reaches the post. link1<->link2's 300000 is now
-            276000 for the same reason; see sweep.py's JOINT_TRIM.)
+            at whatever posture it happens. A blanket "never report this
+            pair" is not on offer: a pair sharing a joint also has the
+            widest range of legitimate relative motion, so blanketing it
+            suppresses the fold-in collision that pair is most likely to
+            have — on a 2R arm, exactly the elbow limit you came for.
 
             A THRESHOLD MEASURED AT ONE POSTURE ONLY FITS A PAIR WHOSE
             OVERLAP DOES NOT CHANGE WITH POSTURE. sweep.py's own worked
             example is the cautionary tale: link1<->link2's overlap is
             0.0 mm^3 at the neutral posture and GROWS with the elbow's
             bend, so a threshold measured at neutral excuses effectively
-            nothing (round 1 of this fix used exactly that measurement and
-            flagged 98.2% of the swept grid — the flood the blanket
-            `ignore` existed to avoid, back under a different name). A
-            pair like that needs its excuse built into the GEOMETRY
-            instead — sweep.py's `JOINT_TRIM` sets link2's box back from
-            the elbow so it has a real gap to bend through before it
-            overlaps at all, which is what a threshold, measured at any
-            single posture, cannot give it. Use `ignore` only for a pair
-            you have checked behaves like base<->link1 here: the SAME
-            overlap at every posture the pair reaches, not merely the
-            smallest one.
+            nothing — measured, it flags 98.2% of the swept grid. A pair
+            like that needs its excuse built into the GEOMETRY instead —
+            sweep.py's `JOINT_TRIM` sets link2's box back from the elbow
+            so it has a real gap to bend through before it overlaps at
+            all, which is what a threshold, measured at any single
+            posture, cannot give it. Use `ignore` only for a pair you have
+            checked behaves like base<->link1 here: the SAME overlap at
+            every posture the pair reaches, not merely the smallest one.
 
             RESIDUAL BLIND SPOT, for a pair that DOES fit `ignore`: it is
             excused up to its threshold volume at EVERY posture in the
@@ -402,14 +401,13 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             geometry, not in this dict.
 
             A GEOMETRIC excuse (a trim, a rounded corner) has a DIFFERENT
-            residual blind spot than a threshold, and it is not this one
-            (Important C, fix round 3): it removes material from the
-            model, so a collision between that missing material and ANY
-            body — not only the pair it was trimmed for — is invisible,
-            because there is nothing there to test. sweep.py's `JOINT_TRIM`
-            documents this explicitly next to where it's applied; a `.py`
-            that adds a geometric excuse of its own needs the same
-            disclosure, in that file, not just here.
+            residual blind spot than a threshold, and it is not this one:
+            it removes material from the model, so a collision between
+            that missing material and ANY body — not only the pair it was
+            trimmed for — is invisible, because there is nothing there to
+            test. sweep.py's `JOINT_TRIM` documents this explicitly next
+            to where it's applied; a `.py` that adds a geometric excuse of
+            its own needs the same disclosure, in that file, not just here.
         min_volume: mm^3 below which an overlap is discarded as a boolean
             sliver — the floor every pair gets, including one named in
             `ignore` with a smaller threshold. NOT a tangency floor — OCC
@@ -423,24 +421,20 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             deliberately left where it swallows nothing physical. Raise it
             if you want shallow grazes ignored, and pick the number from
             the graze depth you'll accept. This is the ONLY floor a pair
-            with no `ignore` entry gets (a bare `v > min_volume`, exactly
-            as documented above) — it is not doubled for those pairs; see
-            below for the one that does get more.
+            with no `ignore` entry gets — a bare `v > min_volume`, not
+            doubled.
 
             A pair NAMED in `ignore` gets `min_volume` a second time, as a
-            floating-point slop guard on its threshold (Critical 1, fix
-            round 2 — Minor, fix round 3: this note used to read as
-            applying to every pair, doubling the floor for ordinary ones
-            without saying so): a threshold IS the OCC volume measured at
-            one posture, and recomputing "the same" boolean at a different
-            posture can differ in the last bits (measured on sweep.py's
-            base<->link1: +2.18e-11 / -1.46e-11 mm^3 across 37 samples of
-            the SAME nominal overlap). A bare `v > threshold` reports that
-            noise as a collision — 444 of round 1's 1924 hits were exactly
-            this. `min_volume`'s default (1e-6) is ~1e5x that measured
-            noise and still ~1e4x below the shallowest real contact this
-            module measures (0.01 mm^3, see demo()'s F15 case), so it
-            swallows the float noise and nothing physical either way.
+            floating-point slop guard on its threshold: a threshold IS the
+            OCC volume measured at one posture, and recomputing "the same"
+            boolean at a different posture can differ in the last bits
+            (measured on sweep.py's base<->link1: +2.18e-11 / -1.46e-11
+            mm^3 across 37 samples of the SAME nominal overlap). A bare
+            `v > threshold` reports that noise as a collision.
+            `min_volume`'s default (1e-6) is ~1e5x that measured noise and
+            still ~1e4x below the shallowest real contact this module
+            measures (0.01 mm^3, measured in demo()), so it swallows the
+            float noise and nothing physical either way.
 
     Returns [(q, name_a, name_b, overlap_mm3), ...], worst first.
     """
@@ -454,15 +448,15 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
                 v = interference(bodies[a], bodies[b])
                 key = frozenset((a, b))
                 if key in ignore:
-                    # Critical 1: `ignore[key]` IS a measured OCC volume,
-                    # not an exact mathematical constant - compare with
-                    # min_volume's slop, not bit-exact, or a recomputation
-                    # of "the same" overlap a few ULPs off false-reports.
+                    # `ignore[key]` IS a measured OCC volume, not an exact
+                    # mathematical constant - compare with min_volume's
+                    # slop, not bit-exact, or a recomputation of "the same"
+                    # overlap a few ULPs off false-reports.
                     threshold = ignore[key] + min_volume
                 else:
-                    # Minor (fix round 3): an ordinary pair keeps exactly
-                    # min_volume, not min_volume*2 - there is no separate
-                    # measurement here for float noise to creep in between.
+                    # An ordinary pair keeps exactly min_volume, not
+                    # min_volume*2 - there is no separate measurement here
+                    # for float noise to creep in between.
                     threshold = min_volume
                 if v > threshold:
                     hits.append((q, a, b, v))
@@ -490,10 +484,10 @@ def write_views(part, path_stem: str, views=("front", "top", "right", "iso")) ->
 
     The views are exported at scale 1: the SVG declares millimetres and
     they are the projection's own millimetres, and every view in the set
-    shares that one scale. Normalizing each view to a fixed size — the
-    obvious thing, and what this did — rescales each view independently by
-    its own extent, which drew the same 6 mm plate at 7.50 mm in the front
-    view and 8.00 mm in the right one while still declaring Unit.MM.
+    shares that one scale. Do not normalize each view to a fixed size —
+    the obvious thing — because that rescales each view independently by
+    its own extent, which draws the same 6 mm plate at 7.50 mm in the
+    front view and 8.00 mm in the right one while still declaring Unit.MM.
 
     MEASURE OFF front/top/right ONLY. Those three are true 1:1 against the
     PART, because each looks down a principal axis, so a feature measured
@@ -554,9 +548,9 @@ def report(name: str, props: dict, fails: list[str]) -> bool:
 
 
 def demo():
-    """Self-check: the unit conversions against a closed-form box, plus one
-    assertion per red-team finding this file was fixed for. Each of those is
-    written to FAIL if its fix is reverted — they are the fix's only guard."""
+    """Self-check: the unit conversions against a closed-form box, plus an
+    assertion behind every guard in this file. Each is written to FAIL if
+    the guard it covers is removed — they are the guards' only guard."""
     import re
     import tempfile
     from pathlib import Path
@@ -599,21 +593,19 @@ def demo():
     assert interference(a, Box(1, 1, 1).locate(Location((100, 0, 0)))) == 0.0
     assert interference(a, Box(10, 10, 10).locate(Location((10, 0, 0)))) == 0.0
 
-    # F15: min_volume is NOT a tangency floor. These two measurements are
-    # exactly what sweep_clearance's docstring now claims — tangency reads
-    # as 0.0 (above), and the shallowest real interpenetration reads four
+    # min_volume is NOT a tangency floor. These two measurements are
+    # exactly what sweep_clearance's docstring claims — tangency reads as
+    # 0.0 (above), and the shallowest real interpenetration reads four
     # orders ABOVE the 1e-6 default, so the default filters nothing
     # physical. If either number moves, that docstring has gone stale.
     grazed = interference(a, Box(10, 10, 10).locate(Location((10 - 1e-4, 0, 0))))
     assert 0.009 < grazed < 0.011, grazed  # 0.0001 mm deep over 10x10 mm
 
-    # F7: sweep_clearance's `ignore` is a per-pair THRESHOLD, not a
-    # blanket "always skip". Two 10 mm boxes overlapping 200 mm^3 at their
-    # design offset must clear; the SAME pair overlapping 500 mm^3 at a
-    # bigger offset (further apart at the far end, closer at the near
-    # end — the geometry doesn't matter, only that it exceeds the design
-    # overlap) must still be reported, which the old set-based `ignore`
-    # could never do once a pair was listed.
+    # sweep_clearance's `ignore` is a per-pair THRESHOLD, not a blanket
+    # "always skip". Two 10 mm boxes overlapping 200 mm^3 at their design
+    # offset must clear; the SAME pair overlapping 500 mm^3 at a bigger
+    # offset must still be reported — a blanket skip could not do that
+    # once a pair was listed.
     def two_boxes(offset):
         return {
             "a": Box(10, 10, 10),
@@ -631,11 +623,11 @@ def demo():
     hits = sweep_clearance(two_boxes, [2.0], ignore={})
     assert len(hits) == 1 and hits[0][1:3] == ("a", "b") and math.isclose(hits[0][3], 200.0), hits
 
-    # Critical 1 (fix round 2): a threshold IS a measured OCC volume, and
-    # recomputing "the same" boolean elsewhere can differ by float noise
-    # (measured on sweep.py's base<->link1: ~2e-11 mm^3). A threshold that
-    # is a hair BELOW what gets measured at the excused posture must not
-    # cause a false report — min_volume's slop absorbs it.
+    # A threshold IS a measured OCC volume, and recomputing "the same"
+    # boolean elsewhere can differ by float noise (measured on sweep.py's
+    # base<->link1: ~2e-11 mm^3). A threshold a hair BELOW what gets
+    # measured at the excused posture must not cause a false report —
+    # min_volume's slop absorbs it.
     noisy_ignore = {frozenset(("a", "b")): design_overlap - 1e-10}
     assert sweep_clearance(two_boxes, [2.0], ignore=noisy_ignore) == []
 
@@ -648,13 +640,13 @@ def demo():
     escaped = plate.cut(Box(4, 4, 6).locate(Location((20, 27, 0))))
     assert len(escaped.solids()) == 1 and escaped.volume > 0
 
-    # F4: contained() summed leak.solids(), and a sketch, face or wire has
-    # none — so a flat probe read as contained from 500 mm away. It must
+    # contained() sums leak.solids(), and a sketch, face or wire has none —
+    # so a flat probe would read as contained from 500 mm away. It must
     # raise instead, because a zero-volume probe checked nothing.
     assert raises(contained, Rectangle(4, 4).locate(Location((500, 0, 0))), plate)
     assert raises(contained, plate.faces().sort_by(Axis.Z)[-1], plate)
 
-    # F17: is tol=1e-6 mm^3 actually above OCC's sliver noise? The worked
+    # Is tol=1e-6 mm^3 actually above OCC's sliver noise? The worked
     # example never drives a probe at the filleted corners, which is where
     # booleans leave slivers, so measure it here. This probe's cylindrical
     # face is coincident with the R6 fillet AND its flat faces are coplanar
@@ -679,18 +671,33 @@ def demo():
     assert rebuild_sweep(lambda w: Box(w, 10, 10), {"w": [5, 10, 20]}) == []
     assert rebuild_sweep(lambda w: Box(w, 10, 10), {"w": [5, -1]}) != []
 
-    # F2: a slender body — every robot link — has an axial moment
-    # legitimately far below its transverse ones. Gating the DIAGONAL
-    # against the trace scale, the treatment off-diagonal products need,
-    # buys it an absolute tolerance bigger than the term itself. This
-    # 400x8x8 bar target vs a realized 30 mm OD tube is 20x wrong on Ixx
-    # (7.37e-07 against 1.49e-05) and used to return [].
+    # A slender body — every robot link — has an axial moment legitimately
+    # far below its transverse ones. Gating the DIAGONAL against the trace
+    # scale, the treatment off-diagonal products need, buys it an absolute
+    # tolerance bigger than the term itself. This 400x8x8 bar target vs a
+    # realized 30 mm OD tube is 20x wrong on Ixx (7.37e-07 against
+    # 1.49e-05) and a scale-relative diagonal returns [].
     bar = mass_properties(Box(400, 8, 8), rho)
     tube = Cylinder(15, 400).cut(Cylinder(14.3, 400)).rotate(Axis.Y, 90)
     tube_props = mass_properties(tube, rho)
     assert tube_props["inertia"][0][0] / bar["inertia"][0][0] > 20
-    slender = compare_to_target(tube_props, {"inertia": bar["inertia"]})
+    slender = compare_to_target(tube_props, {"inertia": bar["inertia"], "about": None})
     assert any("inertia[0][0]" in f for f in slender), slender
+
+    # THE THIN ROD, the standard idealization an armature-math derivation
+    # hands you for a link: I_axial = 0 EXACTLY, I_transverse = m*L^2/12.
+    # An absolute floor for a zero diagonal grants the axial term
+    # tol * max(diagonal) — 10% of the TRANSVERSE moment, orders of
+    # magnitude above the axial term — so the realized tube's 1.49e-05
+    # against a target of 0.0 reports clean. It must fail instead.
+    m_tube = tube_props["mass"]
+    transverse = m_tube * 0.400**2 / 12
+    rod = [[0.0, 0.0, 0.0], [0.0, transverse, 0.0], [0.0, 0.0, transverse]]
+    rod_fails = compare_to_target(tube_props, {"inertia": rod, "about": None})
+    assert any("inertia[0][0]" in f for f in rod_fails), rod_fails
+    # ...and only that term: the transverse pair really does match a rod.
+    assert len(rod_fails) == 1, rod_fails
+
     # ...while an off-diagonal product still gets its absolute tolerance,
     # which is the whole reason that branch exists.
     near_zero = [row[:] for row in bar["inertia"]]
@@ -699,21 +706,27 @@ def demo():
     # control would pass vacuously, comparing 0.0 against 0.0.
     assert bar["inertia"][0][1] != 0.0
     near_zero[0][1] = near_zero[1][0] = 0.0
-    assert compare_to_target(bar, {"inertia": near_zero}) == []
+    assert compare_to_target(bar, {"inertia": near_zero, "about": None}) == []
 
-    # F3: a target that can check nothing is a permanently green gate.
+    # A target that can check nothing is a permanently green gate.
     assert raises(compare_to_target, props, {})
     assert raises(compare_to_target, props, {"masss": 0.0001})
     assert raises(compare_to_target, props, {"com_tol": 0.001})
     assert raises(compare_to_target, props, {"mass": m, "com_tol": 0.001})
     assert raises(compare_to_target, props, {"mass": m, "about": None})
+    # An inertia target with no `about` is compared against whatever point
+    # the props happened to use, with nothing asserting the two agree.
+    assert raises(compare_to_target, props, {"inertia": props["inertia"]})
+    # A tensor that isn't 3x3 used to die on a bare IndexError/TypeError,
+    # which no caller can distinguish from a bug in this module.
+    assert raises(compare_to_target, props, {"inertia": props["inertia"][:2], "about": None})
+    assert raises(compare_to_target, props, {"inertia": [0.0] * 9, "about": None})
 
-    # F14a: zip() truncates, so a short com used to check x and silently
-    # skip y and z.
+    # zip() truncates, so a short com would check x and silently skip y, z.
     assert raises(compare_to_target, props, {"com": (0.0,)})
     assert compare_to_target(props, {"com": props["com"]}) == []
 
-    # F14b: `about` is a structural point, not a formatted string. A target
+    # `about` is a structural point, not a formatted string. A target
     # written (50, 0, 0) has to match a tensor taken about (50.0, 0, 0);
     # compared as text those render differently and false-FAIL, and the
     # commented template in part.py suggests exactly that text.
@@ -725,13 +738,13 @@ def demo():
     # The old string form is rejected loudly, not compared as an opaque blob.
     assert raises(compare_to_target, off, {"inertia": off["inertia"], "about": "com"})
 
-    # F8: the PRINCIPAL views (front/top/right) are 1:1, so a shared
-    # dimension measures the same in each of them — not in the iso, which
-    # foreshortens (see write_views' docstring), which is why the set below
-    # is two principal views. Rescaling each view by its own extent drew this
-    # part's 80 mm width as 100.09 mm, and its one 16 mm height as two
-    # different numbers. Off-origin on purpose: that is what tilts a camera
-    # aimed by direction alone, and a tilted view is not 1:1 either.
+    # The PRINCIPAL views (front/top/right) are 1:1, so a shared dimension
+    # measures the same in each — not the iso, which foreshortens, which is
+    # why the set below is two principal views. Rescaling each view by its
+    # own extent draws this part's 80 mm width as 100.09 mm and its one
+    # 16 mm height as two different numbers. Off-origin on purpose: that is
+    # what tilts a camera aimed by direction alone, and a tilted view is
+    # not 1:1 either.
     tall = Box(80, 75, 16).locate(Location((0, 0, 8)))
     with tempfile.TemporaryDirectory() as tmp:
         size = {}

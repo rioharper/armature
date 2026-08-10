@@ -67,9 +67,7 @@ GRADE = "sketch"  # sketch | release — mirror the .md header
 # --- driven dimensions -------------------------------------------------
 # Only what traces to the parameter table or an interface contract, and
 # nothing else: a dimension that is both an argument here and a constant
-# below is a dimension with two values. At sketch grade params.py may not
-# exist yet, so the mass target may fall back — loudly, and only at sketch
-# grade — rather than blocking a definition on a derivation that hasn't run.
+# below is a dimension with two values.
 
 # Geometry is driven by INTERFACES — the datasheet numbers this part has to
 # mate to. params.py drives the mass/inertia TARGET below, not the shape:
@@ -205,10 +203,14 @@ TARGET, PROVENANCE = _resolve_target(PARAM_KEY)
 
 # Add these once the dynamics assumes per-body values, not just a mass:
 #   TARGET["com"] = (0.0, 0.0, 0.004)          # m, in the part's own frame
-#   TARGET["inertia"] = [[...], [...], [...]]  # kg m^2
+#   TARGET["inertia"] = [[...], [...], [...]]  # kg m^2, 3x3
 #   TARGET["about"] = None                     # the COM, or (0.0, 0.0, 0.0) mm
-#     — a point, not a label: it is compared structurally, so "point
-#       (0, 0, 0) mm" is rejected rather than false-failing on formatting.
+#     — REQUIRED alongside "inertia", and a point, not a label: a tensor
+#       with no stated point gets compared against whatever point the
+#       props were taken about, and "point (0, 0, 0) mm" as a string is
+#       rejected rather than false-failing on formatting. Note that this
+#       one is in MM while everything around it is SI — it is a
+#       build123d-side point, and check.py's header says so.
 TOL = 0.10
 
 
@@ -221,14 +223,14 @@ def build(bolt_circle: float = BOLT_CIRCLE, bore: float = BORE):
 
     The typed numbers — plate size, boss height, corner radius — are read
     from module scope and are deliberately NOT arguments. A number that is
-    both a parameter and a constant is a number with two values: the probe
-    below used to read module PLATE_T while build() took a plate_t, so
-    build(plate_t=3.0) blamed the BOLT CIRCLE for a plate-thickness problem
-    and build(plate_t=12.0) passed on a probe that tested the bottom half.
+    both a parameter and a constant is a number with two values: a probe
+    reading module PLATE_T while build() takes a plate_t makes
+    build(plate_t=3.0) blame the BOLT CIRCLE for a plate-thickness problem,
+    and build(plate_t=12.0) pass on a probe that tested the bottom half.
     """
     # The seat sizes the boss, so the boss follows the `bore` ARGUMENT.
-    # Frozen at module scope it followed the module BORE instead, and a
-    # swept bore ate the wall down to 2.70 mm while the sweep reported PASS.
+    # Frozen at module scope it follows the module BORE instead, and a
+    # swept bore eats the wall down to 2.70 mm while the sweep reports PASS.
     boss_od = bore + 2 * BOSS_WALL
 
     with BuildPart() as bp:
@@ -268,9 +270,9 @@ def _pattern_probe(bolt_circle: float):
 
     A ring, not a disc, because the bolt hole is not metal — that is what
     lets this be measured against the FINISHED part. A disc probe leaks its
-    own four holes (381.7 mm^3 on the worked example), so it only worked
-    against the blank, which made the check silently depend on running
-    before the holes and the bore were cut.
+    own four holes (381.7 mm^3 on the worked example), so it only works
+    against the blank, which makes the check silently depend on running
+    before the holes and the bore are cut.
 
     Exactly plate-thick and sitting on the plate (Align.MIN in Z): a probe
     taller than the plate pokes out the top and bottom faces and reports a
@@ -292,16 +294,15 @@ def _assert_pattern_fits(part, bolt_circle: float, bore: float):
     """Every bolt in the pattern must sit on metal, with its edge distance,
     on the FINISHED part — after the bore and the bolt holes are cut.
 
-    Probing the blank tested clearance to the plate edge and nothing else:
-    a 26 mm bolt circle broke into the 22 mm bore, and a 22 mm one put the
-    bolt holes ENTIRELY INSIDE it, and both built without complaint.
+    Probing the blank tests clearance to the plate edge and nothing else:
+    a 26 mm bolt circle breaks into the 22 mm bore, a 22 mm one puts the
+    bolt holes ENTIRELY INSIDE it, and both build without complaint.
     """
     if contained(_pattern_probe(bolt_circle), part):
         return
     # Name the cause. The bore and the plate outline are both free edges to
     # this rule, and reporting the wrong one sends the reader to the wrong
-    # dimension — which is how a plate-thickness bug got blamed on the bolt
-    # circle for a whole review cycle.
+    # dimension.
     culprit = (
         f"into the {bore} mm bore"
         if bolt_circle / 2 - EDGE_REACH < bore / 2
@@ -322,12 +323,11 @@ def main() -> int:
 
     # Done when: the recipe rebuilds after changing each driven parameter.
     # The band is what the recipe's own edge-distance rule allows, derived
-    # here so it tracks the constants instead of being a decorative +-10%:
-    # below bc_min the pattern runs into the bore, above bc_max it runs off
-    # the plate, and bore_max is the same rule read from the bore's side.
-    # A blind +-10% on the bolt circle reaches 40.5, which leaves 7.0 mm of
-    # metal to the bore against the 8.0 mm this part demands — a real
-    # finding, and one about the sweep's range rather than about the part.
+    # here rather than a decorative +-10%: below bc_min the pattern runs
+    # into the bore, above bc_max off the plate, and bore_max is the same
+    # rule from the bore's side. A blind +-10% reaches bc=40.5, which leaves
+    # 7.0 mm of metal to the bore against the 8.0 mm this part demands — a
+    # finding about the sweep's range, not about the part.
     bc_min = BORE + 2 * EDGE_REACH  # 42.5 mm
     bc_max = PLATE_W - 2 * EDGE_REACH  # 54.5 mm
     bore_max = BOLT_CIRCLE - 2 * EDGE_REACH  # 24.5 mm
@@ -352,8 +352,8 @@ def main() -> int:
 
 
 def demo():
-    """Self-check: one assertion per red-team finding this file was fixed
-    for, each written to FAIL if its fix is reverted.
+    """Self-check: an assertion behind every guard in this file, each
+    written to FAIL if the guard it covers is removed.
 
     The geometry assertions are about the WORKED EXAMPLE. When you replace
     the recipe, replace them with the same question asked about your part —
@@ -374,7 +374,7 @@ def demo():
             return exc
         return None
 
-    # --- F1/F13: the target's provenance is the truth, or there is no run.
+    # --- The target's provenance is the truth, or there is no run.
     def resolve_with(params_src, key, allow=True):
         """Resolve a target against a params.py written to a temp dir, and
         return (target, provenance, that temp params.py).
@@ -399,12 +399,12 @@ def demo():
                 sys.modules.pop("params", None)
 
     renamed = "PARAMS = {'m_link1': 1.20}\n"  # what a re-derivation does
-    # THE finding: params.py present, key gone. This used to substitute a
-    # hand-typed 0.105 kg, print "no analysis/model/params.py yet" with
-    # params.py sitting right there, and exit 0.
+    # params.py present, key gone. Swallowing that substitutes a hand-typed
+    # 0.105 kg, prints "no analysis/model/params.py yet" with params.py
+    # sitting right there, and exits 0.
     assert raised(KeyError, resolve_with, renamed, "m1")
     # A missing PARAMS table and a params.py whose own imports fail are the
-    # same class of event, and used to fail three different ways.
+    # same class of event, and must not fail three different ways.
     assert raised(AttributeError, resolve_with, "MASSES = {}\n", "m1")
     assert raised(ModuleNotFoundError, resolve_with, "import no_such_module_xyz\n", "m1")
 
@@ -413,18 +413,17 @@ def demo():
     # The line must name the file that was actually imported. `import
     # params` searches all of sys.path, so a params.py anywhere on it
     # resolves — and printing the directory this template HOPED to read
-    # credits a file that was never opened. That is the same falsehood F1
-    # exists to remove, and this assertion used to pass on it: the module
-    # here is loaded from a temp dir and the line said analysis/model.
+    # credits a file that was never opened. The module here is loaded from
+    # a temp dir, so naming PARAMS_DIR would be exactly that false credit.
     assert prov == f"target driven from {real}[m1]", prov
 
     # The fallback: opt-in, and honest about which of the two reasons it is.
     target, prov, _ = resolve_with(None, "m1")
     assert target == {"mass": BUDGET_MASS} and "FALLBACK" in prov, prov
     assert raised(RuntimeError, resolve_with, None, "m1", False)
-    # F13: an unset PARAM_KEY falls back even though params.py is RIGHT
-    # THERE, so the line must not claim the file is missing. Spelled out
-    # rather than read from PARAM_KEY, which you are expected to set.
+    # An unset PARAM_KEY falls back even though params.py is RIGHT THERE,
+    # so the line must not claim the file is missing. Spelled out rather
+    # than read from PARAM_KEY, which you are expected to set.
     target, prov, _ = resolve_with(renamed, "<params key for this body>")
     assert "FALLBACK" in prov and "placeholder" in prov, prov
     assert "no params.py" not in prov, prov
@@ -432,7 +431,7 @@ def demo():
     # accept — it raises on an empty one, and an empty one is a green gate.
     assert isinstance(compare_to_target(mass_properties(build(), DENSITY), target), list)
 
-    # --- F5a: the boss follows the bore, and is measured off the solid.
+    # --- The boss follows the bore, and is measured off the solid.
     def boss_wall(part, bore):
         """Wall read off the finished part: its top face is the boss
         annulus, area pi/4 * (od^2 - bore^2)."""
@@ -440,34 +439,32 @@ def demo():
         return (math.sqrt(4 * area / math.pi + bore**2) - bore) / 2
 
     for bore in (BORE, 24.0):
-        # Frozen at module scope this was 5.00 mm at a 24 mm bore, and the
-        # only guard fired at wall <= 0, i.e. never in the swept range.
+        # Frozen at module scope this reads 5.00 mm at a 24 mm bore, and a
+        # wall <= 0 guard fires nowhere in the swept range.
         assert math.isclose(boss_wall(build(bore=bore), bore), BOSS_WALL, abs_tol=1e-9)
 
-    # --- F5b: the probe sees the bore, because it runs on the finished part.
+    # --- The probe sees the bore, because it runs on the finished part.
     for bc in (22.0, 26.0):  # holes inside the bore / breaking into it
         assert "bore" in str(raised(ValueError, build, bolt_circle=bc))
-    # The measured case from the finding: a 28.6 mm bore used to build
-    # clean, on a 2.70 mm boss wall, with the bolt holes 1.05 mm into it.
+    # Measured: a 28.6 mm bore builds clean on a 2.70 mm boss wall, with
+    # the bolt holes 1.05 mm into it.
     assert "bore" in str(raised(ValueError, build, bore=28.6))
-    # Ordering can no longer change the answer: the ring probe is contained
-    # in the FINISHED part, where the old disc probe leaked its own holes.
+    # Ordering cannot change the answer: the ring probe is contained in the
+    # FINISHED part, where a disc probe leaks its own holes.
     assert contained(_pattern_probe(BOLT_CIRCLE), build())
 
-    # --- F6: no dimension is both a parameter and a typed constant.
+    # --- No dimension is both a parameter and a typed constant.
     assert set(inspect.signature(build).parameters) == {"bolt_circle", "bore"}
-    assert raised(TypeError, build, plate_t=3.0)  # used to blame the bolt circle
+    assert raised(TypeError, build, plate_t=3.0)  # not a parameter at all
 
-    # --- F12: the code applies the rule its comment states — EDGE_DIST of
-    # metal beyond the hole WALL, not from its centre. Both bounds are
-    # spelled out from the rule rather than from EDGE_REACH, so a probe
-    # that reverted to measuring from the centre (which would put the limit
-    # at 59.0 mm, not 54.5) fails the second one instead of moving with it.
-    # 1 mm inside the limit, for the same reason main()'s sweep is: at
-    # exactly 54.5 the probe's outer face is exactly on the plate edge, and
-    # asking every copied project to bet its self-check on an OCCT boolean
-    # returning 0.0 rather than 1e-9 is not a test, it is a coin toss. The
-    # 58.0 raise below is what discriminates anyway.
+    # --- The code applies the rule its comment states: EDGE_DIST of metal
+    # beyond the hole WALL, not from its centre. Both bounds are spelled out
+    # from the rule rather than from EDGE_REACH, so a probe measuring from
+    # the centre instead (limit 59.0 mm, not 54.5) fails the second one
+    # rather than moving with it. 1 mm inside the limit, as main()'s sweep
+    # is: at exactly 54.5 the probe's outer face lands on the plate edge,
+    # and betting a self-check on an OCCT boolean returning 0.0 rather than
+    # 1e-9 is a coin toss.
     build(bolt_circle=PLATE_W - BOLT_CLEARANCE - 2 * EDGE_DIST - 1.0)  # 53.5
     assert "plate" in str(raised(ValueError, build, bolt_circle=PLATE_W - 2 * EDGE_DIST - 1))
 

@@ -32,7 +32,11 @@ What that buys, in order of value:
    step, sitting between two sampled postures, is invisible. `sweep.py`'s
    default resolution is sized to the worked example's own narrowest known
    band (11 deg); a mechanism with tighter geometry needs a finer grid, and
-   `sweep.py`'s docstring says how to re-measure and pick one.
+   `sweep.py`'s docstring says how to re-measure and pick one. The step also
+   bounds how precisely a reported collision locates its own boundary: the
+   row shows the first interfering *sample*, and the true onset can be a
+   full step earlier, so a joint limit read off it goes at least one step
+   inside. The report prints the step and says so.
 
 ## Files
 

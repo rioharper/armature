@@ -43,9 +43,9 @@ def _stamp(shape, part_number: str, source: str):
         )
     shape.label = f"PLACEHOLDER {part_number}"
     shape.color = PLACEHOLDER_COLOR
-    # F16: append-only meant building the same stub twice (a bearing used at
-    # both ends of a shaft, a recipe re-run in the same process) listed it
-    # twice in index_rows() and twice in the release gate. Dedupe on the
+    # Append-only would list the same stub twice (a bearing used at both
+    # ends of a shaft, a recipe re-run in the same process) in index_rows()
+    # and twice again in the release gate. Dedupe on the
     # WHOLE entry, not on the P/N: the same P/N cited to two different
     # datasheet rows is a provenance disagreement worth seeing, not a
     # duplicate to silently collapse onto whichever source ran last.
@@ -112,7 +112,7 @@ def still_placeholder() -> list[str]:
     a non-empty list is a release gate failure, because a placeholder has
     reached a point where money is about to move.
 
-    F16 — WHAT THIS CANNOT TELL YOU. `_REGISTRY` is filled by the builders
+    WHAT THIS CANNOT TELL YOU. `_REGISTRY` is filled by the builders
     above as they run, so this reports on the parts THIS process actually
     built and on nothing else. An empty list therefore means one of two
     very different things:
@@ -160,10 +160,10 @@ def demo():
     assert still_placeholder() == ["6004-2RS", "AK80-9"]
     assert "PLACEHOLDER" in index_rows()
 
-    # F16: the registry was append-only, so a stub built twice in one
-    # process — a bearing used at both ends of a shaft, or a recipe re-run
-    # in the same interpreter — was listed twice in the index and named
-    # twice by the release gate. Identical P/N AND source is one entry.
+    # An append-only registry lists a stub built twice in one process — a
+    # bearing at both ends of a shaft, a recipe re-run in the same
+    # interpreter — twice in the index and twice in the release gate.
+    # Identical P/N AND source is one entry.
     bearing(22, 44, 12, part_number="6004-2RS", source="docs/datasheets/index.md#6004")
     assert index_rows().count("6004-2RS") == 1, index_rows()
     assert still_placeholder() == ["6004-2RS", "AK80-9"], still_placeholder()
