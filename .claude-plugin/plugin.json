@@ -1,6 +1,6 @@
 {
   "name": "armature",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Robotics engineering suite for Claude Code: /armature:init scaffolds a standardized project, then six interactive stage skills (concept, spec, plan, math, CAD, teacher) and three agents (red-team, inventor, librarian) run the pipeline the way a real engineering team would — budgets, traceability, datasheet provenance, and adversarial review included.",
   "author": { "name": "Rio Harper" },
   "keywords": ["robotics", "mechanical-engineering", "kinematics", "dynamics", "cad", "design-review", "systems-engineering"]
