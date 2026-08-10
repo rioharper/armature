@@ -100,12 +100,21 @@ BOLT_CLEARANCE = ISO_273_MEDIUM[BOLT_DIA]
 # EDGE_DIST is metal from the hole WALL to any free edge — the plate outline
 # or the bore — because that is what the probe below measures: it demands
 # solid metal out to EDGE_REACH from the bolt CENTRE, which is the hole
-# radius plus EDGE_DIST. 2x nominal bolt diameter beyond the hole wall is a
-# shop rule of thumb, deliberately more conservative than the code minima,
-# which are stated from the hole centre (EN 1993-1-8 Table 3.3 gives 1.2*d0,
-# i.e. 5.4 mm here, against this rule's 10.25 mm). It is NOT a citation:
-# replace it with the edge distance your own structural basis gives, and
-# cite that, the way every driven number above is cited.
+# radius plus EDGE_DIST.
+#
+# Basis: the "2D edge distance" rule of general fastener practice — edge
+# distance two hole diameters, measured from the hole CENTRE, so 2*4.5 =
+# 9.0 mm here. This file applies 2x nominal bolt dia beyond the hole WALL
+# instead, 10.25 mm from the centre, which is deliberately conservative
+# against that rule and far above any code minimum.
+#
+# For the code minimum, read the structural code FOR YOUR MATERIAL: this
+# part is 6061-T6, so that is Eurocode 9 (EN 1999-1-1), not the steel one.
+# For order of magnitude only, steel's Eurocode 3 (EN 1993-1-8 Table 3.3)
+# puts its minimum end/edge distance at 1.2*d0 from the hole centre — 5.4 mm
+# here. Neither of those is a design basis for an aluminium bracket: replace
+# EDGE_DIST with what your own structural basis gives, and cite it, the way
+# every driven number above is cited.
 EDGE_DIST = 2.0 * BOLT_DIA
 EDGE_REACH = BOLT_CLEARANCE / 2 + EDGE_DIST
 
@@ -152,7 +161,8 @@ def _resolve_target(param_key: str, allow_fallback: bool = ALLOW_BUDGET_FALLBACK
     part against a different number.
 
     PROVENANCE says what actually happened, and is printed. It must never
-    claim params.py is absent while params.py is sitting right there.
+    claim params.py is absent while params.py is sitting right there — nor
+    name a file it did not read.
     """
     try:
         import params  # analysis/model/params.py — SI: metres, kilograms
@@ -163,9 +173,15 @@ def _resolve_target(param_key: str, allow_fallback: bool = ALLOW_BUDGET_FALLBACK
 
     if params is not None and not param_key.startswith("<"):
         # KeyError / AttributeError deliberately propagate.
+        #
+        # The path comes from params.__file__, not from PARAMS_DIR. `import
+        # params` searches ALL of sys.path — which includes this file's own
+        # directory, where you were told to put check.py and stubs.py — so a
+        # params.py dropped beside the part file resolves fine and naming
+        # PARAMS_DIR would credit a file that was never read.
         return (
             {"mass": params.PARAMS[param_key]},
-            f"target driven from analysis/model/params.py[{param_key}]",
+            f"target driven from {params.__file__}[{param_key}]",
         )
 
     why = (
@@ -357,18 +373,24 @@ def demo():
 
     # --- F1/F13: the target's provenance is the truth, or there is no run.
     def resolve_with(params_src, key, allow=True):
-        """Resolve a target against a params.py written to a temp dir. The
-        real analysis/model is taken off sys.path so this measures the
-        temp one and nothing else, in the repo and in a copied project."""
+        """Resolve a target against a params.py written to a temp dir, and
+        return (target, provenance, that temp params.py).
+
+        EVERY directory on sys.path that holds a params.py is dropped for
+        the duration, not just PARAMS_DIR: `import params` searches the
+        whole path, including this file's own directory, so a project that
+        keeps params.py beside the part file would otherwise have its real
+        one answer the case that is meant to test having none.
+        """
         saved = sys.path[:]
         with tempfile.TemporaryDirectory() as tmp:
             if params_src is not None:
                 Path(tmp, "params.py").write_text(params_src)
-            sys.path[:] = [tmp] + [p for p in saved if p != str(PARAMS_DIR)]
+            sys.path[:] = [tmp] + [p for p in saved if not Path(p or ".", "params.py").exists()]
             sys.modules.pop("params", None)
             importlib.invalidate_caches()
             try:
-                return _resolve_target(key, allow_fallback=allow)
+                return _resolve_target(key, allow_fallback=allow) + (Path(tmp, "params.py"),)
             finally:
                 sys.path[:] = saved
                 sys.modules.pop("params", None)
@@ -383,17 +405,24 @@ def demo():
     assert raised(AttributeError, resolve_with, "MASSES = {}\n", "m1")
     assert raised(ModuleNotFoundError, resolve_with, "import no_such_module_xyz\n", "m1")
 
-    target, prov = resolve_with("PARAMS = {'m1': 0.104}\n", "m1")
-    assert target == {"mass": 0.104} and "params.py[m1]" in prov, prov
+    target, prov, real = resolve_with("PARAMS = {'m1': 0.104}\n", "m1")
+    assert target == {"mass": 0.104}
+    # The line must name the file that was actually imported. `import
+    # params` searches all of sys.path, so a params.py anywhere on it
+    # resolves — and printing the directory this template HOPED to read
+    # credits a file that was never opened. That is the same falsehood F1
+    # exists to remove, and this assertion used to pass on it: the module
+    # here is loaded from a temp dir and the line said analysis/model.
+    assert prov == f"target driven from {real}[m1]", prov
 
     # The fallback: opt-in, and honest about which of the two reasons it is.
-    target, prov = resolve_with(None, "m1")
+    target, prov, _ = resolve_with(None, "m1")
     assert target == {"mass": BUDGET_MASS} and "FALLBACK" in prov, prov
     assert raised(RuntimeError, resolve_with, None, "m1", False)
     # F13: an unset PARAM_KEY falls back even though params.py is RIGHT
     # THERE, so the line must not claim the file is missing. Spelled out
     # rather than read from PARAM_KEY, which you are expected to set.
-    target, prov = resolve_with(renamed, "<params key for this body>")
+    target, prov, _ = resolve_with(renamed, "<params key for this body>")
     assert "FALLBACK" in prov and "placeholder" in prov, prov
     assert "no params.py" not in prov, prov
     # Whatever the fallback produces still has to be a target check.py will
@@ -431,7 +460,12 @@ def demo():
     # spelled out from the rule rather than from EDGE_REACH, so a probe
     # that reverted to measuring from the centre (which would put the limit
     # at 59.0 mm, not 54.5) fails the second one instead of moving with it.
-    build(bolt_circle=PLATE_W - BOLT_CLEARANCE - 2 * EDGE_DIST)  # 54.5: exactly fits
+    # 1 mm inside the limit, for the same reason main()'s sweep is: at
+    # exactly 54.5 the probe's outer face is exactly on the plate edge, and
+    # asking every copied project to bet its self-check on an OCCT boolean
+    # returning 0.0 rather than 1e-9 is not a test, it is a coin toss. The
+    # 58.0 raise below is what discriminates anyway.
+    build(bolt_circle=PLATE_W - BOLT_CLEARANCE - 2 * EDGE_DIST - 1.0)  # 53.5
     assert "plate" in str(raised(ValueError, build, bolt_circle=PLATE_W - 2 * EDGE_DIST - 1))
 
     print("part.py self-tests passed (provenance, boss wall, bolt pattern vs bore/edge)")

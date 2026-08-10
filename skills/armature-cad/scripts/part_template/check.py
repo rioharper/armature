@@ -254,9 +254,13 @@ def contained(inner, outer, tol: float = 1e-6) -> bool:
     volume goes up rather than down. Nothing about the build fails. The
     part is simply wrong.
 
-    Call it in the recipe on a SOLID probe of the feature — the shape the
-    feature will occupy, extruded — BEFORE cutting, so the violation raises
-    where the dimension is (see part.py's `_assert_pattern_fits`).
+    Call it in the recipe on a SOLID probe of the feature: the shape that
+    has to BE metal, extruded. Prefer a probe that stays valid against the
+    FINISHED part — part.py's `_assert_pattern_fits` probes the RING of
+    metal around each bolt hole rather than a disc over it, and so runs
+    after every cut. A probe only valid against the blank has to run before
+    the cut, and nothing in the code can say so: that unstated ordering is
+    what let a bolt circle whose holes sat inside the bore pass.
 
     `inner` must be a solid. This measures the leaked VOLUME, and a sketch,
     face or wire has none, so a flat probe would read as contained from
