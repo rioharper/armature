@@ -140,8 +140,11 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
     Every branch below is `if "<key>" in target`, so an unvalidated target
     is a gate that reports green forever: `{"masss": 0.0001}` used to pass.
     Also raises on a modifier left stranded without the key it modifies
-    (`com_tol` without `com`, `about` without `inertia`): the check the
-    author was reaching for is not the check they would have gotten.
+    (`com_tol` without `com`, `about` without `inertia`), and on a
+    `target["com"]` that doesn't carry all three axes — `zip()` truncates,
+    so a 1-tuple used to check x and silently skip y and z. In every case
+    the check the author was reaching for is not the check they would have
+    gotten.
     """
     _validate_target(target)
     fails = []
@@ -722,8 +725,10 @@ def demo():
     # The old string form is rejected loudly, not compared as an opaque blob.
     assert raises(compare_to_target, off, {"inertia": off["inertia"], "about": "com"})
 
-    # F8: the views are 1:1, so a shared dimension measures the same in
-    # every view of the set. Rescaling each view by its own extent drew this
+    # F8: the PRINCIPAL views (front/top/right) are 1:1, so a shared
+    # dimension measures the same in each of them — not in the iso, which
+    # foreshortens (see write_views' docstring), which is why the set below
+    # is two principal views. Rescaling each view by its own extent drew this
     # part's 80 mm width as 100.09 mm, and its one 16 mm height as two
     # different numbers. Off-origin on purpose: that is what tilts a camera
     # aimed by direction alone, and a tilted view is not 1:1 either.

@@ -64,8 +64,9 @@ the collision. `check.py`, `stubs.py`, and `part.py` exit 0.
 `analysis/model/params.py`, which imports it. Both also locate that file
 *relative to their own path* — `../../analysis/model/` — so keep them two
 directories below the project root (`cad/parts/`, which is where `part.py`
-tells you to put them); run either from somewhere else and it will look for
-`params.py` in the wrong place.
+tells you to put them). Put a copy anywhere else in the tree and it looks
+for `params.py` in the wrong place — the path is resolved from the file's
+own location, so the directory you happen to run from doesn't enter into it.
 
 `sweep.py` is stricter than `part.py` about `params.py`: `part.py`'s mass
 target can fall back to a budget row when there is no derivation yet, and
