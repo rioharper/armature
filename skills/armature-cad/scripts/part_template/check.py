@@ -264,10 +264,11 @@ def contained(inner, outer, tol: float = 1e-6) -> bool:
 
     tol is the leak volume in mm^3 tolerated as boolean noise. Measured on
     build123d 0.11.1 / OCCT: a probe whose face is coincident with an R6
-    fillet — plus both flat faces — leaks EXACTLY 0.0 mm^3, so the 1e-6
-    default clears the noise floor with six orders to spare and is not
-    quietly absorbing a real escape. Keep it small for the same reason
-    (see demo()).
+    fillet — plus both flat faces — leaks EXACTLY 0.0 mm^3. The noise floor
+    at a filleted corner is zero, not merely small, so the 1e-6 default is
+    absorbing nothing and nothing measured here argues for a larger one.
+    Keep it small for that reason: every mm^3 of tol is a real escape this
+    would not report (see demo(), which measures both).
     """
     if inner.volume <= 0:
         raise ValueError(
@@ -516,12 +517,14 @@ def demo():
     flush = Cylinder(6, 6).locate(Location((80 / 2 - 6, 50 / 2 - 6, 0)))
     spill = flush.cut(rounded)
     sliver = 0.0 if spill is None else sum(s.volume for s in spill.solids())
-    # Measured, build123d 0.11.1 / OCCT: exactly 0.0 mm^3. tol clears it by
-    # six orders, so tol is doing no work here and must not be raised to
-    # where it would start swallowing real escapes like the one below.
+    # Measured, build123d 0.11.1 / OCCT: exactly 0.0 mm^3 — the floor is
+    # zero, not merely small, so tol is doing no work here and must not be
+    # raised to where it starts swallowing real escapes like the one below.
     assert sliver < 1e-9, f"OCC sliver at an R6 fillet is {sliver} mm^3, above tol"
     assert contained(flush, rounded)
-    assert not contained(flush.locate(Location((80 / 2 - 5.9, 50 / 2 - 5.9, 0))), rounded)
+    # .located(), not .locate(): the latter moves `flush` in place, which
+    # would make this block depend on the order its assertions run in.
+    assert not contained(flush.located(Location((80 / 2 - 5.9, 50 / 2 - 5.9, 0))), rounded)
 
     # compare_to_target catches what it should and passes what it should.
     assert compare_to_target(props, {"mass": m}) == []
@@ -544,6 +547,10 @@ def demo():
     # ...while an off-diagonal product still gets its absolute tolerance,
     # which is the whole reason that branch exists.
     near_zero = [row[:] for row in bar["inertia"]]
+    # Guard the guard: this only proves anything while the realized Ixy is
+    # nonzero (OCC leaves ~1e-22). If a future OCCT returns an exact 0.0 the
+    # control would pass vacuously, comparing 0.0 against 0.0.
+    assert bar["inertia"][0][1] != 0.0
     near_zero[0][1] = near_zero[1][0] = 0.0
     assert compare_to_target(bar, {"inertia": near_zero}) == []
 
@@ -592,7 +599,10 @@ def demo():
     assert math.isclose(size["front"][1], size["right"][1], abs_tol=1e-6), size
     assert math.isclose(size["front"][1], 16 + pad, abs_tol=0.01), size
 
-    print("check.py self-tests passed (units, parallel axis, interference, targets)")
+    print(
+        "check.py self-tests passed (units, parallel axis, interference, "
+        "containment, target validation, view scale)"
+    )
 
 
 if __name__ == "__main__":
