@@ -14,8 +14,11 @@ markdown can't:
   * does the part hit the mass and inertia the dynamics assumed?
   * what does it look like?  (SVG views for the "At a glance" section)
 
-Run it:  uv run --with build123d python cad/parts/<PART-ID>.py
+Run it:  uv run --with 'build123d~=0.11' --with sympy python cad/parts/<PART-ID>.py
 Exits nonzero when a check fails, so it works in a pre-commit hook or CI.
+(The version bound is deliberate — see the template README. `--with sympy`
+is for analysis/model/params.py, which imports it; drop it only if your
+params.py doesn't.)
 
 THE ONE RULE: this file must never restate a dimension that already lives
 in `analysis/model/params.py` or in an interface table. It imports those.

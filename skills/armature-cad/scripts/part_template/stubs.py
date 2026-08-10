@@ -19,7 +19,9 @@ mass estimates, deciding whether a part fits before you buy it.
 They are NOT good for: mating geometry in a released assembly, tolerance
 stack-ups on a fit, or anything that leaves CAD. Before release grade,
 every stub is replaced by vendor geometry or by a drawing dimensioned
-from the datasheet — that is what `still_placeholder()` is for.
+from the datasheet — that is what `still_placeholder()` is for, subject to
+the one thing it cannot see: it only knows about stubs built in its own
+process, so read its docstring before trusting an empty list.
 """
 
 from __future__ import annotations
@@ -41,7 +43,15 @@ def _stamp(shape, part_number: str, source: str):
         )
     shape.label = f"PLACEHOLDER {part_number}"
     shape.color = PLACEHOLDER_COLOR
-    _REGISTRY.append((part_number, source))
+    # F16: append-only meant building the same stub twice (a bearing used at
+    # both ends of a shaft, a recipe re-run in the same process) listed it
+    # twice in index_rows() and twice in the release gate. Dedupe on the
+    # WHOLE entry, not on the P/N: the same P/N cited to two different
+    # datasheet rows is a provenance disagreement worth seeing, not a
+    # duplicate to silently collapse onto whichever source ran last.
+    entry = (part_number, source)
+    if entry not in _REGISTRY:
+        _REGISTRY.append(entry)
     return shape
 
 
@@ -98,10 +108,32 @@ def index_rows() -> str:
 
 
 def still_placeholder() -> list[str]:
-    """Every stub built in this process. Call from a release-grade check:
+    """Every stub built IN THIS PROCESS. Call from a release-grade check:
     a non-empty list is a release gate failure, because a placeholder has
-    reached a point where money is about to move."""
-    return [pn for pn, _ in _REGISTRY]
+    reached a point where money is about to move.
+
+    F16 — WHAT THIS CANNOT TELL YOU. `_REGISTRY` is filled by the builders
+    above as they run, so this reports on the parts THIS process actually
+    built and on nothing else. An empty list therefore means one of two
+    very different things:
+
+      * every part was built here and none of them is a placeholder, or
+      * nothing was built here at all.
+
+    The second is the dangerous one, and it is also the default: a release
+    script that imports this module and calls `still_placeholder()` without
+    building anything gets `[]` and passes, forever, no matter how many
+    stubs are sitting in the assembly. An empty list is evidence of a clean
+    release ONLY from a process that has already built every part in the
+    release — run the release check in the same process as the build (or
+    import every `cad/parts/<PART-ID>.py` first, which is the same thing),
+    and assert on the count of parts built as well as on this list.
+
+    Deduped: building the same stub twice reports it once (see `_stamp`).
+    """
+    # dict.fromkeys, not set(): preserves build order, which is the order
+    # index_rows() prints and the order a reader will look for them in.
+    return list(dict.fromkeys(pn for pn, _ in _REGISTRY))
 
 
 def demo():
@@ -127,7 +159,22 @@ def demo():
 
     assert still_placeholder() == ["6004-2RS", "AK80-9"]
     assert "PLACEHOLDER" in index_rows()
-    print("stubs.py self-tests passed (envelopes, provenance stamp, release gate)")
+
+    # F16: the registry was append-only, so a stub built twice in one
+    # process — a bearing used at both ends of a shaft, or a recipe re-run
+    # in the same interpreter — was listed twice in the index and named
+    # twice by the release gate. Identical P/N AND source is one entry.
+    bearing(22, 44, 12, part_number="6004-2RS", source="docs/datasheets/index.md#6004")
+    assert index_rows().count("6004-2RS") == 1, index_rows()
+    assert still_placeholder() == ["6004-2RS", "AK80-9"], still_placeholder()
+    # ...but the SAME P/N citing a DIFFERENT datasheet row is two conflicting
+    # provenance claims, not a duplicate. Both rows stay in the index so the
+    # disagreement is visible, while the gate still names the part once.
+    bearing(22, 44, 12, part_number="6004-2RS", source="docs/datasheets/index.md#6004-alt")
+    assert index_rows().count("6004-2RS") == 2, index_rows()
+    assert still_placeholder() == ["6004-2RS", "AK80-9"], still_placeholder()
+
+    print("stubs.py self-tests passed (envelopes, provenance stamp, release gate, dedupe)")
 
 
 if __name__ == "__main__":

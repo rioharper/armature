@@ -18,9 +18,12 @@ What that buys, in order of value:
    makes one valid solid with the same bounding box (and more volume, since
    it removed less material). That class needs an explicit `contained()`
    assertion in the recipe — `part.py` shows the pattern.
-3. **Real orthographic views** for the definition's *At a glance* section,
-   projected from the actual geometry, so they can't drift from the recipe
-   the way a hand-drawn ASCII sketch does.
+3. **Real projected views** for the definition's *At a glance* section,
+   from the actual geometry, so they can't drift from the recipe the way a
+   hand-drawn ASCII sketch does. Front/top/right are exported true 1:1 and
+   share one scale, so a feature measured off the page is the part's real
+   millimetres; the iso view is for orientation only, since an isometric
+   projection foreshortens every 3D length.
 4. **Interference sweeps at the kinematics/planning stage**, before parts
    exist, when a self-collision is still a joint limit rather than a rebuild.
    Note the limit, beside rebuild_sweep's above: the sweep is a finite grid
@@ -38,7 +41,7 @@ What that buys, in order of value:
 | `check.py` | Library. Mass properties in SI, target comparison, parameter-rebuild sweeps, interference, SVG views. **Holds the unit contract — read its docstring first.** |
 | `part.py` | Template for `cad/parts/<PART-ID>.py`. Worked example: the plate-with-a-boss from SKILL.md. Copy and edit. |
 | `sweep.py` | Template for a planning-stage interference sweep. Worked example: planar 2R arm folding into its base housing. |
-| `stubs.py` | COTS placeholders for when armature-librarian can't find a vendor STEP. Enforces datasheet provenance and a release gate. |
+| `stubs.py` | COTS placeholders for when armature-librarian can't find a vendor STEP. Enforces datasheet provenance, and offers a release gate that is only as good as the process it runs in — `still_placeholder()` sees the stubs *this process built*, so an empty list from a process that built nothing is not a clean release. Read its docstring before gating on it. |
 
 Each file runs its own self-tests via `demo()`:
 
@@ -49,8 +52,20 @@ uv run --with 'build123d~=0.11' --with sympy python sweep.py  # self-tests, then
 uv run --with 'build123d~=0.11' --with sympy python part.py   # mass props vs target + SVG views
 ```
 
+**The exit code is the contract for the set: nonzero means a check failed**,
+which is what makes these usable in a pre-commit hook or CI. Note that this
+cuts against the worked examples too — `sweep.py`'s 2R arm genuinely folds
+into its own base post, so `python sweep.py` runs its self-tests, prints the
+colliding pairs, and **exits 1 by design**. That is the tool working, not the
+tool broken; it goes to 0 once the joint limits in the swept range exclude
+the collision. `check.py`, `stubs.py`, and `part.py` exit 0.
+
 `part.py` and `sweep.py` both need `--with sympy`, since both import
-`analysis/model/params.py`, which imports it.
+`analysis/model/params.py`, which imports it. Both also locate that file
+*relative to their own path* — `../../analysis/model/` — so keep them two
+directories below the project root (`cad/parts/`, which is where `part.py`
+tells you to put them); run either from somewhere else and it will look for
+`params.py` in the wrong place.
 
 `sweep.py` is stricter than `part.py` about `params.py`: `part.py`'s mass
 target can fall back to a budget row when there is no derivation yet, and

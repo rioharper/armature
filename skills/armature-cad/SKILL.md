@@ -74,7 +74,7 @@ no function behind it.
 ## Build recipe
 A numbered feature sequence for THIS part — sketch, extrude, hole,
 pattern — one line per feature with concrete dimensions in line:
-"1. Sketch on the mounting face plane: 80×50 rect centered on origin.
+"1. Sketch on the mounting face plane: 80×75 rect centered on origin.
 2. Extrude 6 mm. 3. 4× M4 clearance on Ø45 BC (driven: #bolt_circle).
 4. Bore Ø22 H7 through the boss." Start by naming the functional face
 the base sketch sits on — for a simple part, that one line IS the datum
@@ -145,7 +145,7 @@ Two rules make it an asset instead of a second thing to maintain. **The `.py` ne
 
 Offer it, don't impose it — build123d pulls Open Cascade and is not an armature dependency. It earns its install when a part has an inertia target to hit, when a recipe's driven dimensions are still moving, or when the user has no CAD seat open yet. A one-off typed-dimension bracket doesn't need it. It stops well short of the CAD package: no assemblies or mates, no toleranced drawings, no GD&T, no FEA. The manufacturing deliverable still comes out of SOLIDWORKS, Fusion, or Onshape.
 
-The same interference check runs upstream, before parts exist: crude link envelopes swept over the joint range, in `scripts/part_template/sweep.py`. A self-collision found there is an **armature-math** finding — a joint limit or a link length — and it costs a number instead of a rebuild. Reach for it during analysis or planning when a mechanism folds back on itself, and hand what it finds back to the mathematician.
+The same interference check runs upstream, before parts exist: crude link envelopes swept over the joint range, in `scripts/part_template/sweep.py`. It prints one row per colliding body pair — the onset posture in degrees, which is the number a joint limit gets set from, and the worst — and exits nonzero when anything collides. A self-collision found there is an **armature-math** finding — a joint limit or a link length — and it costs a number instead of a rebuild. Reach for it during analysis or planning when a mechanism folds back on itself, and hand what it finds back to the mathematician. Know this limit too: the sweep is a finite grid of postures and cannot see a collision band narrower than its step, and any overlap excused at a shared joint — by a per-pair threshold, or by the envelope setback `sweep.py` uses instead — is a blind spot for anything hiding under it. A clean sweep is evidence, not proof; the caveats live in `sweep.py` beside the knobs that cause them.
 
 **No tutorial files.** The build recipe plus the software reference is the whole *how*. At most one click-by-click walkthrough per project — the first part, as calibration for how concrete the recipes need to be. If a later part seems to need one, the recipe is too thin: make the recipe one notch more concrete instead of writing a third document.
 

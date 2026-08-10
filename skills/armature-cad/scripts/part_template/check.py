@@ -139,6 +139,9 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
     Raises on a target that cannot check anything — empty, or all typos.
     Every branch below is `if "<key>" in target`, so an unvalidated target
     is a gate that reports green forever: `{"masss": 0.0001}` used to pass.
+    Also raises on a modifier left stranded without the key it modifies
+    (`com_tol` without `com`, `about` without `inertia`): the check the
+    author was reaching for is not the check they would have gotten.
     """
     _validate_target(target)
     fails = []
@@ -354,8 +357,16 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             posture, not only the one where the design excuses it — a
             link1<->link2 overlap that grew to 18689 mm^3 partway through
             the swept range went unreported while a smaller, unrelated
-            300000 mm^3 base<->link2 fold WAS reported, because only the
-            latter pair happened not to be on the blanket list.
+            5321.8 mm^3 base<->link2 fold WAS reported, because only the
+            latter pair happened not to be on the blanket list. (Fix round
+            4: this read "300000 mm^3 base<->link2" and was wrong twice
+            over. 300000 was link1<->link2's OWN fully-folded overlap, not
+            base<->link2's — misattributed, and large enough to make the
+            sentence call it "smaller" than the 18689 it was contrasted
+            with. base<->link2's fold measures 5321.8 mm^3, unchanged by
+            JOINT_TRIM, which trims the elbow end of link2 rather than the
+            far end that reaches the post. link1<->link2's 300000 is now
+            276000 for the same reason; see sweep.py's JOINT_TRIM.)
 
             A THRESHOLD MEASURED AT ONE POSTURE ONLY FITS A PAIR WHOSE
             OVERLAP DOES NOT CHANGE WITH POSTURE. sweep.py's own worked
@@ -474,13 +485,20 @@ def write_views(part, path_stem: str, views=("front", "top", "right", "iso")) ->
     is not crude — it is the real projected geometry, so it cannot drift
     from the recipe the way a hand-drawn ASCII sketch does.
 
-    The views are exported TRUE 1:1: the SVG declares millimetres and they
-    are the part's own millimetres, so a reader can measure a feature off
-    the page and every view in the set shares one scale. Normalizing each
-    view to a fixed size — the obvious thing, and what this did — rescales
-    each view independently by its own extent, which drew the same 6 mm
-    plate at 7.50 mm in the front view and 8.00 mm in the right one while
-    still declaring Unit.MM.
+    The views are exported at scale 1: the SVG declares millimetres and
+    they are the projection's own millimetres, and every view in the set
+    shares that one scale. Normalizing each view to a fixed size — the
+    obvious thing, and what this did — rescales each view independently by
+    its own extent, which drew the same 6 mm plate at 7.50 mm in the front
+    view and 8.00 mm in the right one while still declaring Unit.MM.
+
+    MEASURE OFF front/top/right ONLY. Those three are true 1:1 against the
+    PART, because each looks down a principal axis, so a feature measured
+    off the page is the part's real millimetres (demo() checks exactly
+    that, on a shared dimension across two views). The 'iso' view is 1:1
+    only in its own projection plane: an isometric projection foreshortens
+    every 3D length, so a number scaled off it is wrong even though the SVG
+    says mm just as confidently. The iso is for orientation.
 
     The camera is aimed at the bounding-box centre, not at the origin.
     `project_to_viewport` defaults `look_at` to the shape's centre, so a
