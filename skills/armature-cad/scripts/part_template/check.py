@@ -324,7 +324,7 @@ def interference(a, b) -> float:
     return sum(s.volume for s in common.solids())
 
 
-def sweep_clearance(pose, qs, ignore=(), min_volume=1e-6) -> list[tuple]:
+def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
     """Check every pair of bodies for interference across a motion range.
 
     Args:
@@ -333,34 +333,69 @@ def sweep_clearance(pose, qs, ignore=(), min_volume=1e-6) -> list[tuple]:
             this runs len(qs) * n_pairs booleans.
         qs: the postures to check. Sample the workspace, and include the
             joint limits: interference lives at the extremes.
-        ignore: pairs of names that are allowed to touch, as
-            {("upper_arm", "forearm"), ...} — parts sharing a joint
-            overlap by design and would otherwise flood the output.
+        ignore: {frozenset({"upper_arm", "forearm"}): threshold_mm3, ...}
+            — a pair sharing a joint can overlap there even when nothing
+            is wrong (e.g. a base post's radius reaching past the joint
+            into the next link, by construction). Give the OVERLAP
+            MEASURED AT THE PAIR'S OWN DESIGN/NEUTRAL POSTURE as the
+            threshold, not a guessed margin — sweep.py derives it by
+            calling `pose()` once at the home posture and taking
+            `interference()` for each adjacent pair, so the excuse is
+            sized to what the envelope actually does at rest, not picked
+            by feel. Overlap ABOVE the threshold is reported like any
+            other pair, at whatever posture it happens.
+
+            This replaces a plain set of always-ignored pairs, which hid
+            the dominant self-collision class on a worked 2R arm (F7): a
+            pair sharing a joint also has the widest range of legitimate
+            relative motion, so a blanket "never report this pair"
+            suppressed the elbow's actual fold-in collision at every
+            posture, not only the one where the design excuses it — a
+            link1<->link2 overlap that grew to 18689 mm^3 partway through
+            the swept range went unreported while a smaller, unrelated
+            300000 mm^3 base<->link2 fold WAS reported, because only the
+            latter pair happened not to be on the blanket list.
+
+            RESIDUAL BLIND SPOT: a pair is excused up to its threshold
+            volume at EVERY posture in the sweep, not only near the
+            joint. A genuine collision whose volume is smaller than that
+            pair's own design overlap is invisible wherever it occurs,
+            not only close to the joint. This is harmless for a pair
+            whose design overlap is the SAME at every posture that
+            reaches it (e.g. one fixed by a rotationally-symmetric
+            envelope, as base<->link1 is in sweep.py's worked example) —
+            there, the threshold can never be smaller than what is
+            already there while something else is wrong. It is a real gap
+            for a pair whose overlap could shrink below the threshold at
+            some other, non-neutral posture while a genuine interference
+            coexists there; only add a pair to `ignore` once you have
+            checked it behaves like the former.
         min_volume: mm^3 below which an overlap is discarded as a boolean
-            sliver. NOT a tangency floor — OCC reports exact tangency as
-            exactly 0.0 (measured on 0.11.1: coincident faces, a touched
-            edge, and a cylinder tangent to a plane all return 0.0), so
-            tangency never reaches this test. Nor is the default a
-            meaningful envelope filter: 0.0001 mm of interpenetration
-            between two 10 mm cubes measures 0.01 mm^3, ten thousand times
-            this default, so every real contact is reported. It exists only
-            to drop slivers, and it is deliberately left where it swallows
-            nothing physical. Raise it if you want shallow grazes ignored,
-            and pick the number from the graze depth you'll accept.
+            sliver — the floor every pair gets, including one named in
+            `ignore` with a smaller threshold. NOT a tangency floor — OCC
+            reports exact tangency as exactly 0.0 (measured on 0.11.1:
+            coincident faces, a touched edge, and a cylinder tangent to a
+            plane all return 0.0), so tangency never reaches this test.
+            Nor is the default a meaningful envelope filter: 0.0001 mm of
+            interpenetration between two 10 mm cubes measures 0.01 mm^3,
+            ten thousand times this default, so every real contact is
+            reported. It exists only to drop slivers, and it is
+            deliberately left where it swallows nothing physical. Raise it
+            if you want shallow grazes ignored, and pick the number from
+            the graze depth you'll accept.
 
     Returns [(q, name_a, name_b, overlap_mm3), ...], worst first.
     """
-    ignore = {frozenset(pair) for pair in ignore}
+    ignore = {} if ignore is None else {frozenset(pair): float(v) for pair, v in ignore.items()}
     hits = []
     for q in qs:
         bodies = pose(q)
         names = sorted(bodies)
         for i, a in enumerate(names):
             for b in names[i + 1:]:
-                if frozenset((a, b)) in ignore:
-                    continue
                 v = interference(bodies[a], bodies[b])
-                if v > min_volume:
+                threshold = max(ignore.get(frozenset((a, b)), 0.0), min_volume)
+                if v > threshold:
                     hits.append((q, a, b, v))
     return sorted(hits, key=lambda h: -h[3])
 
@@ -495,6 +530,30 @@ def demo():
     # physical. If either number moves, that docstring has gone stale.
     grazed = interference(a, Box(10, 10, 10).locate(Location((10 - 1e-4, 0, 0))))
     assert 0.009 < grazed < 0.011, grazed  # 0.0001 mm deep over 10x10 mm
+
+    # F7: sweep_clearance's `ignore` is a per-pair THRESHOLD, not a
+    # blanket "always skip". Two 10 mm boxes overlapping 200 mm^3 at their
+    # design offset must clear; the SAME pair overlapping 500 mm^3 at a
+    # bigger offset (further apart at the far end, closer at the near
+    # end — the geometry doesn't matter, only that it exceeds the design
+    # overlap) must still be reported, which the old set-based `ignore`
+    # could never do once a pair was listed.
+    def two_boxes(offset):
+        return {
+            "a": Box(10, 10, 10),
+            "b": Box(10, 10, 10).locate(Location((10 - offset, 0, 0))),
+        }
+
+    design_overlap = interference(two_boxes(2.0)["a"], two_boxes(2.0)["b"])
+    assert math.isclose(design_overlap, 200.0), design_overlap
+    pair_ignore = {frozenset(("a", "b")): design_overlap}
+    hits = sweep_clearance(two_boxes, [2.0, 5.0], ignore=pair_ignore)
+    assert len(hits) == 1 and hits[0][1:3] == ("a", "b") and math.isclose(hits[0][3], 500.0), hits
+    # A pair with no entry in `ignore` gets only the ordinary min_volume
+    # floor, not the pair's design overlap — the same 200 mm^3 that was
+    # excused above is reported here.
+    hits = sweep_clearance(two_boxes, [2.0], ignore={})
+    assert len(hits) == 1 and hits[0][1:3] == ("a", "b") and math.isclose(hits[0][3], 200.0), hits
 
     # contained(): the check rebuild_sweep can't make.
     plate = Box(80, 50, 6)

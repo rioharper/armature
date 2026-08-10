@@ -23,6 +23,13 @@ What that buys, in order of value:
    the way a hand-drawn ASCII sketch does.
 4. **Interference sweeps at the kinematics/planning stage**, before parts
    exist, when a self-collision is still a joint limit rather than a rebuild.
+   Note the limit, beside rebuild_sweep's above: the sweep is a finite grid
+   over the joint range, so it can only be GUARANTEED to catch a collision
+   band wider than the grid's step — a genuine collision narrower than the
+   step, sitting between two sampled postures, is invisible. `sweep.py`'s
+   default resolution is sized to the worked example's own narrowest known
+   band (11 deg); a mechanism with tighter geometry needs a finer grid, and
+   `sweep.py`'s docstring says how to re-measure and pick one.
 
 ## Files
 
@@ -38,12 +45,20 @@ Each file runs its own self-tests via `demo()`:
 ```bash
 uv run --with 'build123d~=0.11' python check.py  # units, parallel axis, containment
 uv run --with 'build123d~=0.11' python stubs.py  # envelopes, provenance stamp
-uv run --with 'build123d~=0.11' python sweep.py  # self-tests, then the sweep
-uv run --with 'build123d~=0.11' python part.py   # mass props vs target + SVG views
+uv run --with 'build123d~=0.11' --with sympy python sweep.py  # self-tests, then the sweep
+uv run --with 'build123d~=0.11' --with sympy python part.py   # mass props vs target + SVG views
 ```
 
-`part.py` also needs `--with sympy` once `analysis/model/params.py` exists,
-since that module imports it.
+`part.py` and `sweep.py` both need `--with sympy`, since both import
+`analysis/model/params.py`, which imports it.
+
+`sweep.py` is stricter than `part.py` about `params.py`: `part.py`'s mass
+target can fall back to a budget row when there is no derivation yet, and
+says so loudly in its printed provenance line; `sweep.py`'s link lengths
+have no such fallback, because a guessed link length could hide a real
+self-collision or invent one that isn't there. Running `sweep.py` before
+`analysis/model/params.py` exists raises, on purpose — copy it in (or run
+the armature-math milestone that produces it) first.
 
 ## Prerequisite
 
