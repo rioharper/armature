@@ -56,9 +56,12 @@ uv run --with 'build123d~=0.11' --with sympy python part.py   # mass props vs ta
 target can fall back to a budget row when there is no derivation yet, and
 says so loudly in its printed provenance line; `sweep.py`'s link lengths
 have no such fallback, because a guessed link length could hide a real
-self-collision or invent one that isn't there. Running `sweep.py` before
-`analysis/model/params.py` exists raises, on purpose — copy it in (or run
-the armature-math milestone that produces it) first.
+self-collision or invent one that isn't there. `import sweep` itself never
+needs `params.py` (the resolve is deferred to `main()`/`demo()`, so the
+module stays importable from anywhere), but actually *running* it — its
+own `demo()` self-test included — does, and raises clearly if it's
+missing: copy `params.py` in (or run the armature-math milestone that
+produces it) first.
 
 ## Prerequisite
 

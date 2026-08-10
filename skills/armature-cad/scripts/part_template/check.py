@@ -356,20 +356,35 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             300000 mm^3 base<->link2 fold WAS reported, because only the
             latter pair happened not to be on the blanket list.
 
-            RESIDUAL BLIND SPOT: a pair is excused up to its threshold
-            volume at EVERY posture in the sweep, not only near the
-            joint. A genuine collision whose volume is smaller than that
-            pair's own design overlap is invisible wherever it occurs,
-            not only close to the joint. This is harmless for a pair
-            whose design overlap is the SAME at every posture that
-            reaches it (e.g. one fixed by a rotationally-symmetric
-            envelope, as base<->link1 is in sweep.py's worked example) —
-            there, the threshold can never be smaller than what is
-            already there while something else is wrong. It is a real gap
-            for a pair whose overlap could shrink below the threshold at
-            some other, non-neutral posture while a genuine interference
-            coexists there; only add a pair to `ignore` once you have
-            checked it behaves like the former.
+            A THRESHOLD MEASURED AT ONE POSTURE ONLY FITS A PAIR WHOSE
+            OVERLAP DOES NOT CHANGE WITH POSTURE. sweep.py's own worked
+            example is the cautionary tale: link1<->link2's overlap is
+            0.0 mm^3 at the neutral posture and GROWS with the elbow's
+            bend, so a threshold measured at neutral excuses effectively
+            nothing (round 1 of this fix used exactly that measurement and
+            flagged 98.2% of the swept grid — the flood the blanket
+            `ignore` existed to avoid, back under a different name). A
+            pair like that needs its excuse built into the GEOMETRY
+            instead — sweep.py's `JOINT_TRIM` sets link2's box back from
+            the elbow so it has a real gap to bend through before it
+            overlaps at all, which is what a threshold, measured at any
+            single posture, cannot give it. Use `ignore` only for a pair
+            you have checked behaves like base<->link1 here: the SAME
+            overlap at every posture the pair reaches, not merely the
+            smallest one.
+
+            RESIDUAL BLIND SPOT, for a pair that DOES fit `ignore`: it is
+            excused up to its threshold volume at EVERY posture in the
+            sweep, not only near the joint. A genuine collision whose
+            volume is smaller than that pair's own design overlap is
+            invisible wherever it occurs. This is harmless for a pair
+            whose design overlap is the SAME at every posture that reaches
+            it (e.g. one fixed by a rotationally-symmetric envelope, as
+            base<->link1 is in sweep.py's worked example) — there, the
+            threshold can never be smaller than what is already there
+            while something else is wrong. It is a real gap for any other
+            pair, which is exactly why a growing-overlap pair belongs in
+            geometry, not in this dict.
         min_volume: mm^3 below which an overlap is discarded as a boolean
             sliver — the floor every pair gets, including one named in
             `ignore` with a smaller threshold. NOT a tangency floor — OCC
@@ -384,6 +399,19 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             if you want shallow grazes ignored, and pick the number from
             the graze depth you'll accept.
 
+            It also doubles as the floating-point slop guard on `ignore`'s
+            threshold (Critical 1, fix round 2): a threshold IS the OCC
+            volume measured at one posture, and recomputing "the same"
+            boolean at a different posture can differ in the last bits
+            (measured on sweep.py's base<->link1: +2.18e-11 / -1.46e-11
+            mm^3 across 37 samples of the SAME nominal overlap). A bare
+            `v > threshold` reports that noise as a collision — 444 of
+            round 1's 1924 hits were exactly this. `min_volume`'s default
+            (1e-6) is ~1e5x that measured noise and still ~1e4x below the
+            shallowest real contact this module measures (0.01 mm^3, see
+            demo()'s F15 case), so it swallows the float noise and nothing
+            physical.
+
     Returns [(q, name_a, name_b, overlap_mm3), ...], worst first.
     """
     ignore = {} if ignore is None else {frozenset(pair): float(v) for pair, v in ignore.items()}
@@ -395,7 +423,11 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             for b in names[i + 1:]:
                 v = interference(bodies[a], bodies[b])
                 threshold = max(ignore.get(frozenset((a, b)), 0.0), min_volume)
-                if v > threshold:
+                # Critical 1: `threshold` IS a measured OCC volume, not an
+                # exact mathematical constant - compare with min_volume's
+                # slop, not bit-exact, or a recomputation of "the same"
+                # overlap a few ULPs off reports as a false collision.
+                if v > threshold + min_volume:
                     hits.append((q, a, b, v))
     return sorted(hits, key=lambda h: -h[3])
 
@@ -554,6 +586,14 @@ def demo():
     # excused above is reported here.
     hits = sweep_clearance(two_boxes, [2.0], ignore={})
     assert len(hits) == 1 and hits[0][1:3] == ("a", "b") and math.isclose(hits[0][3], 200.0), hits
+
+    # Critical 1 (fix round 2): a threshold IS a measured OCC volume, and
+    # recomputing "the same" boolean elsewhere can differ by float noise
+    # (measured on sweep.py's base<->link1: ~2e-11 mm^3). A threshold that
+    # is a hair BELOW what gets measured at the excused posture must not
+    # cause a false report — min_volume's slop absorbs it.
+    noisy_ignore = {frozenset(("a", "b")): design_overlap - 1e-10}
+    assert sweep_clearance(two_boxes, [2.0], ignore=noisy_ignore) == []
 
     # contained(): the check rebuild_sweep can't make.
     plate = Box(80, 50, 6)

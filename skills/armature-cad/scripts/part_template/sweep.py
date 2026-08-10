@@ -74,11 +74,44 @@ def _resolve_lengths():
     return mm(params.PARAMS["l1"]), mm(params.PARAMS["l2"])
 
 
-L1, L2 = _resolve_lengths()
+# Important 4 (fix round 2): NOT resolved here. `L1, L2 = _resolve_lengths()`
+# at module scope meant `import sweep` itself raised whenever
+# analysis/model/params.py wasn't already on sys.path - so this file
+# couldn't even be imported for its own demo() without a real project
+# layout, breaking Global Constraint 5 ("every .py file keeps a runnable
+# demo() self-check"). Set by `_ensure_geometry()`, called first thing by
+# main() and demo() - nothing else in this file touches L1/L2 before they
+# do.
+L1 = L2 = None
 LINK_W = 40.0  # envelope guess, generous on purpose
 LINK_H = 30.0
 POST_R = 60.0  # base housing the arm must not fold into
 POST_H = 250.0
+
+# F7 fix round 2: JOINT_TRIM is how much link2's box is set back from the
+# elbow, instead of starting flush at it. See pose() for where it's used
+# and ADJACENT below for why link1<->link2 no longer needs a volume
+# threshold at all once this is in place.
+#
+# Sized to the box's OWN cross-section: JOINT_TRIM = LINK_W / 2, the
+# half-width already baked into every link. Measured consequence (this
+# file's own demo() re-derives it, not just this comment):
+#
+#   trim  onset (deg, 1 deg res)   i.e. clean interior range
+#   0        0 (flush at home - the removed fix's actual bug)
+#   10      45
+#   20      91   <- LINK_W / 2, chosen
+#   40     121-150 (diminishing return; also thins the envelope 16%)
+#
+# 20 mm leaves link1<->link2 EXACTLY 0.0 mm^3 for the entire q2 in
+# [-90, 90] deg range (not just below some volume floor - the boxes have a
+# real, measured gap there) and reports it from 91 deg outward, growing
+# to the same 300000 mm^3 fold-back overlap at 180 deg as before. That is
+# what makes a threshold measured at ANY single posture wrong for this
+# pair (the red-team review's point): the excuse has to track a whole
+# RANGE, and a box set back by its own half-width is what buys that range
+# instead of a volume number guessed to cover it.
+JOINT_TRIM = LINK_W / 2
 
 
 def pose(q) -> dict:
@@ -99,50 +132,80 @@ def pose(q) -> dict:
     # link2: from the elbow, out along +X, rotated by q1 + q2. The elbow is
     # a pure translation — link2's own rotation already carries q1, and
     # composing a rotated Location here would apply q1 to it twice.
+    #
+    # F7 fix round 2: link2's BOX is set back JOINT_TRIM from the elbow
+    # (starts at local x=JOINT_TRIM instead of x=0) instead of starting
+    # flush at it - see JOINT_TRIM's own comment for the measured basis.
+    # This changes what shape sits in link2's frame, not the frame itself:
+    # `elbow` and the rotation angle below are byte-identical to baseline
+    # (Global Constraint 3 - see task-3 report for the AST comparison).
     elbow = Location((L1 * math.cos(q1), L1 * math.sin(q1), 0))
-    link2 = Box(L2, LINK_W, LINK_H).locate(Location((L2 / 2, 0, 0)))
+    l2_len = L2 - JOINT_TRIM
+    link2 = Box(l2_len, LINK_W, LINK_H).locate(Location((JOINT_TRIM + l2_len / 2, 0, 0)))
     link2 = elbow * (Rotation(0, 0, math.degrees(q1 + q2)) * link2)
 
     return {"base": base, "link1": link1, "link2": link2}
 
 
-# F7: adjacent bodies share a joint, and the envelope can overlap there
-# even when nothing is wrong - e.g. the base post's radius reaches past
-# the joint into link1 by construction. That is not a defect, it is baked
-# into POST_R, and it needs excusing wherever it happens.
+# F7 fix round 2: adjacent bodies share a joint, and the envelope can
+# overlap there even when nothing is wrong - e.g. the base post's radius
+# reaches past the joint into link1 by construction. That is not a
+# defect, it is baked into POST_R, and it needs excusing wherever it
+# happens.
 #
-# The old blanket `ignore` excused each PAIR at every posture, which also
-# hid link1<->link2's overlap - the pair that actually varies with q2, and
-# where the elbow limit lives. Measured: at q2=114.6 deg the hidden
-# link1<->link2 overlap is 18689 mm^3, 3.5x the base<->link2 overlap the
-# old sweep DID report at q2=180 deg (5321.8 mm^3) - the tool reported the
-# smaller collision and silently ate the bigger one.
+# Round 1 excused every ADJACENT pair with a threshold measured at the
+# neutral posture (0, 0) - the pair's own design overlap. That is correct
+# for base<->link1, whose overlap is CONSTANT across q1 (rotationally
+# symmetric about the post): one measurement at home is honest at every
+# posture the pair reaches, because the pair never reaches a different
+# value.
 #
-# Fix: excuse each pair only up to ITS OWN design overlap, measured at the
-# neutral/home posture (0, 0) - not a guessed margin. Above that threshold
-# is real interference, reported wherever it occurs, same as any other
-# pair.
+# It was WRONG for link1<->link2, and measurement (not opinion) says so:
+# that pair's overlap is 0.0 mm^3 at home and GROWS with |q2| - the boxes
+# are built flush at the joint, so any bend at all is "above the
+# threshold". A threshold sampled at the one posture where a growing-
+# overlap pair is smallest is the worst possible sample for exactly the
+# pair that needs excusing - round 1 read "0.0 mm^3 at home" as "this pair
+# needs no exclusion", when the honest reading is "home is the wrong place
+# to measure this pair's excuse; overlap growing with bend is what a
+# revolute joint's rigid boxes always do, real collision or not." Round 1
+# excused effectively nothing (min_volume only) and got flagged on 98.2%
+# of the swept grid - the flood the old blanket ignore was written to
+# avoid, back under a different name.
 #
-#   base<->link1: 35321.8 mm^3 at EVERY q1 (measured - rotationally
-#     symmetric about the post), so the threshold excuses it everywhere,
-#     matching the old blanket behaviour for this pair exactly.
-#   link1<->link2: 0.0 mm^3 at q2=0 (the boxes are built flush at the
-#     joint). Its threshold is therefore ~0 - this pair needed no special
-#     exclusion at all, which is exactly the bug: any real bend now gets
-#     reported, sized by how far past 0 it is.
+# Fix: link1<->link2 is excused geometrically instead, by JOINT_TRIM in
+# pose() (see its comment for the measured basis) - link2's box has a
+# real gap at the joint, so bending it doesn't cost overlap until the gap
+# is used up. base<->link1 keeps the threshold approach, because its
+# overlap really is the same at every posture - that is the distinction
+# this fix turns on, not "adjacent pairs get a threshold."
 #
 # RESIDUAL BLIND SPOT (see sweep_clearance's docstring in check.py): a
-# pair is excused up to its threshold volume at EVERY posture, not only
-# near the joint. That is harmless here only because base<->link1's
-# overlap is constant across q1 - there is no posture where it reads
-# smaller than its own threshold while something else is also wrong. A
-# pair whose design overlap VARIES with posture would not get that
-# guarantee for free.
-_home = pose((0.0, 0.0))
-ADJACENT = {
-    frozenset(pair): interference(_home[pair[0]], _home[pair[1]])
-    for pair in (("link1", "link2"), ("base", "link1"))
-}
+# threshold-based excuse hides a genuine collision below its volume at
+# EVERY posture it applies to, not only near the joint. For base<->link1
+# that is provably harmless (constant overlap, so there is no posture
+# where a real problem hides under a smaller reading). A GROWING-overlap
+# pair does not get that guarantee from a threshold at any single sample -
+# which is exactly what went wrong here, and why link1<->link2 uses a
+# geometric fix instead of a bigger, better-chosen threshold.
+def _ensure_geometry():
+    """Resolve L1/L2 from params.py and derive ADJACENT's threshold.
+
+    Deferred from module scope (Important 4, fix round 2): resolving
+    params.py at import time meant `import sweep` itself raised whenever
+    analysis/model/params.py wasn't already on sys.path, which broke
+    running this file's own demo(). main() and demo() both call this
+    first; nothing else in this file uses L1/L2/ADJACENT before they do.
+    """
+    global L1, L2, ADJACENT
+    L1, L2 = _resolve_lengths()
+    home = pose((0.0, 0.0))
+    ADJACENT = {
+        frozenset(("base", "link1")): interference(home["base"], home["link1"]),
+    }
+
+
+ADJACENT = {}  # populated by _ensure_geometry()
 
 
 def joint_limits_and_interior(n: int = 37):
@@ -194,8 +257,17 @@ def joint_limits_and_interior(n: int = 37):
     return [(a, b) for a in grid(*q1_range) for b in grid(*q2_range)]
 
 
-def main() -> int:
-    qs = joint_limits_and_interior()
+def main(qs=None) -> int:
+    """Sweep `qs` (default: `joint_limits_and_interior()`) and report hits.
+
+    `qs` is a parameter (Important 5, fix round 2) so demo() can exercise
+    this function's real print/return-code behaviour against a couple of
+    cheap hand-picked postures instead of paying for the full ~1400-
+    posture default grid a second time on every run.
+    """
+    _ensure_geometry()
+    if qs is None:
+        qs = joint_limits_and_interior()
     hits = sweep_clearance(pose, qs, ignore=ADJACENT)
 
     print(f"swept {len(qs)} postures, {len(hits)} interfering")
@@ -229,6 +301,8 @@ def demo():
     import importlib
     import tempfile
 
+    _ensure_geometry()
+
     def raised(exc_type, fn, *args, **kwargs):
         """The exception `fn` raised, or None. A check that cannot fail is
         not a check, so every use of this is asserted truthy."""
@@ -249,22 +323,79 @@ def demo():
     hits = sweep_clearance(pose, [(0.0, 0.0)], ignore=ADJACENT)
     assert hits == [], hits
 
-    # --- F7: the elbow pair is no longer blanket-ignored. At q2=180 the
-    # old code reported ONLY base<->link2 (5321.8 mm^3) and hid
-    # link1<->link2 (300000 mm^3) completely, because both pairs shared
-    # ADJACENT's blanket exclusion. Both must be visible now, worst first;
+    # --- F7 (fix round 2): the elbow pair is excused by JOINT_TRIM
+    # (geometry), not by a threshold - round 1's threshold-at-home was
+    # provably wrong for this pair (see the comment above ADJACENT) and
+    # flagged 98.2% of the swept grid. At q2=180 the OLD (pre-F7) code
+    # reported ONLY base<->link2 (5321.8 mm^3) and hid link1<->link2
+    # (300000 mm^3) completely; both must be visible now, worst first.
     # base<->link1 stays quiet - its constant 35321.8 mm^3 is exactly its
-    # own threshold, never above it.
+    # own threshold, never above it (see the epsilon note below).
     hits = sweep_clearance(pose, [(0.0, math.pi)], ignore=ADJACENT)
     assert [(h[1], h[2]) for h in hits] == [("link1", "link2"), ("base", "link2")], hits
 
-    # THE finding: at q2=114.6 deg the review measured an 18689 mm^3
-    # link1<->link2 overlap - 3.5x the base<->link2 overlap the old sweep
-    # DID report at q2=180 - that the blanket ignore hid completely
-    # ("reported: NOTHING"). It must be reported now, at its measured size.
-    hits = sweep_clearance(pose, [(0.0, math.radians(114.6))], ignore=ADJACENT)
-    assert len(hits) == 1 and hits[0][1:3] == ("link1", "link2"), hits
-    assert 18600 < hits[0][3] < 18800, hits[0][3]  # measured 18691.9 mm^3
+    # Acceptance 1 (fix round 2): a mechanism whose joint limits keep the
+    # elbow inside JOINT_TRIM's clean zone must sweep clear. q2 confined to
+    # +-45 deg (well inside the measured 91 deg onset below) at every q1
+    # reports nothing - this is the case the review's own example used
+    # ("q2 limit +-45 deg -> exit 0 must be reachable").
+    limited_qs = [
+        (q1, q2)
+        for q1 in (-math.pi, 0.0, math.pi / 2, math.pi)
+        for q2 in (-math.radians(45), 0.0, math.radians(45))
+    ]
+    assert sweep_clearance(pose, limited_qs, ignore=ADJACENT) == [], "limited q2 must clear"
+
+    # Acceptance 3: the elbow collision ONSET must be identifiable, not
+    # buried under a flood. Re-measure it here (1 deg resolution) instead
+    # of trusting JOINT_TRIM's comment, so a geometry change fails this
+    # assertion first. Symmetric both directions.
+    def elbow_onset():
+        """First |q2|, walking out from 0 in each direction, where
+        link1<->link2 interferes, at 1 deg steps. Both directions in one
+        pass (Minor 8: don't scan twice for what's a symmetric measurement)."""
+        onset = {}
+        for sign in (1, -1):
+            for deg in range(1, 180):
+                p = pose((0.0, math.radians(sign * deg)))
+                if interference(p["link1"], p["link2"]) > 0.0:
+                    onset[sign] = deg
+                    break
+            else:
+                raise AssertionError("no onset found in the scanned range")
+        return onset[1], onset[-1]
+
+    onset_pos, onset_neg = elbow_onset()
+    assert onset_pos == onset_neg, "expected the onset to be symmetric"
+    assert onset_pos == 91, onset_pos  # measured: JOINT_TRIM = LINK_W/2 = 20 mm -> 91 deg
+
+    # Acceptance 4: reported postures must be a small fraction of swept
+    # ones, not the 98.2% round 1 produced. link1<->link2 interferes for
+    # |q2| > 91 deg regardless of q1 (base<->link2's fold - the other
+    # contributor - is a much narrower band, F10 below), so the true
+    # fraction is bounded by the swept q2 range beyond the onset, not by
+    # anything left tunable in sweep_clearance; this asserts it stays that
+    # shape rather than reverting to "almost everything".
+    all_hits = sweep_clearance(pose, joint_limits_and_interior(), ignore=ADJACENT)
+    reported_postures = len({h[0] for h in all_hits})
+    swept_postures = len(joint_limits_and_interior())
+    assert reported_postures / swept_postures < 0.6, (reported_postures, swept_postures)
+
+    # Critical 1: the threshold is an exact-equality knife edge against
+    # OCC's own floating-point noise. base<->link1's threshold IS the
+    # volume measured at q1=0; recomputing "the same" boolean at a
+    # DIFFERENT q1 differs in the last bits (measured: +2.18e-11 mm^3 max
+    # deviation across 37 q1 samples), and a bare `v > threshold` reports
+    # 444 of those as collisions. `sweep_clearance` guards with
+    # `threshold + min_volume` (check.py) - assert it holds across several
+    # q1, not only the q1=0 sample where round 1's demo() happened to be
+    # bit-exact by construction.
+    for q1deg in (0, 45, 90, 135, 180, -90):
+        p = pose((math.radians(q1deg), 0.0))
+        assert sweep_clearance(pose, [(math.radians(q1deg), 0.0)], ignore=ADJACENT) == [], (
+            q1deg,
+            interference(p["base"], p["link1"]),
+        )
 
     # A pair can still be fully excused - at a threshold explicitly wider
     # than any overlap it will see - which is the old blanket behaviour,
@@ -275,10 +406,12 @@ def demo():
     hits = sweep_clearance(pose, [(0.0, math.pi)], ignore=wide)
     assert len(hits) == 1 and hits[0][1:3] == ("link1", "link2"), hits
 
-    # --- F9: main() must not exit 0 on a colliding worked example. This
-    # runs the real swept grid (n=37, ~15-20 s) - the regression test for
-    # the return-code bug has to exercise main() itself, not a stand-in.
-    assert main() == 1, "worked example collides (see the sweep above); main() must return nonzero"
+    # --- F9 (Important 5: cheap, not the full ~1400-posture default grid
+    # twice per run): main() must not exit 0 on a posture that collides,
+    # and must exit 0 on one that clears - exercising the real function,
+    # not a stand-in for it.
+    assert main([(0.0, math.pi)]) == 1, "a colliding posture must return nonzero"
+    assert main([(0.0, 0.0)]) == 0, "a clear posture must return 0"
 
     # --- F10: n<2 used to be a bare ZeroDivisionError (n=1: division by
     # n-1=0); it must raise a clear error instead.
@@ -290,18 +423,24 @@ def demo():
     # that band here (1 deg resolution) instead of trusting the
     # docstring's number, so a geometry change that moves the band fails
     # THIS assertion first, rather than going stale in a comment.
-    def band_reach(sign):
-        """Degrees inward from the sampled +-180 deg endpoint (in `sign`'s
-        direction) that base<->link2 stays interfering, at 1 deg steps."""
-        for deg in range(1, 30):
-            q2 = sign * (180 - deg)
-            p = pose((0.0, math.radians(q2)))
-            if interference(p["link2"], p["base"]) <= 0.0:
-                return deg - 1
-        raise AssertionError("band wider than the scanned range")
+    def band_reach():
+        """Degrees inward from each sampled +-180 deg endpoint that
+        base<->link2 stays interfering, at 1 deg steps. Both directions in
+        one pass (Minor 8: don't scan twice for a symmetric measurement)."""
+        reach = {}
+        for sign in (1, -1):
+            for deg in range(1, 30):
+                p = pose((0.0, math.radians(sign * (180 - deg))))
+                if interference(p["link2"], p["base"]) <= 0.0:
+                    reach[sign] = deg - 1
+                    break
+            else:
+                raise AssertionError("band wider than the scanned range")
+        return reach[1], reach[-1]
 
-    band_width = band_reach(1)
-    assert band_width == band_reach(-1), "expected the band to be symmetric"
+    band_pos, band_neg = band_reach()
+    assert band_pos == band_neg, "expected the band to be symmetric"
+    band_width = band_pos
     # Matches the red-team review's own independently measured 11.0 deg.
     assert band_width == 11, band_width
     step = 360.0 / (37 - 1)
@@ -347,6 +486,12 @@ def demo():
     # No PARAMS table at all is the same class of broken link, not a
     # missing-module event.
     assert raised(AttributeError, resolve_with, "NOT_PARAMS = {}\n")
+    # Minor 7: params.py itself failing to import (a missing dependency of
+    # the derivation, e.g. sympy) is NOT the same as no params.py at all -
+    # `exc.name != "params"` must re-raise it, not swallow it as a
+    # fallback. Untested in round 1; part.py's F1 test covers the
+    # equivalent case (part.py:406).
+    assert raised(ModuleNotFoundError, resolve_with, "import definitely_not_a_real_module_xyz\n")
 
     print(
         "sweep.py self-tests passed (collision found, clearance clean, elbow "
