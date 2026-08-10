@@ -113,7 +113,9 @@ except (ImportError, KeyError):
 # Add these once the dynamics assumes per-body values, not just a mass:
 #   TARGET["com"] = (0.0, 0.0, 0.004)          # m, in the part's own frame
 #   TARGET["inertia"] = [[...], [...], [...]]  # kg m^2
-#   TARGET["about"] = "com"                    # or "point (0, 0, 0) mm"
+#   TARGET["about"] = None                     # the COM, or (0.0, 0.0, 0.0) mm
+#     — a point, not a label: it is compared structurally, so "point
+#       (0, 0, 0) mm" is rejected rather than false-failing on formatting.
 TOL = 0.10
 
 

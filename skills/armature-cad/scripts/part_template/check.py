@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import math
 
-from build123d import CenterOf, ExportSVG, LineType, Compound, Unit
+from build123d import CenterOf, ExportSVG, LineType, Unit
 
 MM_PER_M = 1000.0
 
@@ -66,7 +66,13 @@ def mass_properties(part, density: float, about=None) -> dict:
             joint-origin tensor is a comparison of two unrelated numbers.
 
     Returns dict with mass [kg], com [m, 3-tuple], inertia [kg m^2, 3x3],
-    and `about` naming which point the tensor is taken about.
+    and `about` naming which point the tensor is taken about: None for the
+    part's own COM, else the (x, y, z) tuple in mm. It is stored as a TUPLE,
+    not as a formatted label, so `compare_to_target` compares it
+    structurally — as a string, a target written (50, 0, 0) reads
+    'point (50, 0, 0) mm' against this module's 'point (50.0, 0, 0) mm' and
+    false-fails on the rendering of a number rather than on the number.
+    `report()` renders the label at print time instead.
     """
     volume_m3 = part.volume * 1e-9
     mass = volume_m3 * density
@@ -78,14 +84,33 @@ def mass_properties(part, density: float, about=None) -> dict:
     scale = density * 1e-15
     inertia = [[v * scale for v in row] for row in part.matrix_of_inertia]
 
-    if about is None:
-        about_label = "com"
-    else:
+    if about is not None:
         d = [about[i] * 1e-3 - com[i] for i in range(3)]
         inertia = _parallel_axis(inertia, mass, d)
-        about_label = f"point {tuple(about)} mm"
 
-    return {"mass": mass, "com": com, "inertia": inertia, "about": about_label}
+    return {"mass": mass, "com": com, "inertia": inertia, "about": _about_key(about)}
+
+
+def _about_key(about):
+    """Normalize an `about` point so (50, 0, 0), [50.0, 0, 0] and the tuple
+    a props dict carries all compare equal. None means the COM."""
+    if about is None:
+        return None
+    try:
+        x, y, z = about
+        return (float(x), float(y), float(z))
+    except (TypeError, ValueError) as exc:
+        # Catches the old formatted-string form ("com", "point (0, 0, 0) mm")
+        # loudly instead of comparing it as an opaque blob.
+        raise ValueError(
+            f"`about` must be None (the part's COM) or an (x, y, z) point in mm, "
+            f"got {about!r}"
+        ) from exc
+
+
+def _about_label(about) -> str:
+    """Human-readable name for the point a tensor is taken about, for print."""
+    return "com" if about is None else f"point {tuple(about)} mm"
 
 
 def _parallel_axis(i_com, mass, d):
@@ -110,7 +135,12 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
 
     tol is fractional (0.10 = 10%). Returns a list of human-readable
     failures; empty list means the loop closes.
+
+    Raises on a target that cannot check anything — empty, or all typos.
+    Every branch below is `if "<key>" in target`, so an unvalidated target
+    is a gate that reports green forever: `{"masss": 0.0001}` used to pass.
     """
+    _validate_target(target)
     fails = []
 
     if "mass" in target:
@@ -122,6 +152,12 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
             )
 
     if "com" in target:
+        # zip() truncates: a 1-tuple used to check x and silently skip y, z.
+        if len(target["com"]) != 3:
+            raise ValueError(
+                f"compare_to_target: target['com'] needs all 3 axes in m, "
+                f"got {len(target['com'])}: {target['com']!r}"
+            )
         for axis, got, want in zip("xyz", props["com"], target["com"]):
             # COM is compared on an absolute scale, not fractional: a
             # target of 0.0 on an axis has no percentage to be off by.
@@ -133,15 +169,25 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
                 )
 
     if "inertia" in target:
+        scale = max(abs(target["inertia"][k][k]) for k in range(3))
         for i in range(3):
             for j in range(3):
                 want = target["inertia"][i][j]
                 got = props["inertia"][i][j]
-                # Products of inertia are routinely ~0; a fractional
-                # tolerance on them is meaningless, so gate them against
-                # the trace scale instead.
-                scale = max(abs(target["inertia"][k][k]) for k in range(3))
-                if abs(want) < 0.01 * scale:
+                # OFF-DIAGONAL products of inertia are routinely ~0; a
+                # fractional tolerance on them is meaningless, so gate those
+                # against the trace scale instead.
+                #
+                # The DIAGONAL never gets that treatment (`i != j`), even
+                # when it is small. A slender body — every robot link — has
+                # an axial moment legitimately below 1% of its transverse
+                # ones, and an absolute tolerance of tol*scale there exceeds
+                # the term itself by orders of magnitude. A 400x8x8 bar
+                # target vs a realized 30 mm OD tube is 20x wrong on Ixx and
+                # used to report a clean pass. A diagonal that is EXACTLY
+                # zero has no fraction to take (and no solid body has one),
+                # so it gets the absolute floor and nothing else does.
+                if (i != j and abs(want) < 0.01 * scale) or (i == j and want == 0.0):
                     if abs(got - want) > tol * scale:
                         fails.append(
                             f"inertia[{i}][{j}] {got:.3e} vs target ~0 "
@@ -152,13 +198,39 @@ def compare_to_target(props: dict, target: dict, tol: float = 0.10) -> list[str]
                         f"inertia[{i}][{j}] {got:.3e} vs target {want:.3e} "
                         f"({_pct(got, want)}, tol {tol:.0%})"
                     )
-        if props["about"] != target.get("about", props["about"]):
+        if _about_key(props["about"]) != _about_key(target.get("about", props["about"])):
             fails.append(
-                f"inertia taken about {props['about']} but target is about "
-                f"{target['about']} - these are not comparable"
+                f"inertia taken about {_about_label(props['about'])} but target is "
+                f"about {_about_label(_about_key(target['about']))} - not comparable"
             )
 
     return fails
+
+
+_TARGET_KEYS = ("mass", "com", "com_tol", "inertia", "about")
+# Keys that only mean something alongside another key; alone they are read
+# by nothing, which is the same silent pass as a typo.
+_TARGET_NEEDS = (("com_tol", "com"), ("about", "inertia"))
+
+
+def _validate_target(target: dict) -> None:
+    unknown = sorted(set(target) - set(_TARGET_KEYS))
+    if unknown:
+        raise ValueError(
+            f"compare_to_target: unknown target key(s) {unknown}; "
+            f"recognized keys are {list(_TARGET_KEYS)}"
+        )
+    if not {"mass", "com", "inertia"} & set(target):
+        raise ValueError(
+            f"compare_to_target: target {dict(target)} checks nothing. Give it at "
+            f"least one of mass, com, inertia - an empty target is a green gate."
+        )
+    for key, needs in _TARGET_NEEDS:
+        if key in target and needs not in target:
+            raise ValueError(
+                f"compare_to_target: target['{key}'] does nothing without "
+                f"target['{needs}']"
+            )
 
 
 def _off_by(got, want, tol):
@@ -182,9 +254,26 @@ def contained(inner, outer, tol: float = 1e-6) -> bool:
     volume goes up rather than down. Nothing about the build fails. The
     part is simply wrong.
 
-    Call it in the recipe on the feature's footprint BEFORE cutting, so
-    the violation raises where the dimension is (see part.py).
+    Call it in the recipe on a SOLID probe of the feature — the shape the
+    feature will occupy, extruded — BEFORE cutting, so the violation raises
+    where the dimension is (see part.py's `_assert_pattern_fits`).
+
+    `inner` must be a solid. This measures the leaked VOLUME, and a sketch,
+    face or wire has none, so a flat probe would read as contained from
+    500 mm away. That is why it raises rather than returning True.
+
+    tol is the leak volume in mm^3 tolerated as boolean noise. Measured on
+    build123d 0.11.1 / OCCT: a probe whose face is coincident with an R6
+    fillet — plus both flat faces — leaks EXACTLY 0.0 mm^3, so the 1e-6
+    default clears the noise floor with six orders to spare and is not
+    quietly absorbing a real escape. Keep it small for the same reason
+    (see demo()).
     """
+    if inner.volume <= 0:
+        raise ValueError(
+            "contained(): `inner` has no volume, so there is nothing to test - "
+            "pass a solid probe of the feature, not a sketch, face or wire."
+        )
     leak = inner.cut(outer)
     if leak is None:
         return True
@@ -242,8 +331,17 @@ def sweep_clearance(pose, qs, ignore=(), min_volume=1e-6) -> list[tuple]:
         ignore: pairs of names that are allowed to touch, as
             {("upper_arm", "forearm"), ...} — parts sharing a joint
             overlap by design and would otherwise flood the output.
-        min_volume: mm^3 below which an overlap is treated as tangency
-            noise rather than a collision.
+        min_volume: mm^3 below which an overlap is discarded as a boolean
+            sliver. NOT a tangency floor — OCC reports exact tangency as
+            exactly 0.0 (measured on 0.11.1: coincident faces, a touched
+            edge, and a cylinder tangent to a plane all return 0.0), so
+            tangency never reaches this test. Nor is the default a
+            meaningful envelope filter: 0.0001 mm of interpenetration
+            between two 10 mm cubes measures 0.01 mm^3, ten thousand times
+            this default, so every real contact is reported. It exists only
+            to drop slivers, and it is deliberately left where it swallows
+            nothing physical. Raise it if you want shallow grazes ignored,
+            and pick the number from the graze depth you'll accept.
 
     Returns [(q, name_a, name_b, overlap_mm3), ...], worst first.
     """
@@ -281,19 +379,33 @@ def write_views(part, path_stem: str, views=("front", "top", "right", "iso")) ->
     is not crude — it is the real projected geometry, so it cannot drift
     from the recipe the way a hand-drawn ASCII sketch does.
 
+    The views are exported TRUE 1:1: the SVG declares millimetres and they
+    are the part's own millimetres, so a reader can measure a feature off
+    the page and every view in the set shares one scale. Normalizing each
+    view to a fixed size — the obvious thing, and what this did — rescales
+    each view independently by its own extent, which drew the same 6 mm
+    plate at 7.50 mm in the front view and 8.00 mm in the right one while
+    still declaring Unit.MM.
+
+    The camera is aimed at the bounding-box centre, not at the origin.
+    `project_to_viewport` defaults `look_at` to the shape's centre, so a
+    camera parked on a bare axis direction views an off-origin part along a
+    slightly TILTED axis and the projection is no longer 1:1 in either
+    direction: a 16 mm-tall part measured 16.67 mm in its front view.
+
     Returns the paths written.
     """
     written = []
     bbox = part.bounding_box()
+    centre = bbox.center()
     reach = max(bbox.size.X, bbox.size.Y, bbox.size.Z) * 10 + 100
 
     for name in views:
         direction, up = VIEWS[name]
-        origin = tuple(c * reach for c in direction)
-        visible, hidden = part.project_to_viewport(origin, up)
+        origin = tuple(c + d * reach for c, d in zip(tuple(centre), direction))
+        visible, hidden = part.project_to_viewport(origin, up, look_at=centre)
 
-        extent = max(Compound(children=list(visible) + list(hidden)).bounding_box().size)
-        exporter = ExportSVG(unit=Unit.MM, scale=100 / extent)
+        exporter = ExportSVG(unit=Unit.MM)  # scale left at 1: true 1:1
         exporter.add_layer("Visible")
         exporter.add_layer("Hidden", line_color=(99, 99, 99), line_type=LineType.ISO_DOT)
         exporter.add_shape(visible, layer="Visible")
@@ -313,7 +425,7 @@ def report(name: str, props: dict, fails: list[str]) -> bool:
     print(f"--- {name}")
     print(f"    mass      {props['mass'] * 1000:9.2f} g")
     print("    com       " + "  ".join(f"{c * 1000:8.2f}" for c in props["com"]) + "  mm")
-    print(f"    inertia about {props['about']} [kg m^2]:")
+    print(f"    inertia about {_about_label(props['about'])} [kg m^2]:")
     for row in props["inertia"]:
         print("      " + "  ".join(f"{v: .4e}" for v in row))
     if fails:
@@ -326,8 +438,22 @@ def report(name: str, props: dict, fails: list[str]) -> bool:
 
 
 def demo():
-    """Self-check: the unit conversions against a closed-form box."""
-    from build123d import Box, Location
+    """Self-check: the unit conversions against a closed-form box, plus one
+    assertion per red-team finding this file was fixed for. Each of those is
+    written to FAIL if its fix is reverted — they are the fix's only guard."""
+    import re
+    import tempfile
+    from pathlib import Path
+
+    from build123d import Axis, Box, Cylinder, Location, Rectangle
+
+    def raises(fn, *args, **kwargs) -> bool:
+        """A check handed nothing must say so, not report green."""
+        try:
+            fn(*args, **kwargs)
+        except ValueError:
+            return True
+        return False
 
     rho = 2700.0  # aluminium 6061
     box = Box(10, 20, 30)
@@ -357,6 +483,14 @@ def demo():
     assert interference(a, Box(1, 1, 1).locate(Location((100, 0, 0)))) == 0.0
     assert interference(a, Box(10, 10, 10).locate(Location((10, 0, 0)))) == 0.0
 
+    # F15: min_volume is NOT a tangency floor. These two measurements are
+    # exactly what sweep_clearance's docstring now claims — tangency reads
+    # as 0.0 (above), and the shallowest real interpenetration reads four
+    # orders ABOVE the 1e-6 default, so the default filters nothing
+    # physical. If either number moves, that docstring has gone stale.
+    grazed = interference(a, Box(10, 10, 10).locate(Location((10 - 1e-4, 0, 0))))
+    assert 0.009 < grazed < 0.011, grazed  # 0.0001 mm deep over 10x10 mm
+
     # contained(): the check rebuild_sweep can't make.
     plate = Box(80, 50, 6)
     assert contained(Box(4, 4, 6).locate(Location((20, 0, 0))), plate)
@@ -366,11 +500,97 @@ def demo():
     escaped = plate.cut(Box(4, 4, 6).locate(Location((20, 27, 0))))
     assert len(escaped.solids()) == 1 and escaped.volume > 0
 
+    # F4: contained() summed leak.solids(), and a sketch, face or wire has
+    # none — so a flat probe read as contained from 500 mm away. It must
+    # raise instead, because a zero-volume probe checked nothing.
+    assert raises(contained, Rectangle(4, 4).locate(Location((500, 0, 0))), plate)
+    assert raises(contained, plate.faces().sort_by(Axis.Z)[-1], plate)
+
+    # F17: is tol=1e-6 mm^3 actually above OCC's sliver noise? The worked
+    # example never drives a probe at the filleted corners, which is where
+    # booleans leave slivers, so measure it here. This probe's cylindrical
+    # face is coincident with the R6 fillet AND its flat faces are coplanar
+    # with the plate's — the worst tangency this template can produce.
+    rounded = Box(80, 50, 6)
+    rounded = rounded.fillet(6.0, rounded.edges().filter_by(Axis.Z))
+    flush = Cylinder(6, 6).locate(Location((80 / 2 - 6, 50 / 2 - 6, 0)))
+    spill = flush.cut(rounded)
+    sliver = 0.0 if spill is None else sum(s.volume for s in spill.solids())
+    # Measured, build123d 0.11.1 / OCCT: exactly 0.0 mm^3. tol clears it by
+    # six orders, so tol is doing no work here and must not be raised to
+    # where it would start swallowing real escapes like the one below.
+    assert sliver < 1e-9, f"OCC sliver at an R6 fillet is {sliver} mm^3, above tol"
+    assert contained(flush, rounded)
+    assert not contained(flush.locate(Location((80 / 2 - 5.9, 50 / 2 - 5.9, 0))), rounded)
+
     # compare_to_target catches what it should and passes what it should.
     assert compare_to_target(props, {"mass": m}) == []
     assert compare_to_target(props, {"mass": m * 1.5}) != []
     assert rebuild_sweep(lambda w: Box(w, 10, 10), {"w": [5, 10, 20]}) == []
     assert rebuild_sweep(lambda w: Box(w, 10, 10), {"w": [5, -1]}) != []
+
+    # F2: a slender body — every robot link — has an axial moment
+    # legitimately far below its transverse ones. Gating the DIAGONAL
+    # against the trace scale, the treatment off-diagonal products need,
+    # buys it an absolute tolerance bigger than the term itself. This
+    # 400x8x8 bar target vs a realized 30 mm OD tube is 20x wrong on Ixx
+    # (7.37e-07 against 1.49e-05) and used to return [].
+    bar = mass_properties(Box(400, 8, 8), rho)
+    tube = Cylinder(15, 400).cut(Cylinder(14.3, 400)).rotate(Axis.Y, 90)
+    tube_props = mass_properties(tube, rho)
+    assert tube_props["inertia"][0][0] / bar["inertia"][0][0] > 20
+    slender = compare_to_target(tube_props, {"inertia": bar["inertia"]})
+    assert any("inertia[0][0]" in f for f in slender), slender
+    # ...while an off-diagonal product still gets its absolute tolerance,
+    # which is the whole reason that branch exists.
+    near_zero = [row[:] for row in bar["inertia"]]
+    near_zero[0][1] = near_zero[1][0] = 0.0
+    assert compare_to_target(bar, {"inertia": near_zero}) == []
+
+    # F3: a target that can check nothing is a permanently green gate.
+    assert raises(compare_to_target, props, {})
+    assert raises(compare_to_target, props, {"masss": 0.0001})
+    assert raises(compare_to_target, props, {"com_tol": 0.001})
+    assert raises(compare_to_target, props, {"mass": m, "com_tol": 0.001})
+    assert raises(compare_to_target, props, {"mass": m, "about": None})
+
+    # F14a: zip() truncates, so a short com used to check x and silently
+    # skip y and z.
+    assert raises(compare_to_target, props, {"com": (0.0,)})
+    assert compare_to_target(props, {"com": props["com"]}) == []
+
+    # F14b: `about` is a structural point, not a formatted string. A target
+    # written (50, 0, 0) has to match a tensor taken about (50.0, 0, 0);
+    # compared as text those render differently and false-FAIL, and the
+    # commented template in part.py suggests exactly that text.
+    assert off["about"] == (50.0, 0.0, 0.0)
+    assert compare_to_target(off, {"inertia": off["inertia"], "about": (50, 0, 0)}) == []
+    assert compare_to_target(off, {"inertia": off["inertia"], "about": [50.0, 0, 0]}) == []
+    # A genuine mismatch — COM tensor vs joint-origin tensor — still fails.
+    assert compare_to_target(off, {"inertia": off["inertia"], "about": None}) != []
+    # The old string form is rejected loudly, not compared as an opaque blob.
+    assert raises(compare_to_target, off, {"inertia": off["inertia"], "about": "com"})
+
+    # F8: the views are 1:1, so a shared dimension measures the same in
+    # every view of the set. Rescaling each view by its own extent drew this
+    # part's 80 mm width as 100.09 mm, and its one 16 mm height as two
+    # different numbers. Off-origin on purpose: that is what tilts a camera
+    # aimed by direction alone, and a tilted view is not 1:1 either.
+    tall = Box(80, 75, 16).locate(Location((0, 0, 8)))
+    with tempfile.TemporaryDirectory() as tmp:
+        size = {}
+        for path in write_views(tall, str(Path(tmp) / "v"), views=("front", "right")):
+            # The DECLARED size, not the viewBox: the viewBox stays in model
+            # units whatever `scale` is, so it is exactly the number that
+            # cannot catch this bug.
+            wh = re.search(r'width="([\d.]+)mm"\s+height="([\d.]+)mm"', Path(path).read_text())
+            size[Path(path).stem.split("-")[-1]] = tuple(float(v) for v in wh.groups())
+    pad = 0.09  # ExportSVG fit_to_stroke pads the box by one line weight
+    assert math.isclose(size["front"][0], 80 + pad, abs_tol=0.01), size
+    assert math.isclose(size["right"][0], 75 + pad, abs_tol=0.01), size
+    # The SAME 16 mm dimension, measured off two different views.
+    assert math.isclose(size["front"][1], size["right"][1], abs_tol=1e-6), size
+    assert math.isclose(size["front"][1], 16 + pad, abs_tol=0.01), size
 
     print("check.py self-tests passed (units, parallel axis, interference, targets)")
 
