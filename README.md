@@ -47,6 +47,29 @@ parameter sync and rebuild checks, interface dimensions, tolerances, and
 title-block properties, so the armature-cad Done-when checks run against
 the live model. See `mcp/solidworks/`.
 
+## Executable build recipes (build123d, optional)
+
+A part definition's build recipe is already a program — a numbered feature
+sequence with concrete dimensions. `armature-cad` ships a template
+(`skills/armature-cad/scripts/part_template/`) that writes it as
+[build123d](https://github.com/gumyr/build123d) beside the markdown, so:
+
+- the **inertia loop closes before you open CAD** — realized mass, COM, and
+  inertia checked against what `analysis/model/params.py` assumed,
+  cross-platform, at sketch grade;
+- the **recipe self-validates** — a feature that won't build, or a driven
+  dimension the recipe can't survive, fails in a second rather than forty
+  minutes into modeling (plus explicit containment checks for the features
+  that would otherwise be silently wrong instead of loudly broken);
+- the definition's *At a glance* section gets **real projected views** with
+  hidden lines instead of an ASCII sketch that drifts;
+- **interference sweeps run at the kinematics stage**, on crude link
+  envelopes, where a self-collision is still a joint limit and not a rebuild.
+
+Not a dependency and not a CAD replacement — no assemblies, drawings, GD&T,
+or FEA. Tested against build123d 0.11.1; run it with
+`uv run --with 'build123d~=0.11' python cad/parts/<PART-ID>.py`.
+
 ## Example output
 
 From a real project run with Armature — the Ibex rover, a squatting camera platform. Each card is generated from the `armature-math` stage's re-runnable Python model:
@@ -83,7 +106,8 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
     decisions.md             one-line-per-decision log (§6.7)
   analysis/                  armature-math derivations (.md) + model (.py)
   cad/
-    parts/                   part definitions
+    parts/                   part definitions (.md), + optional runnable
+                             build recipes (.py) and their SVG views
     assemblies/              assembly definitions (§6.5)
     ots-parts/
       index.md               model file → P/N → datasheet entry

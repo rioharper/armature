@@ -72,6 +72,7 @@ In `03_results.md`: this is the old Section 7 — the derivation exists to chang
 
 - A peak or static torque that exceeds the chosen actuator's rating, or leaves less than the margin the spec demands. Show the number against the datasheet limit — prefer the worst-case-over-workspace torque to the torque at one convenient posture.
 - A singularity that sits *inside* the intended workspace rather than safely outside it.
+- A posture the FK says is reachable but the machine can't hold, because a link folds into its own base or a neighbour. Joint limits derived from the geometry are as much a Milestone 3 result as a torque is, and a link length that only collides at the stops is a `params.py` change while it's still a number. The FK here gives the postures; crude link envelopes swept over the joint range give the collisions — `armature-cad`'s `scripts/part_template/sweep.py` does that in a few dozen lines and reports the offending postures back in radians, ready to act on.
 - A mass, inertia, or reduction that breaks a spec budget.
 - Loads or speeds that violate an assumption the derivation rests on (the numbered assumptions from `00_setup.md`).
 
