@@ -309,22 +309,36 @@ def _summarize(hits, qs):
         entries.sort(key=lambda e: e[1])
         first_q, first_vol = entries[0]
         worst_q, worst_vol = entries[-1]
+        # An axis is only "free" if it was actually VARIED. Without the
+        # len > 1 guard, an axis held at a single value trivially matches
+        # the swept set and prints `any` - claiming coverage of an axis
+        # that was never swept, which is the one thing this file exists
+        # not to do.
         free = tuple(
-            {q[k] for q, _ in entries} == swept[k] for k in range(len(swept))
+            len(swept[k]) > 1 and {q[k] for q, _ in entries} == swept[k]
+            for k in range(len(swept))
         )
         rows.append((a, b, len(entries), first_q, first_vol, worst_q, worst_vol, free))
     return sorted(rows, key=lambda r: -r[6])
 
 
 def _grid_steps(qs):
-    """Smallest gap between distinct sampled values on each axis, in
+    """LARGEST gap between distinct sampled values on each axis, in
     degrees, or None for an axis sampled at a single value. This is the
-    resolution the report's boundary caveat is stated in."""
+    resolution the report's boundary caveat is stated in.
+
+    Largest, not smallest: the caveat tells the reader the true onset lies
+    up to one step before the first interfering sample, so on a
+    non-uniform grid the smallest gap would understate how far back that
+    boundary can be - an error in the direction that under-warns. The
+    built-in grid is uniform and the two agree there, but main() accepts
+    arbitrary postures.
+    """
     steps = []
     for k in range(len(qs[0])):
         values = sorted({q[k] for q in qs})
         gaps = [b - a for a, b in zip(values, values[1:])]
-        steps.append(math.degrees(min(gaps)) if gaps else None)
+        steps.append(math.degrees(max(gaps)) if gaps else None)
     return steps
 
 
@@ -539,6 +553,23 @@ def demo():
     # q1 - so the row must say so rather than presenting one arbitrary
     # sample of it as if it mattered.
     assert elbow_row[7] == (True, False), elbow_row[7]
+
+    # ...but only when that axis was actually SWEPT. Hold q1 at a single
+    # value and it must NOT read `any`: the pair interfering at every
+    # sampled q1 is not a finding when q1 had exactly one sample.
+    pinned = [(0.0, q2) for _, q2 in coarse_qs]
+    pinned_row = next(
+        r for r in _summarize(sweep_clearance(pose, pinned, ignore=ADJACENT), pinned)
+        if r[:2] == ("link1", "link2")
+    )
+    assert pinned_row[7] == (False, False), pinned_row[7]
+
+    # The boundary caveat says the true onset lies up to ONE STEP before
+    # the first interfering sample, so the step reported for a non-uniform
+    # grid must be the LARGEST gap. Taking the smallest would understate
+    # how far back the boundary can sit - under-warning the reader.
+    ragged = [(0.0, math.radians(d)) for d in (0.0, 1.0, 91.0)]
+    assert math.isclose(_grid_steps(ragged)[1], 90.0), _grid_steps(ragged)
 
     # Without a slop guard the threshold is an exact-equality knife edge
     # against OCC's own float noise. base<->link1's threshold IS the
