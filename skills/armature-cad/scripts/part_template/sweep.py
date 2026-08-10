@@ -93,24 +93,51 @@ POST_H = 250.0
 # and ADJACENT below for why link1<->link2 no longer needs a volume
 # threshold at all once this is in place.
 #
-# Sized to the box's OWN cross-section: JOINT_TRIM = LINK_W / 2, the
-# half-width already baked into every link. Measured consequence (this
-# file's own demo() re-derives it, not just this comment):
+# Fix round 3 correction: an earlier version of this comment sized the
+# trim from "the box's own cross-section" and gave a trim-vs-onset table
+# that was wrong for half its rows. Measured (isolated two-box rig, not
+# this worked example, so widths could be varied independently):
 #
-#   trim  onset (deg, 1 deg res)   i.e. clean interior range
-#   0        0 (flush at home - the removed fix's actual bug)
-#   10      45
-#   20      91   <- LINK_W / 2, chosen
-#   40     121-150 (diminishing return; also thins the envelope 16%)
+#   w1(untrimmed) w2(trimmed) trim   onset (deg, 1 deg res)
+#     40           40          0      1   (flush at home - the pre-trim bug)
+#     40           40         10     31
+#     40           40         20     91   <- LINK_W / 2 both links, chosen
+#     40           40         40    127
+#     60           40         20     46   (trim = w2/2, the WRONG rule)
+#     60           40         30     91   (trim = w1/2, the RIGHT rule)
+#     40           60         30    107
+#
+# The onset is governed by the UNTRIMMED NEIGHBOUR's half-width (link1's,
+# since link2 is the one being trimmed), NOT the trimmed box's own -
+# compare the w1=60/w2=40 rows: trim sized from link2's own half-width
+# (20) gives onset 46 deg, trim sized from link1's half-width (30) gives
+# 91 deg, the same as the all-40mm case. `JOINT_TRIM = LINK_W / 2` is
+# correct here ONLY because both links share `LINK_W`; a mechanism whose
+# links have different widths must size the trim from the NEIGHBOUR
+# link's half-width, not its own.
+#
+# Rule of thumb (not a certified bound - this is a crude planning tool):
+# onset ~= 180 - 2*atan((w_neighbour/2) / trim), valid once
+# trim >= w_neighbour/2 (below that, the untrimmed neighbour's own corner
+# sticks out past the trim and dominates instead - see the w1=60/w2=40/
+# trim=20 row, which trim=w1/2=30 would put in the valid regime instead).
+# Measured accurate to ~1 deg near trim = w_neighbour/2 (3 of 4 tested
+# configurations); measured up to 6 deg OPTIMISTIC (predicts a later,
+# safer-looking onset than actually occurs) when the TRIMMED link's own
+# width is much larger than the untrimmed one and trim sits well above
+# w_neighbour/2 (w1=40/w2=60/trim=30: formula predicts 112.6, measured
+# 107). If your two links have visibly different widths, measure your own
+# onset the way this file's demo() does rather than trusting the formula.
 #
 # 20 mm leaves link1<->link2 EXACTLY 0.0 mm^3 for the entire q2 in
 # [-90, 90] deg range (not just below some volume floor - the boxes have a
-# real, measured gap there) and reports it from 91 deg outward, growing
-# to the same 300000 mm^3 fold-back overlap at 180 deg as before. That is
-# what makes a threshold measured at ANY single posture wrong for this
-# pair (the red-team review's point): the excuse has to track a whole
-# RANGE, and a box set back by its own half-width is what buys that range
-# instead of a volume number guessed to cover it.
+# real, measured gap there) and reports it from 91 deg outward, growing to
+# 276000 mm^3 (not 300000 - trimming removed a 20x40x30 mm slab from the
+# fully-folded overlap too) at 180 deg. That is what makes a threshold
+# measured at ANY single posture wrong for this pair (the red-team
+# review's point): the excuse has to track a whole RANGE, and a box set
+# back from the joint is what buys that range instead of a volume number
+# guessed to cover it.
 JOINT_TRIM = LINK_W / 2
 
 
@@ -188,6 +215,18 @@ def pose(q) -> dict:
 # pair does not get that guarantee from a threshold at any single sample -
 # which is exactly what went wrong here, and why link1<->link2 uses a
 # geometric fix instead of a bigger, better-chosen threshold.
+#
+# THE TRIM HAS ITS OWN, DIFFERENT BLIND SPOT (Important C, fix round 3):
+# JOINT_TRIM does not just excuse link1<->link2, it deletes link2's first
+# JOINT_TRIM mm from the MODEL. That missing stub cannot be reported as
+# colliding with ANYTHING - not just link1, any body - because there is no
+# geometry there to test. Harmless in this worked example only because
+# nothing else passes within JOINT_TRIM of the elbow (the stub sits
+# 280-320 mm out from the origin; POST_R=60 doesn't reach it). Add a body
+# that could pass near the elbow (a cable run, a second arm) and this trim
+# would silently miss a collision with the missing 20 mm the same way an
+# `ignore` threshold misses one below its volume - check it explicitly if
+# you add one.
 def _ensure_geometry():
     """Resolve L1/L2 from params.py and derive ADJACENT's threshold.
 
@@ -257,29 +296,71 @@ def joint_limits_and_interior(n: int = 37):
     return [(a, b) for a in grid(*q1_range) for b in grid(*q2_range)]
 
 
-def main(qs=None) -> int:
+def _summarize(hits):
+    """Collapse sweep_clearance's per-posture hits to one row per pair -
+    its ONSET (smallest overlap among the hits: the posture closest to the
+    clearing boundary) and its WORST (largest overlap).
+
+    Critical 2 / criteria 3+4 restated, fix round 3: printing every
+    posture buried the two facts a reader actually needs behind noise
+    that isn't even independent information - the worked example's
+    link1<->link2 overlap does not depend on q1 at all, so its 666 raw
+    hits were 18 distinct q2 values times 37 REDUNDANT q1 copies of the
+    same finding. Reducing "reported postures" as a fraction (round 2's
+    metric) never fixes this, because the redundancy scales with however
+    fine the OTHER, irrelevant axis is sampled. Reporting per PAIR does:
+    the row count here is bounded by the number of pairs, never by the
+    grid's resolution. The onset is also literally the number a reader
+    needs to set a joint limit from - which is why Milestone 3 points
+    here in the first place.
+
+    Returns [(name_a, name_b, count, onset_q, onset_vol, worst_q,
+    worst_vol), ...], worst-first by `worst_vol`.
+    """
+    by_pair = {}
+    for q, a, b, vol in hits:
+        by_pair.setdefault((a, b), []).append((q, vol))
+    rows = []
+    for (a, b), entries in by_pair.items():
+        entries.sort(key=lambda e: e[1])
+        onset_q, onset_vol = entries[0]
+        worst_q, worst_vol = entries[-1]
+        rows.append((a, b, len(entries), onset_q, onset_vol, worst_q, worst_vol))
+    return sorted(rows, key=lambda r: -r[6])
+
+
+def main(qs=None, verbose=True) -> int:
     """Sweep `qs` (default: `joint_limits_and_interior()`) and report hits.
 
     `qs` is a parameter (Important 5, fix round 2) so demo() can exercise
     this function's real print/return-code behaviour against a couple of
     cheap hand-picked postures instead of paying for the full ~1400-
-    posture default grid a second time on every run.
+    posture default grid a second time on every run. `verbose=False`
+    (Minor, fix round 3) silences the printing for exactly that use: a
+    one-posture fixture call used to print a full "swept 1 postures, ..."
+    report block ahead of the real one, indistinguishable from it at a
+    glance.
     """
     _ensure_geometry()
     if qs is None:
         qs = joint_limits_and_interior()
     hits = sweep_clearance(pose, qs, ignore=ADJACENT)
+    summary = _summarize(hits)
 
-    print(f"swept {len(qs)} postures, {len(hits)} interfering")
-    for q, a, b, vol in hits[:10]:
-        print(
-            f"  q = ({math.degrees(q[0]):7.1f} deg, {math.degrees(q[1]):7.1f} deg)"
-            f"  {a} <-> {b}  overlap {vol / 1000:8.1f} cm^3"
-        )
-    if len(hits) > 10:
-        print(f"  ... and {len(hits) - 10} more")
+    if verbose:
+        print(f"swept {len(qs)} postures, {len(hits)} interfering ({len(summary)} distinct pair(s))")
+        for a, b, count, onset_q, onset_vol, worst_q, worst_vol in summary:
+            print(f"  {a} <-> {b}: {count} of {len(qs)} postures interfere")
+            print(
+                f"    onset (nearest clear)  q = ({math.degrees(onset_q[0]):7.1f} deg, "
+                f"{math.degrees(onset_q[1]):7.1f} deg)  overlap {onset_vol / 1000:8.1f} cm^3"
+            )
+            print(
+                f"    worst                  q = ({math.degrees(worst_q[0]):7.1f} deg, "
+                f"{math.degrees(worst_q[1]):7.1f} deg)  overlap {worst_vol / 1000:8.1f} cm^3"
+            )
 
-    if hits:
+    if hits and verbose:
         print(
             "\nThis is an armature-math finding, not a CAD one: tighten a joint\n"
             "limit or change a link length in params.py, re-derive, re-run."
@@ -328,11 +409,17 @@ def demo():
     # provably wrong for this pair (see the comment above ADJACENT) and
     # flagged 98.2% of the swept grid. At q2=180 the OLD (pre-F7) code
     # reported ONLY base<->link2 (5321.8 mm^3) and hid link1<->link2
-    # (300000 mm^3) completely; both must be visible now, worst first.
-    # base<->link1 stays quiet - its constant 35321.8 mm^3 is exactly its
-    # own threshold, never above it (see the epsilon note below).
+    # completely; both must be visible now, worst first. base<->link1
+    # stays quiet - its constant 35321.8 mm^3 is exactly its own
+    # threshold, never above it (see the epsilon note below).
     hits = sweep_clearance(pose, [(0.0, math.pi)], ignore=ADJACENT)
     assert [(h[1], h[2]) for h in hits] == [("link1", "link2"), ("base", "link2")], hits
+    # Important B (fix round 3): the fully-folded overlap DROPPED from
+    # 300000 to 276000 mm^3 when the trim shipped (a 20x40x30 mm slab of
+    # link2 no longer exists to overlap with) and nothing asserted it, so
+    # a comment claiming "still 300000" went stale on the very commit that
+    # falsified it. Assert the real number so it can't drift silently again.
+    assert math.isclose(hits[0][3], 276000.0), hits[0][3]
 
     # Acceptance 1 (fix round 2): a mechanism whose joint limits keep the
     # elbow inside JOINT_TRIM's clean zone must sweep clear. q2 confined to
@@ -369,17 +456,70 @@ def demo():
     assert onset_pos == onset_neg, "expected the onset to be symmetric"
     assert onset_pos == 91, onset_pos  # measured: JOINT_TRIM = LINK_W/2 = 20 mm -> 91 deg
 
-    # Acceptance 4: reported postures must be a small fraction of swept
-    # ones, not the 98.2% round 1 produced. link1<->link2 interferes for
-    # |q2| > 91 deg regardless of q1 (base<->link2's fold - the other
-    # contributor - is a much narrower band, F10 below), so the true
-    # fraction is bounded by the swept q2 range beyond the onset, not by
-    # anything left tunable in sweep_clearance; this asserts it stays that
-    # shape rather than reverting to "almost everything".
-    all_hits = sweep_clearance(pose, joint_limits_and_interior(), ignore=ADJACENT)
-    reported_postures = len({h[0] for h in all_hits})
-    swept_postures = len(joint_limits_and_interior())
-    assert reported_postures / swept_postures < 0.6, (reported_postures, swept_postures)
+    # Important A (fix round 3): the trim-vs-onset table in JOINT_TRIM's
+    # comment was wrong for half its rows (an earlier version claimed
+    # trim=10mm -> 45 deg; measured is 31 deg). Re-derive one row directly
+    # against an isolated two-box rig (not this file's pose(), so LINK_W
+    # can't leak in and make the test trivially agree with itself) so a
+    # future comment edit that regresses the table fails this, not just a
+    # reader's trust in a comment.
+    def isolated_onset(w1, w2, trim):
+        """Same box-pivot geometry as pose()'s link1/link2, in isolation:
+        link1 (width w1, untrimmed) meets link2 (width w2, set back
+        `trim` from the shared pivot) at q1=0."""
+        link1 = Box(L1, w1, LINK_H).locate(Location((L1 / 2, 0, 0)))
+        elbow = Location((L1, 0, 0))
+        l2len = L2 - trim
+        link2 = Box(l2len, w2, LINK_H).locate(Location((trim + l2len / 2, 0, 0)))
+        for deg in range(1, 180):
+            rotated = elbow * (Rotation(0, 0, deg) * link2)
+            if interference(link1, rotated) > 0.0:
+                return deg
+        raise AssertionError("no onset found in the scanned range")
+
+    assert isolated_onset(LINK_W, LINK_W, 10.0) == 31, "trim-vs-onset table row (trim=10mm) went stale"
+    # The rule ("size from the NEIGHBOUR's half-width, not the trimmed
+    # box's own") only matters when the two links differ - the worked
+    # example can't catch a regression to "trim from link2's own width"
+    # because LINK_W is shared. This can: trim sized from link2's own
+    # half-width (20, wrong rule) gives a much earlier, more dangerous
+    # onset than trim sized from link1's (30, right rule) on a mechanism
+    # with a wider proximal link.
+    assert isolated_onset(60.0, 40.0, 20.0) == 46, "w2/2-sized trim (wrong rule)"
+    assert isolated_onset(60.0, 40.0, 30.0) == 91, "w1/2-sized trim (right rule)"
+
+    # Acceptance criteria 3+4, RESTATED (fix round 3): "reported postures
+    # as a fraction of swept ones" (round 2's metric) never actually fixes
+    # the flood, because link1<->link2's overlap doesn't depend on q1 at
+    # all - any fraction under that metric is however many distinct q2
+    # values collide, multiplied by however finely q1 happens to be
+    # sampled. A coarse grid (n=13, cheap - ~170 postures, not the full
+    # ~1400) still has the same q1-redundancy shape and is enough to prove
+    # the real fix: `_summarize()` collapses to ONE row per pair no matter
+    # how many raw postures collided, because the row count is bounded by
+    # the number of PAIRS, not by grid resolution - and each row's `onset`
+    # is the number a reader needs to set a joint limit from (criterion 3).
+    coarse_qs = joint_limits_and_interior(13)
+    coarse_hits = sweep_clearance(pose, coarse_qs, ignore=ADJACENT)
+    assert len(coarse_hits) > 20, "fixture assumption: the coarse grid needs real redundancy to prove anything"
+    summary = _summarize(coarse_hits)
+    # At most 2 pairs interfere in this worked example (link1<->link2,
+    # base<->link2); base<->link1 is excused. However many raw hits, the
+    # summary is one row per pair - the "small number of distinct facts"
+    # criterion 4 now asks for, verified against real (if coarse) data
+    # rather than assumed from the design.
+    assert len(summary) <= 2, summary
+    elbow_row = next(r for r in summary if r[:2] == ("link1", "link2"))
+    # The row's own onset must be the smallest interfering |q2| this
+    # coarse grid actually sampled, not an arbitrary pick - and it must be
+    # printable: main() prints exactly onset_q/onset_vol/worst_q/worst_vol
+    # from this same tuple shape (verified end-to-end via main() below).
+    assert elbow_row[2] > 10, "fixture assumption: many raw hits collapsed to this one row"
+    onset_q2_deg = abs(math.degrees(elbow_row[3][1]))
+    # n=13 over +-180 steps every 30 deg (-180,-150,...,150,180); the
+    # first step past the true 91 deg onset is 120 deg (isclose: the grid
+    # is built from float division, not exact multiples of 30).
+    assert math.isclose(onset_q2_deg, 120, abs_tol=1e-6), onset_q2_deg
 
     # Critical 1: the threshold is an exact-equality knife edge against
     # OCC's own floating-point noise. base<->link1's threshold IS the
@@ -409,9 +549,27 @@ def demo():
     # --- F9 (Important 5: cheap, not the full ~1400-posture default grid
     # twice per run): main() must not exit 0 on a posture that collides,
     # and must exit 0 on one that clears - exercising the real function,
-    # not a stand-in for it.
-    assert main([(0.0, math.pi)]) == 1, "a colliding posture must return nonzero"
-    assert main([(0.0, 0.0)]) == 0, "a clear posture must return 0"
+    # not a stand-in for it. verbose=False (Minor, fix round 3): these are
+    # one-posture fixtures, and printing their report blocks used to open
+    # `python sweep.py`'s output with a fake "swept 1 postures, ..." line
+    # ahead of the real one, indistinguishable from it at a glance.
+    assert main([(0.0, math.pi)], verbose=False) == 1, "a colliding posture must return nonzero"
+    assert main([(0.0, 0.0)], verbose=False) == 0, "a clear posture must return 0"
+
+    # Critical 2: the onset must be identifiable in main()'s actual PRINTED
+    # output, not only in the summary tuple `_summarize()` returns -
+    # that's what a user reading `python sweep.py` sees, and reading a
+    # joint limit off it is the entire reason armature-math routes here.
+    import contextlib
+    import io
+
+    captured = io.StringIO()
+    with contextlib.redirect_stdout(captured):
+        main(coarse_qs)
+    printed = captured.getvalue()
+    assert "onset" in printed, "the printed report must label the onset explicitly"
+    assert "120.0" in printed, "the elbow pair's onset value must appear in the printed report"
+    assert "... and" not in printed, "must not fall back to a truncated per-posture list"
 
     # --- F10: n<2 used to be a bare ZeroDivisionError (n=1: division by
     # n-1=0); it must raise a clear error instead.

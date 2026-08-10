@@ -340,10 +340,11 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             MEASURED AT THE PAIR'S OWN DESIGN/NEUTRAL POSTURE as the
             threshold, not a guessed margin — sweep.py derives it by
             calling `pose()` once at the home posture and taking
-            `interference()` for each adjacent pair, so the excuse is
-            sized to what the envelope actually does at rest, not picked
-            by feel. Overlap ABOVE the threshold is reported like any
-            other pair, at whatever posture it happens.
+            `interference()` for the ONE pair that fits this mechanism
+            (see below — most pairs don't), so the excuse is sized to
+            what the envelope actually does at rest, not picked by feel.
+            Overlap ABOVE the threshold is reported like any other pair,
+            at whatever posture it happens.
 
             This replaces a plain set of always-ignored pairs, which hid
             the dominant self-collision class on a worked 2R arm (F7): a
@@ -385,6 +386,16 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             while something else is wrong. It is a real gap for any other
             pair, which is exactly why a growing-overlap pair belongs in
             geometry, not in this dict.
+
+            A GEOMETRIC excuse (a trim, a rounded corner) has a DIFFERENT
+            residual blind spot than a threshold, and it is not this one
+            (Important C, fix round 3): it removes material from the
+            model, so a collision between that missing material and ANY
+            body — not only the pair it was trimmed for — is invisible,
+            because there is nothing there to test. sweep.py's `JOINT_TRIM`
+            documents this explicitly next to where it's applied; a `.py`
+            that adds a geometric excuse of its own needs the same
+            disclosure, in that file, not just here.
         min_volume: mm^3 below which an overlap is discarded as a boolean
             sliver — the floor every pair gets, including one named in
             `ignore` with a smaller threshold. NOT a tangency floor — OCC
@@ -397,20 +408,25 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
             reported. It exists only to drop slivers, and it is
             deliberately left where it swallows nothing physical. Raise it
             if you want shallow grazes ignored, and pick the number from
-            the graze depth you'll accept.
+            the graze depth you'll accept. This is the ONLY floor a pair
+            with no `ignore` entry gets (a bare `v > min_volume`, exactly
+            as documented above) — it is not doubled for those pairs; see
+            below for the one that does get more.
 
-            It also doubles as the floating-point slop guard on `ignore`'s
-            threshold (Critical 1, fix round 2): a threshold IS the OCC
-            volume measured at one posture, and recomputing "the same"
-            boolean at a different posture can differ in the last bits
-            (measured on sweep.py's base<->link1: +2.18e-11 / -1.46e-11
-            mm^3 across 37 samples of the SAME nominal overlap). A bare
-            `v > threshold` reports that noise as a collision — 444 of
-            round 1's 1924 hits were exactly this. `min_volume`'s default
-            (1e-6) is ~1e5x that measured noise and still ~1e4x below the
-            shallowest real contact this module measures (0.01 mm^3, see
-            demo()'s F15 case), so it swallows the float noise and nothing
-            physical.
+            A pair NAMED in `ignore` gets `min_volume` a second time, as a
+            floating-point slop guard on its threshold (Critical 1, fix
+            round 2 — Minor, fix round 3: this note used to read as
+            applying to every pair, doubling the floor for ordinary ones
+            without saying so): a threshold IS the OCC volume measured at
+            one posture, and recomputing "the same" boolean at a different
+            posture can differ in the last bits (measured on sweep.py's
+            base<->link1: +2.18e-11 / -1.46e-11 mm^3 across 37 samples of
+            the SAME nominal overlap). A bare `v > threshold` reports that
+            noise as a collision — 444 of round 1's 1924 hits were exactly
+            this. `min_volume`'s default (1e-6) is ~1e5x that measured
+            noise and still ~1e4x below the shallowest real contact this
+            module measures (0.01 mm^3, see demo()'s F15 case), so it
+            swallows the float noise and nothing physical either way.
 
     Returns [(q, name_a, name_b, overlap_mm3), ...], worst first.
     """
@@ -422,12 +438,19 @@ def sweep_clearance(pose, qs, ignore=None, min_volume=1e-6) -> list[tuple]:
         for i, a in enumerate(names):
             for b in names[i + 1:]:
                 v = interference(bodies[a], bodies[b])
-                threshold = max(ignore.get(frozenset((a, b)), 0.0), min_volume)
-                # Critical 1: `threshold` IS a measured OCC volume, not an
-                # exact mathematical constant - compare with min_volume's
-                # slop, not bit-exact, or a recomputation of "the same"
-                # overlap a few ULPs off reports as a false collision.
-                if v > threshold + min_volume:
+                key = frozenset((a, b))
+                if key in ignore:
+                    # Critical 1: `ignore[key]` IS a measured OCC volume,
+                    # not an exact mathematical constant - compare with
+                    # min_volume's slop, not bit-exact, or a recomputation
+                    # of "the same" overlap a few ULPs off false-reports.
+                    threshold = ignore[key] + min_volume
+                else:
+                    # Minor (fix round 3): an ordinary pair keeps exactly
+                    # min_volume, not min_volume*2 - there is no separate
+                    # measurement here for float noise to creep in between.
+                    threshold = min_volume
+                if v > threshold:
                     hits.append((q, a, b, v))
     return sorted(hits, key=lambda h: -h[3])
 
