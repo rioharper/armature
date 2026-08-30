@@ -1,6 +1,6 @@
 # Context
 
-Glossary for the Armature plugin itself (not for user projects — their glossary lives in their own `CLAUDE.md`).
+Glossary for the Armature plugin itself (not for user projects — their glossary lives in their own `CONTEXT.md`, alongside `docs/adr/`).
 
 ## Terms
 
