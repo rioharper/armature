@@ -100,7 +100,9 @@ Never leave a `.md` part describing a robot the corresponding `.py` no longer bu
 
 Any milestone edge is a clean stopping point: files committed, tests green,
 review resolved, branch merged. A fresh session resumes from the repo alone —
-that's the point of the layout. When a Milestone 3 finding sends work
+that's the point of the layout. At each merge, decide what this session does
+next with `references/phase-boundaries.md` — five options, judged in order,
+at the boundary only. When a Milestone 3 finding sends work
 upstream (a requirement, part, or BOM number must change → armature-spec; a
 mechanism gap → armature-inventor agent), say which number broke and what it
 collides with, and update `docs/decisions.md` when the change is accepted.

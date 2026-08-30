@@ -21,6 +21,8 @@ Interview first; the spec comes after. Map the design as a **design tree** — e
 
 Facts are your job; decisions are the user's. When a frontier question turns on a lookupable fact — a datasheet number, a COTS part's existence, a material property — dispatch the **armature-librarian** agent mid-interview and keep asking the rest of the frontier while it runs; only the questions downstream of that fact wait for it.
 
+**Checkpoint each round.** After reflecting a round back, write the spec as it stands to `docs/01-spec/spec.md`, opening with a `> Draft — open questions: …` line carrying the live frontier. If that Draft line is already in the file on invocation, resume from it: settled requirements stand, and its open questions seed the frontier. The line survives Phases 1–2; Phase 3's finished spec drops it.
+
 Adapt questions to the project, but you are not done until you can answer these with numbers or an explicit "unknown, flagged as risk":
 
 1. **Mission** — What must the robot *do*, stated as observable outcomes, not mechanisms? ("Pick tomatoes" not "have a gripper.") What does success look like, quantitatively? Cycle time, payload, accuracy, uptime? If a concept brief exists, this is largely translating its RC-numbered outcomes into verifiable REQs rather than asking from scratch — confirm the numbers, don't relitigate the audience.

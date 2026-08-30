@@ -17,6 +17,8 @@ Facts are your job; decisions are the user's. When a frontier question turns on 
 
 The interview is done when the frontier is empty: nothing useful left to ask. A question that would only matter to an engineer sizing a part is out of scope here — prune that branch and say so.
 
+**Checkpoint each round.** After reflecting a round back, write the brief as it stands to `docs/00-concept/concept-brief.md`, opening with a `> Draft — open questions: …` line carrying the live frontier. If that Draft line is already in the file on invocation, resume from it: settled sections stand, and its open questions seed the frontier.
+
 1. **The problem** — What's actually broken, missing, slow, or annoying right now? For whom, specifically? "It would be cool if a robot did X" is not a problem statement; "task X currently takes a person Y minutes and fails Z% of the time" is closer.
 2. **Audience** — Who has this problem, specifically — not "researchers" or "farmers," but a description precise enough that you could go find three of them. How many people or organizations are in that group? What do they do today instead — nothing, a manual process, a competing product? If commercial: would they pay, and roughly what? If hobby or competition: does anyone besides the builder actually care, and why?
 3. **Differentiation** — Why this, why now, why not the thing that already exists? Name the actual alternative (a competing product, a published open-source design, or "doing it by hand") and say specifically what this idea does better, cheaper, faster, or more accessibly. If the honest answer is "nothing, really, I just want to build it" — that's a legitimate answer for a hobby project, but say it plainly rather than manufacturing a differentiation story that won't survive contact with a skeptic later.
@@ -33,7 +35,7 @@ The interview is done when the frontier is empty: nothing useful left to ask. A 
 
 ## The concept brief
 
-Once the interview has nothing useful left to ask, write the brief to `docs/00-concept/concept-brief.md` using `references/concept-brief-template.md`. Keep it short — this is a pitch, not a spec; if it's running past a page or two, something technical has crept in and belongs in the next skill instead.
+Once the interview has nothing useful left to ask, finish the brief at `docs/00-concept/concept-brief.md` using `references/concept-brief-template.md` and drop the Draft line — its absence is what marks the interview closed. Keep it short — this is a pitch, not a spec; if it's running past a page or two, something technical has crept in and belongs in the next skill instead.
 
 Requirements in the brief are abstract and outcome-level, numbered **RC-001…** (concept-level requirement) — deliberately a different scheme from **armature-spec**'s **REQ-0xx**, so nobody mistakes "sorts 95% of recyclables correctly" for a verified engineering requirement with a test method behind it. `armature-spec` translates each RC into one or more REQs once the technical work starts.
 

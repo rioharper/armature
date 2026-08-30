@@ -15,6 +15,8 @@ Before writing, resolve with the user: available hours per week, hard deadlines,
 
 Work these questions in rounds. Each round, ask the **frontier** — the questions whose prerequisites are already settled (a phase-ordering question waits until the spec gap that drives it is resolved); recompute the frontier after each round. Deliver rounds through the AskUserQuestion tool, your recommended answer as the first option labeled "(Recommended)", so a single word can accept it; the tool takes 4 questions per call, so a larger frontier spans consecutive calls within the round. Facts are your job; decisions are the user's: send a lookupable (a lead time, a part's availability, a datasheet number) to a subagent — the **armature-librarian** agent for parts and datasheets — and keep asking the rest of the frontier while it runs.
 
+**Checkpoint each round.** After each round, write the plan as it stands to `docs/02-plan/plan.md`, opening with a `> Draft — open questions: …` line carrying the live frontier. If that Draft line is already in the file on invocation, resume from it: settled answers stand, and its open questions seed the frontier. The finished plan drops the line.
+
 ## The plan document
 
 Write to `docs/02-plan/plan.md`. Structure:
