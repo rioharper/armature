@@ -1,6 +1,6 @@
 ---
 name: armature-cad
-description: Turn frozen kinematic/dynamic parameters, chosen parts, and coordinate frames into CAD-ready part definitions — each part's interfaces, loads, material, datums, tolerances, and inertia target — plus a build recipe for the user's CAD package (SOLIDWORKS, Fusion 360, Onshape). Use whenever the user is ready to model a mechanical part and asks what it needs, says "how do I CAD/model this bracket/housing/link", wants a quick sketch-grade definition to start modeling during ideation, wants a bolt pattern or bearing fit worked out from a datasheet, wants worst-case joint loads translated into wall thickness and material, wants to check that a modeled part's mass and inertia match what the dynamics assumed, or is executing a plan's detail-design/DFM task for a specific part. Also reach here from armature-plan when a detail-design task comes due.
+description: Turn frozen kinematic/dynamic parameters, chosen parts, and coordinate frames into CAD-ready part definitions — each part's interfaces, loads, material, datums, tolerances, and inertia target — plus a build recipe for the user's CAD package (SOLIDWORKS, Fusion 360, Onshape). Use whenever the user is ready to model a mechanical part and asks what it needs, says "how do I CAD/model this bracket/housing/link", wants a quick sketch-grade definition to start modeling during ideation, wants a bolt pattern or bearing fit worked out from a datasheet, wants worst-case joint loads translated into wall thickness and material, wants to check that a modeled part's mass and inertia match what the dynamics assumed, wants DFM questions for an outside shop drafted into a questionnaire, or is executing a plan's detail-design/DFM task for a specific part. Also reach here from armature-plan when a detail-design task comes due.
 ---
 
 # Robotics CAD Parts
@@ -22,6 +22,8 @@ Read these files first, in this order. During ideation some of them won't exist 
 If no `CONTEXT.md` exists, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** write one first if the project is substantial. SI internally, always.
 
 Then confirm with the user two things the files rarely pin: **which CAD package** (this picks the software reference), and the **fabrication reality** — in-house machining envelope and tolerances, printer and filament, sheet stock and bend capability, minimum tool/drill sizes. Geometry that the shop can't make is a redraw, so learn its limits before drawing to them.
+
+When the shop is outside and the user can't speak for its limits — minimum wall for the process, achievable tolerances, stock on hand, what drives cost up — offer a **questionnaire** for the shop: built per the plugin's `references/questionnaire.template.md` (two levels above this skill), written to `cad/questionnaire-<shop>.md`, sent with whatever sketch or drawing gives the questions something to point at. Its DFM answers are inputs to release grade; until they return, they ride the affected parts as TBDs like any other unresolved number.
 
 **Gate — don't fabricate an input.** Two numbers a part can't be responsibly *released* without:
 
