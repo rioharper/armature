@@ -1,6 +1,6 @@
 # Design-Driver BOM Template
 
-This captures the *major* items whose specifications constrain the design — actuators, gearboxes, bearings, drive electronics, power source, and the structural materials — together with the datasheet each number came from. It is intentionally short. The exhaustive procurement BOM (every fastener, standoff, and connector, with quantities and costs against budget) belongs to detail design in **armature-plan**; do not try to make this that.
+This captures the *major* items whose specifications constrain the design — actuators, gearboxes, bearings, drive electronics, power source, and the structural materials — together with the datasheet each number came from. It is intentionally short. The exhaustive procurement BOM (every fastener, standoff, and connector, with quantities and costs against budget) belongs to detail design in **armature-plan**.
 
 The one job of this file: when the kinematics math, the CAD, or a design review later trips over "wait, what's the rotor inertia?" or "can this bracket take that moment?", the answer and its source are one glance away — not reconstructed from memory.
 
@@ -8,7 +8,7 @@ The one job of this file: when the kinematics math, the CAD, or a design review 
 
 - **One row per design driver, not per SKU.** Include an item only if at least one of its numbers actually shapes a decision. A shoulder actuator belongs here; the M3 screws holding its cover do not.
 - **List only the parameters that drive the design**, each with units and the value straight off the datasheet — not every field the datasheet prints. Stall torque, continuous torque, rotor inertia, mass, and max current for a motor; yield, modulus, and density for a metal; not the full electrical schematic.
-- **Every number has a source and a status.** Source is the exact part number and where the datasheet came from (vendor PDF, distributor page). Status is one of: **Confirmed** (datasheet in hand, user agrees it's the right part), **TBD** (needed, not yet sourced — must also appear in the spec's Open Questions), or **Assumed** (a placeholder value used to keep moving, flagged as risk). No fourth option; a bare number with no status is the exact failure this file prevents.
+- **Every number has a source and a status.** Source is the exact part number and where the datasheet came from (vendor PDF, distributor page). Status is one of: **Confirmed** (datasheet in hand, user agrees it's the right part), **TBD** (needed, not yet sourced — must also appear in the spec's Open Questions), or **Assumed** (a placeholder value used to keep moving, flagged as risk). No fourth option.
 - **Tie drivers back to requirements.** If a number exists because a requirement demands it (REQ-014 wants ≥2 N·m at the wrist), name the requirement so the link survives.
 
 ## Structure

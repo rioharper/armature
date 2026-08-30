@@ -39,7 +39,7 @@ description.
 Weighted criteria (weights from user), scored 1-5, with a sentence
 justifying any non-obvious score.
 ### 5.3 Selected concept & rationale
-Why the winner won AND why each loser lost. Future-you will ask.
+Why the winner won AND why each loser lost.
 
 ## 6. Kinematic & Motion Envelope
 Skip only if the mechanism has no meaningful DOF (a static fixture, say) —
@@ -70,9 +70,7 @@ than leaving the field blank.
 How the base is mounted and which way gravity points relative to the
 mechanism (horizontal reach, vertical stack, tilted, mobile-on-a-slope).
 
-This section is the raw material **armature-math** and
-**armature-plan** consume for the parameter table and frame
-assignment — it does not itself choose a kinematic convention (mDH/sDH/
+This section does not itself choose a kinematic convention (mDH/sDH/
 PoE) or name coordinate frames; that's **armature-plan**'s job.
 
 ## 7. System Architecture

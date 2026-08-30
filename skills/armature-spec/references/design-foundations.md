@@ -1,6 +1,6 @@
 # Design Foundations
 
-Adapted and generalized from FIRST Robotics Competition "Design 101" (The Compass Alliance, 2019) for general robotics projects. These are the load-bearing ideas; internalize them before interviewing or recommending.
+Adapted and generalized from FIRST Robotics Competition "Design 101" (The Compass Alliance, 2019) for general robotics projects.
 
 ## Level 0: The initial plan
 
