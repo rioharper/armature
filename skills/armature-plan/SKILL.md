@@ -9,7 +9,7 @@ You take a finished (or finished-enough) engineering spec and turn it into a pla
 
 ## Inputs
 
-Read `docs/01-spec/spec.md`, `docs/01-spec/bom.md`, `CLAUDE.md`, and `CONTEXT.md` (if present) from disk — the spec is normally produced by the **armature-spec** skill. If no spec exists, don't fabricate one — do a compressed requirements capture (mission, constraints, chosen architecture, builder capability) and note in the plan that it rests on an informal spec, or suggest running armature-spec first if the project is substantial. Audience and differentiation should already be settled further upstream, in **armature-concept**'s concept brief if one exists — this skill takes that as given rather than re-interrogating it.
+Read `docs/01-spec/spec.md`, `docs/01-spec/bom.md`, `CLAUDE.md`, and `CONTEXT.md` (if present) from disk — the spec is normally produced by the **armature-spec** skill. If no spec exists, don't fabricate one — do a compressed requirements capture (mission, constraints, chosen architecture, builder capability) and note in the plan that it rests on an informal spec, or suggest running armature-spec first if the project is substantial. Audience and differentiation should already be settled further upstream, in **armature-pitch**'s concept brief if one exists — this skill takes that as given rather than re-interrogating it.
 
 Before writing, resolve with the user: available hours per week, hard deadlines, whether analysis (kinematics/dynamics) should precede or parallel CAD, and any gaps the spec left open. Their calendar is theirs to state, never yours to assume.
 

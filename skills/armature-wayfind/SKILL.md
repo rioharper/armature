@@ -75,7 +75,7 @@ Every ticket is **HITL** (worked live with the human, who speaks for themselves 
 
 - **Research** (AFK): surface a fact a decision waits on from outside the working directory. Resolved by dispatching the matching agent — **armature-librarian** for datasheets, part numbers, and OTS models; **armature-inventor** for papers, novel mechanisms, and prior art — and linking its brief (`docs/research/`, `docs/datasheets/`) as the asset.
 - **Prototype** (HITL): raise the fidelity of the discussion with a cheap, rough artifact the human reacts to — a CAD mockup (via **armature-cad**), a cardboard or printed model, a stub script. Use when "how should it look, fit, or behave" is the key question.
-- **Grilling** (HITL): conversation — the default. A stage interview is a grilling ticket writ large: "run the concept interview" resolves through **armature-concept**, its brief linked as the asset.
+- **Grilling** (HITL): conversation — the default. A stage interview is a grilling ticket writ large: "run the concept interview" resolves through **armature-pitch**, its brief linked as the asset.
 - **Task** (HITL or AFK): manual work that gates a decision — nothing to decide itself, but the discussion is blocked until it's done: a bench measurement a sizing hangs on, ordering a sample part, provisioning access. AFK where the agent can drive it; otherwise hand the human a precise checklist. The answer records what was done and the facts later tickets depend on.
 
 Robotics work maps onto the types:

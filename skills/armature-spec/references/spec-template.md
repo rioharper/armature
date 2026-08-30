@@ -8,8 +8,8 @@ Rev 0.1 — [date] — Status: Draft
 
 ## 1. Problem Statement & Mission
 One paragraph: what problem, for whom, and what the machine must accomplish
-as observable outcomes. No mechanisms in this section. If a
-armature-concept brief exists, this is that brief's problem and
+as observable outcomes. No mechanisms in this section. If an
+armature-pitch brief exists, this is that brief's problem and
 audience restated in engineering terms, not re-derived from scratch —
 name the brief and its rev.
 

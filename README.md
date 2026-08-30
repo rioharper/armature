@@ -23,11 +23,11 @@ main conversation, handing its output to the next:
 
 | Stage | Skill | Produces |
 |---|---|---|
-| 1 | `armature-concept` | `docs/00-concept/concept-brief.md` — who it's for, why it beats what exists. Interrogates *why*, not *how*. |
-| 2 | `armature-spec` | `docs/01-spec/spec.md`, `bom.md`, `budgets.md`, `traceability.md` — engineering spec, trade studies, design-driver BOM, living budgets, requirements traceability. |
-| 3 | `armature-plan` | `docs/02-plan/plan.md` plus the glossary written into `CONTEXT.md` — phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
-| 4 | `armature-math` | `analysis/derivation/*.md` + `analysis/model/*.py` — milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
-| 5 | `armature-cad` | `cad/parts/`, `cad/assemblies/` — per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
+| 1 | `armature-pitch` | who it's for, why it beats what exists. Interrogates *why*, not *how*. |
+| 2 | `armature-spec` | engineering spec, trade studies, design-driver BOM, living budgets, requirements traceability. |
+| 3 | `armature-plan` | phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
+| 4 | `armature-math` |  milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
+| 5 | `armature-cad` |  per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 
 Cross-cutting skill and agents, pulled in from any stage:
 
@@ -95,7 +95,7 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
   CLAUDE.md                  project constitution (§4)
   docs/
     00-concept/
-      concept-brief.md       armature-concept output (RC-xxx requirements)
+      concept-brief.md       armature-pitch output (RC-xxx requirements)
     01-spec/
       spec.md                armature-spec output (REQ-xxx requirements)
       bom.md                 design-driver BOM → grows into procurement BOM

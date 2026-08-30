@@ -29,8 +29,6 @@ hobby project" is acceptable — just say so plainly.
 | RC-001 | ... | ... | Must/Should/Could |
 
 Outcome-level only: what must be true when it works, not how it works.
-"Sorts 95% of recyclables correctly" belongs here; "uses a CNN classifier"
-does not.
 
 ## 5. Envelope (rough)
 Budget order of magnitude, timeline order of magnitude, who's building it

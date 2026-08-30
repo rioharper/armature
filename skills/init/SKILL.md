@@ -112,6 +112,6 @@ moment it appears.
 
 ## 5. Hand off
 
-Tell the user the scaffold is committed, then invoke the **armature-concept**
+Tell the user the scaffold is committed, then invoke the **armature-pitch**
 skill and begin the interview immediately — that's the natural next breath,
 not a separate ceremony.
