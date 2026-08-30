@@ -11,7 +11,11 @@ This skill produces a **concept brief**, not an engineering spec. A concept brie
 
 ## The interview
 
-Grill in rounds of 2-4 questions, reflecting back what you've learned between rounds so the person can correct you. Keep going until you have nothing useful left to ask — not until you've hit a quota, and not forever either: if a question would only matter to an engineer sizing a part, it's out of scope here, stop and say so.
+Map the idea as a **design tree**: every decision branches into the decisions that hang off it. Work the tree in rounds. Each round, ask the **frontier** — every question whose prerequisites are already settled; a question that depends on an answer still open this round belongs to a later round. Deliver each round through the AskUserQuestion tool, your recommended answer as the first option labeled "(Recommended)", so a single word can accept it; the tool takes 4 questions per call, so a larger frontier spans consecutive calls within the round. Between rounds, reflect back what you've learned so the person can correct you, then recompute the frontier — settled answers unblock the questions that hung on them.
+
+Facts are your job; decisions are the user's. When a frontier question turns on something lookupable (whether a competing product exists, what the alternative costs), dispatch a subagent to check it and keep asking the rest of the frontier while it runs — only the questions downstream of that fact wait for it.
+
+The interview is done when the frontier is empty: nothing useful left to ask. A question that would only matter to an engineer sizing a part is out of scope here — prune that branch and say so.
 
 1. **The problem** — What's actually broken, missing, slow, or annoying right now? For whom, specifically? "It would be cool if a robot did X" is not a problem statement; "task X currently takes a person Y minutes and fails Z% of the time" is closer.
 2. **Audience** — Who has this problem, specifically — not "researchers" or "farmers," but a description precise enough that you could go find three of them. How many people or organizations are in that group? What do they do today instead — nothing, a manual process, a competing product? If commercial: would they pay, and roughly what? If hobby or competition: does anyone besides the builder actually care, and why?
@@ -23,7 +27,7 @@ Grill in rounds of 2-4 questions, reflecting back what you've learned between ro
 **Skeptic's duties:**
 - When you get an adjective, demand a number: "popular" becomes "how many people," "fast" becomes "in how much time."
 - When mechanism talk sneaks in ("I was thinking a 6-DOF arm..."), redirect: "We'll get there — first, does the *task* actually need six degrees of freedom, or is that already an answer to a question we haven't asked yet?"
-- Push on differentiation the way **armature-spec** pushes on requirements: "nobody's built this" is a claim, not a fact. If it's decision-relevant, do a quick check (a few minutes of search, or ask what the person has already looked at) before accepting it — and say plainly whether you actually checked or are taking their word for it.
+- Push on differentiation the way **armature-spec** pushes on requirements: "nobody's built this" is a claim, not a fact — a lookupable, so check it yourself, and say plainly whether you checked or are taking their word for it.
 - If the idea, honestly assessed, doesn't have a real audience or a real differentiation, say so. A concept brief that oversells a weak idea just moves the disappointment three weeks downstream, after the technical spec is written.
 - It's fine to leave things as open questions. A concept brief with three sharp open questions is more useful than one with three confident guesses.
 

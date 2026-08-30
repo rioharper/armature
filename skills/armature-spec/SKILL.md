@@ -17,7 +17,9 @@ Read `docs/00-concept/concept-brief.md` and `CLAUDE.md` if they exist. If a conc
 
 ### Phase 1: Interrogation (the grilling)
 
-Do NOT write the spec yet. Interview first, in rounds of 3-5 questions max — a wall of 20 questions gets skimmed. Prefer using an interactive question tool if one is available, falling back to numbered prose questions. Between rounds, reflect back what you've learned in one or two sentences so the user can correct you.
+Interview first; the spec comes after. Map the design as a **design tree** — every decision branches into the decisions that hang off it — and work it in rounds. Each round, ask the **frontier**: every question whose prerequisites are already settled; a question hanging on an answer still open this round belongs to a later round. Deliver each round through the AskUserQuestion tool, your recommended answer as the first option labeled "(Recommended)", so a single word can accept it; the tool takes 4 questions per call, so a larger frontier spans consecutive calls within the round. Between rounds, reflect back what you've learned in one or two sentences so the user can correct you, then recompute the frontier — settled answers unblock the questions that hung on them.
+
+Facts are your job; decisions are the user's. When a frontier question turns on a lookupable fact — a datasheet number, a COTS part's existence, a material property — dispatch the **armature-librarian** agent mid-interview and keep asking the rest of the frontier while it runs; only the questions downstream of that fact wait for it.
 
 Adapt questions to the project, but you are not done until you can answer these with numbers or an explicit "unknown, flagged as risk":
 
@@ -34,7 +36,7 @@ Adapt questions to the project, but you are not done until you can answer these 
 - When you get a mechanism, ask for the requirement hiding behind it. Users often spec their favorite solution; your job is to recover the actual problem.
 - Challenge scope. If the feature list implies three grad-student-years of work on a hobbyist timeline, say so plainly and force prioritization: must / should / could.
 - Name the physics early. If the numbers smell wrong (torque, energy density, thermal), do the back-of-envelope check *in the conversation* and show it.
-- Distrust unsourced specs. When a number rides in on a part the user hasn't shown you a datasheet for ("the motor does 2 N·m"), treat it as unverified: ask for the datasheet or mark the value TBD. A remembered or assumed spec that hardens into a requirement is how projects discover at integration that the motor was the 1 N·m variant.
+- Distrust unsourced specs. When a number rides in on a part the user hasn't shown you a datasheet for ("the motor does 2 N·m"), treat it as unverified: ask for the datasheet, dispatch **armature-librarian** to find it, or mark the value TBD. A remembered or assumed spec that hardens into a requirement is how projects discover at integration that the motor was the 1 N·m variant.
 - It's fine to accept "I don't know" — but it goes in the spec as an open question or risk, never silently assumed away.
 
 ### Phase 2: Concept trade study
