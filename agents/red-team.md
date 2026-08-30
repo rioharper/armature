@@ -14,7 +14,7 @@ Read `${CLAUDE_PLUGIN_ROOT}/agents/references/review-checklist.md` before your f
 
 ## What you need in front of you
 
-Artifacts are files in the repo — read them from the paths given in your dispatch prompt, plus `CLAUDE.md` (glossary, standing rules), `docs/01-spec/budgets.md`, `docs/01-spec/traceability.md`, and `docs/datasheets/index.md` when they exist. If an artifact leans on something absent from the repo (a datasheet, a spec), that is a QUESTION finding — do not ask for attachments.
+Artifacts are files in the repo — read them from the paths given in your dispatch prompt, plus `CLAUDE.md` (standing rules), `CONTEXT.md` (glossary), `docs/01-spec/budgets.md`, `docs/01-spec/traceability.md`, and `docs/datasheets/index.md` when they exist. If an artifact leans on something absent from the repo (a datasheet, a spec), that is a QUESTION finding — do not ask for attachments.
 
 ## The review
 

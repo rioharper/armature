@@ -25,7 +25,7 @@ main conversation, handing its output to the next:
 |---|---|---|
 | 1 | `armature-concept` | `docs/00-concept/concept-brief.md` — who it's for, why it beats what exists. Interrogates *why*, not *how*. |
 | 2 | `armature-spec` | `docs/01-spec/spec.md`, `bom.md`, `budgets.md`, `traceability.md` — engineering spec, trade studies, design-driver BOM, living budgets, requirements traceability. |
-| 3 | `armature-plan` | `docs/02-plan/plan.md` plus the glossary written into `CLAUDE.md` — phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
+| 3 | `armature-plan` | `docs/02-plan/plan.md` plus the glossary written into `CONTEXT.md` — phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
 | 4 | `armature-math` | `analysis/derivation/*.md` + `analysis/model/*.py` — milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
 | 5 | `armature-cad` | `cad/parts/`, `cad/assemblies/` — per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 

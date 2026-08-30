@@ -73,8 +73,12 @@ Then `git init` (if not already a repo) and commit everything as
 
 ## Glossary
 
-<!-- Frames, symbol table, part numbering, CAD file naming, and definitions
-of done are written here by armature-plan. Once set, they are law. -->
+The project glossary lives in `CONTEXT.md` at the repo root — frames, symbol
+table, part numbering, CAD file naming, each term with an `_Avoid_:` line
+naming its banned synonyms. armature-plan writes it (the file is created
+with its first term, not before). Once set, it is law: when any term used
+here — by the user or by you — conflicts with `CONTEXT.md`, call it out the
+moment it appears.
 
 - Units: SI internally, always. Imperial in parentheses only if the shop
   works in it.
@@ -89,7 +93,11 @@ of done are written here by armature-plan. Once set, they are law. -->
 - Red-team review (armature-red-team agent) before CAD hours or purchases.
 - Any change to a mass, power draw, or cost updates
   docs/01-spec/budgets.md in the same session.
-- Every design decision gets a line in docs/decisions.md.
+- Every design decision gets a line in docs/decisions.md. When all three
+  hold — hard to reverse, surprising without context, a real trade-off —
+  it also gets a short ADR in docs/adr/ (`NNNN-slug.md`, a paragraph is
+  enough; create the directory with the first one) linked from its
+  decisions.md line. Any one gate missing: the one-liner is the record.
 - OTS CAD models live in cad/ots-parts/ with an index row linking
   model → P/N → datasheet.
 - Every artifact write ends in a git commit — the git log plus

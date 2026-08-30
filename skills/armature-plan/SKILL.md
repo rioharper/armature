@@ -1,15 +1,15 @@
 ---
 name: armature-plan
-description: Convert a robotics engineering spec into a phased, actionable implementation plan covering kinematics/dynamics analysis, CAD workflow, prototyping, fabrication, and integration — and write the project's shared vocabulary (frames, symbols, naming) into CLAUDE.md so every later session stays grounded. Use whenever the user has a design spec or design document and wants a plan, roadmap, timeline, task breakdown, next steps, or "how do I actually build this" — or asks to plan out a robotics project, even informally.
+description: Convert a robotics engineering spec into a phased, actionable implementation plan covering kinematics/dynamics analysis, CAD workflow, prototyping, fabrication, and integration — and write the project's shared vocabulary (frames, symbols, naming) into CONTEXT.md so every later session stays grounded. Use whenever the user has a design spec or design document and wants a plan, roadmap, timeline, task breakdown, next steps, or "how do I actually build this" — or asks to plan out a robotics project, even informally.
 ---
 
 # Robotics Writing Plans
 
-You take a finished (or finished-enough) engineering spec and turn it into a plan someone can actually execute — phase by phase, task by task, with exit criteria — and write the shared language (coordinate frames, symbols, part naming) into `CLAUDE.md`, where it keeps every future session about this project coherent.
+You take a finished (or finished-enough) engineering spec and turn it into a plan someone can actually execute — phase by phase, task by task, with exit criteria — and write the shared language (coordinate frames, symbols, part naming) into `CONTEXT.md`, where it keeps every future session about this project coherent.
 
 ## Inputs
 
-Read `docs/01-spec/spec.md`, `docs/01-spec/bom.md`, and `CLAUDE.md` from disk — the spec is normally produced by the **armature-spec** skill. If no spec exists, don't fabricate one — do a compressed requirements capture (mission, constraints, chosen architecture, builder capability) and note in the plan that it rests on an informal spec, or suggest running armature-spec first if the project is substantial. Audience and differentiation should already be settled further upstream, in **armature-concept**'s concept brief if one exists — this skill takes that as given rather than re-interrogating it.
+Read `docs/01-spec/spec.md`, `docs/01-spec/bom.md`, `CLAUDE.md`, and `CONTEXT.md` (if present) from disk — the spec is normally produced by the **armature-spec** skill. If no spec exists, don't fabricate one — do a compressed requirements capture (mission, constraints, chosen architecture, builder capability) and note in the plan that it rests on an informal spec, or suggest running armature-spec first if the project is substantial. Audience and differentiation should already be settled further upstream, in **armature-concept**'s concept brief if one exists — this skill takes that as given rather than re-interrogating it.
 
 Before writing, resolve with the user: available hours per week, hard deadlines, whether analysis (kinematics/dynamics) should precede or parallel CAD, and any gaps the spec left open. Their calendar is theirs to state, never yours to assume.
 
@@ -19,9 +19,11 @@ Work these questions in rounds. Each round, ask the **frontier** — the questio
 
 Write to `docs/02-plan/plan.md`. Structure:
 
-### 1. Glossary & conventions — written into `CLAUDE.md`
+### 1. Glossary & conventions — written into `CONTEXT.md`
 
-This is the point of the skill, wherever it's written — it's what makes conversation #47 about this robot as grounded as conversation #2. Claude Code loads `CLAUDE.md` automatically every session, so that's where the shared language belongs: write it into `CLAUDE.md`'s Glossary section (extending whatever units policy and naming conventions `/armature:init` already seeded there), not into the plan file. The plan file itself keeps a one-line pointer: `Glossary: see CLAUDE.md`.
+This is the point of the skill, wherever it's written — it's what makes conversation #47 about this robot as grounded as conversation #2. The shared language lives in `CONTEXT.md` at the project root: create the file if it doesn't exist (this is usually its first content), and confirm `CLAUDE.md`'s Glossary section points at it so every session auto-loads the pointer. The plan file itself keeps a one-line pointer: `Glossary: see CONTEXT.md`.
+
+Each named term gets a tight definition (one or two sentences, what it IS) followed by an `_Avoid_:` line listing the synonyms it displaces — pick arm *or* link *or* boom, ban the rest. The `_Avoid_` lines are what the inline-challenge rule in `CLAUDE.md` enforces.
 
 Content requirements, regardless of destination:
 
@@ -76,4 +78,4 @@ Plain, specific, imperative. No motivational filler. Dates and hours are estimat
 - "Explain this concept the plan assumes I know" → **armature-teacher**
 - "Stress-test this plan (or the spec under it) for gaps before I commit" → dispatch the **armature-red-team** agent
 
-Once the plan is written, update `CLAUDE.md` — set Stage to `analysis`, point Latest artifacts at the plan, and confirm the Glossary section is written — and log the planning decisions (phases chosen, prototypes selected, hours assumed) in `docs/decisions.md`.
+Once the plan is written, update `CLAUDE.md` — set Stage to `analysis`, point Latest artifacts at the plan, and confirm `CONTEXT.md` is written and the Glossary section points at it — and log the planning decisions (phases chosen, prototypes selected, hours assumed) in `docs/decisions.md`.

@@ -35,7 +35,7 @@ At Milestone 0, copy `model_template/` from this skill's `scripts/` directory in
 
 ## Step 0: Establish the model
 
-Before deriving anything, pin down — conventions come from `CLAUDE.md`'s Glossary (or `docs/01-spec/spec.md` Section 6) if they exist; **reuse them verbatim**, don't invent competing ones:
+Before deriving anything, pin down — conventions come from `CONTEXT.md` (or `docs/01-spec/spec.md` Section 6) if they exist; **reuse them verbatim**, don't invent competing ones:
 
 - Mechanism topology: links, joints (R/P), DOF, any closed loops
 - Convention: modified DH, standard DH, or product of exponentials — state which and why

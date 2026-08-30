@@ -15,11 +15,11 @@ Defining a part is not decoration on a design that's already done — it is the 
 
 Read these files first, in this order. During ideation some of them won't exist yet — read what does and flag the rest per the gate below; don't block a sketch-grade definition on a missing file.
 
-- **`CLAUDE.md`'s Glossary** (written by **armature-plan**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
+- **`CONTEXT.md`** (the glossary, written by **armature-plan**): coordinate frames, symbol table, part-numbering scheme (e.g. `ARM-LNK-002`), CAD-file naming, revision scheme, units policy. This is law — reuse it verbatim. Part IDs, datum names, and filenames all come from here, and that is what keeps this part's drawing legible to conversation #47.
 - **`docs/01-spec/spec.md` and `docs/01-spec/bom.md`** (from **armature-spec**): the chosen actuators, bearings, materials, and their datasheet numbers — the interfaces and stock you build to.
 - **`analysis/derivation/03_results.md` and `analysis/model/params.py`** (from **armature-math**): the worst-case joint torques and reaction forces this part must carry, and the mass, COM, and inertia the dynamics *assumed* for each body. Those assumed values are the target you close the loop against.
 
-If `CLAUDE.md` has no Glossary section, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** write one first if the project is substantial. SI internally, always.
+If no `CONTEXT.md` exists, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6 if either exists, and establish a minimal glossary inline (part-numbering, file naming, rev scheme); note that the definitions rest on an ad-hoc glossary, or suggest **armature-plan** write one first if the project is substantial. SI internally, always.
 
 Then confirm with the user two things the files rarely pin: **which CAD package** (this picks the software reference), and the **fabrication reality** — in-house machining envelope and tolerances, printer and filament, sheet stock and bend capability, minimum tool/drill sizes. Geometry that the shop can't make is a redraw, so learn its limits before drawing to them.
 
