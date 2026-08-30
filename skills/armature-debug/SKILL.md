@@ -100,6 +100,6 @@ Required before declaring done:
 - [ ] Original symptom gone: Phase 1 loop re-run green on the full rig
 - [ ] Regression test in the suite, or the bench seam recorded
 - [ ] All `[DEBUG-...]` prints removed (grep the prefix) and clean firmware flashed to the rig
-- [ ] Throwaway jigs and harness scripts deleted, or promoted to `docs/testing/` as a named procedure
+- [ ] Throwaway jigs and harness scripts deleted, or promoted to a `docs/testing/` procedure via armature-bringup (call the Skill tool)
 - [ ] Rig restored to its documented configuration: swapped parts returned, or the change logged in `docs/decisions.md`
 - [ ] The hypothesis that turned out correct stated in the commit message, so the next debugger learns
