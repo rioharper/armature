@@ -34,6 +34,7 @@ Cross-cutting skill and agents, pulled in from any stage:
 | Name | Kind | Role |
 |---|---|---|
 | `armature-teacher` | skill | Explains a concept, equation, or design decision using this project's own artifacts. Analogy first, then formalism. |
+| `armature-wayfind` | skill | Coordinates an effort too big for one session as a map of decision tickets on the project's issue tracker (GitHub Issues or local markdown, auto-detected); stage skills and agents resolve the tickets, one per session, until the way is clear. |
 | `armature-red-team` | agent | Adversarial review of an existing artifact — writes findings to `docs/reviews/`. Fresh context by construction; run before CAD hours or purchases. The chat will invoke it as a subagent at crucial milestones. |
 | `armature-inventor` | agent | Frontier research: papers, novel mechanisms, unusual actuators/materials, it'll write briefs to `docs/research/`. |
 | `armature-librarian` | agent | Hunts datasheets and OTS CAD models, verifies part numbers, caches results to `docs/datasheets/` and `cad/ots-parts/`. |
