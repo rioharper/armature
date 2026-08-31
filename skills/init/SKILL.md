@@ -1,30 +1,30 @@
 ---
 name: init
-description: Initialize a standardized Armature robotics project in the current folder — scaffold the docs/analysis/cad tree, git repo, and project CLAUDE.md, then start the concept interview.
+description: Scaffold a standardized Armature robotics project in the current folder (docs/analysis/cad tree, git repo, project CLAUDE.md), then start the pitch interview.
 disable-model-invocation: true
 ---
 
 # Armature Init
 
-Set up a robotics project the way the whole suite expects to find it, then
-roll straight into the concept interview. Run in the project's root folder.
+The current folder is the project root.
 
 ## 1. Guard
 
-If `CLAUDE.md` already exists here with a `**Stage:**` line, this is already
-an Armature project — say so, report its stage, and stop.
+If `CLAUDE.md` here already carries a `**Stage:**` line, this is an Armature project: report its stage and stop.
 
-## 2. Setup interview (three questions, then build)
+## 2. Setup interview
 
-Ask, via the question tool if available:
+Ask through the AskUserQuestion tool:
+
 1. Project name and a one-line description.
 2. CAD package: SOLIDWORKS / Fusion 360 / Onshape / undecided.
-3. Builder reality, briefly: solo or team; fabrication access (printer,
-   machining, hand tools); rough experience level.
+3. Builder profile: solo or team; fabrication access (printer, machining, hand tools); experience level.
+
+Done when every placeholder in the template below has a value.
 
 ## 3. Scaffold
 
-Create (git bash):
+Create (bash):
 
 ```bash
 mkdir -p docs/00-concept docs/01-spec docs/02-plan docs/testing \
@@ -35,18 +35,15 @@ mkdir -p docs/00-concept docs/01-spec docs/02-plan docs/testing \
 
 Seed these files:
 
-- `docs/decisions.md`: header `# Decision log` + one column-format line:
-  `<!-- date · decision · why · supersedes -->`, plus its first entry — the
+- `docs/decisions.md`: header `# Decision log`, one column-format line
+  `<!-- date · decision · why · supersedes -->`, and its first entry — the
   project init itself.
 - `docs/datasheets/index.md`: header + empty table
   `| P/N | Manufacturer | Key numbers | Source URL | Retrieved | File |`.
 - `cad/ots-parts/index.md`: header + empty table
   `| File | P/N | Datasheet row | Source URL | Retrieved |`.
-- `.gitkeep` in every scaffolded directory that gets no seeded file above
-  (docs/00-concept, docs/01-spec, docs/02-plan, docs/testing, docs/reviews,
-  docs/research, analysis/derivation, analysis/model, cad/parts,
-  cad/assemblies) — git doesn't track empty directories, and the tree needs
-  to survive the first commit.
+- `.gitkeep` in every scaffolded directory the seeds above leave empty (git
+  drops empty directories).
 - `.gitignore`:
 
 ```
@@ -59,7 +56,8 @@ __pycache__/
 - `CLAUDE.md` from the template below, with the setup answers filled in.
 
 Then `git init` (if not already a repo) and commit everything as
-`Initialize Armature project scaffold`.
+`Initialize Armature project scaffold`. Done when `git ls-files` lists every
+scaffolded directory.
 
 ## 4. CLAUDE.md template
 
@@ -73,45 +71,41 @@ Then `git init` (if not already a repo) and commit everything as
 
 ## Glossary
 
-The project glossary lives in `CONTEXT.md` at the repo root — frames, symbol
+The project glossary is `CONTEXT.md` at the repo root — frames, symbol
 table, part numbering, CAD file naming, each term with an `_Avoid_:` line
-naming its banned synonyms. armature-plan writes it (the file is created
-with its first term, not before). Once set, it is law: when any term used
-here — by the user or by you — conflicts with `CONTEXT.md`, call it out the
-moment it appears.
+naming the synonyms it displaces; armature-plan writes it. Challenge any
+term, the user's or your own, that conflicts with `CONTEXT.md` the moment
+it appears.
 
-- Units: SI internally, always. Imperial in parentheses only if the shop
-  works in it.
+- Units: SI internally; imperial in parentheses when the shop works in it.
 - Requirement numbering: RC-xxx = concept-level outcome
   (docs/00-concept/); REQ-xxx = verifiable engineering requirement with a
   verification method (docs/01-spec/).
 
 ## Standing rules
 
-- Every datasheet number cited anywhere must trace to a row in
+- Every datasheet number cited anywhere traces to a row in
   docs/datasheets/index.md (the armature-librarian agent maintains it).
 - Red-team review (armature-red-team agent) before CAD hours or purchases.
 - Any change to a mass, power draw, or cost updates
   docs/01-spec/budgets.md in the same session.
 - Every design decision gets a line in docs/decisions.md. When all three
   hold — hard to reverse, surprising without context, a real trade-off —
-  it also gets a short ADR in docs/adr/ (`NNNN-slug.md`, a paragraph is
-  enough; create the directory with the first one) linked from its
-  decisions.md line. Any one gate missing: the one-liner is the record.
+  it also gets a short ADR in docs/adr/ (`NNNN-slug.md`, a paragraph;
+  create the directory with the first one) linked from that line.
 - OTS CAD models live in cad/ots-parts/ with an index row linking
   model → P/N → datasheet.
-- Every artifact write ends in a git commit — the git log plus
-  docs/decisions.md is the project history.
+- Every artifact write ends in a git commit.
 
 ## Builder profile
 
 - CAD package: <answer>
 - Fabrication: <answer>
 - Team: <answer>
+- Experience: <answer>
 ```
 
 ## 5. Hand off
 
-Tell the user the scaffold is committed, then invoke the **armature-pitch**
-skill and begin the interview immediately — that's the natural next breath,
-not a separate ceremony.
+Report the scaffold commit, then call the Skill tool with "armature-pitch"
+and begin the interview in this session.
