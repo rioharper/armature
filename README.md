@@ -26,7 +26,7 @@ main conversation, handing its output to the next:
 | 1 | `armature-pitch` | who it's for, why it beats what exists. Interrogates *why*, not *how*. |
 | 2 | `armature-spec` | engineering spec, trade studies, design-driver BOM, living budgets, requirements traceability. |
 | 3 | `armature-plan` | phased implementation plan and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
-| 4 | `armature-math` |  milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
+| 4 | `armature-derive` |  milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
 | 5 | `armature-cad` |  per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 
 Cross-cutting skill and agents, pulled in from any stage:
@@ -78,7 +78,7 @@ imports it). Nonzero exit means a check failed.
 
 ## Example output
 
-From a real project run with Armature — the Ibex rover, a squatting camera platform. Each card is generated from the `armature-math` stage's re-runnable Python model:
+From a real project run with Armature — the Ibex rover, a squatting camera platform. Each card is generated from the `armature-derive` stage's re-runnable Python model:
 
 | | |
 |---|---|
@@ -110,7 +110,7 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
       index.md               P/N, source URL, retrieval date, key numbers
       *.pdf                  cached datasheets
     decisions.md             one-line-per-decision log (§6.7)
-  analysis/                  armature-math derivations (.md) + model (.py)
+  analysis/                  armature-derive derivations (.md) + model (.py)
   cad/
     parts/                   part definitions (.md), + optional runnable
                              build recipes (.py) and their SVG views

@@ -21,7 +21,7 @@ Needs analysis/model/params.py on sys.path for the link lengths (hence
 for a link length (see _resolve_lengths below): a guessed one could hide a
 real self-collision or invent one that isn't there.
 
-The example below is the planar 2R arm from the armature-math template,
+The example below is the planar 2R arm from the armature-derive template,
 with a base post it can fold back into. Replace the bodies and pose() with
 your mechanism; keep the shape of the file.
 """
@@ -67,7 +67,7 @@ def _resolve_lengths():
         raise RuntimeError(
             f"sweep.py: no analysis/model/params.py on sys.path ({PARAMS_DIR}) "
             "- nothing to build the link envelopes from. Run the "
-            "armature-math milestone that produces params.py first; there "
+            "armature-derive milestone that produces params.py first; there "
             "is no safe placeholder for a link length."
         ) from exc
     return mm(params.PARAMS["l1"]), mm(params.PARAMS["l2"])
@@ -403,7 +403,7 @@ def main(qs=None, verbose=True) -> int:
 
     if hits and verbose:
         print(
-            "\nThis is an armature-math finding, not a CAD one: tighten a joint\n"
+            "\nThis is an armature-derive finding, not a CAD one: tighten a joint\n"
             "limit or change a link length in params.py, re-derive, re-run."
         )
 
@@ -611,7 +611,7 @@ def demo():
 
     # What a reader of `python sweep.py` actually SEES has to be safe to
     # act on, not just the tuple `_summarize()` returns - reading a joint
-    # limit off it is the entire reason armature-math routes here.
+    # limit off it is the entire reason armature-derive routes here.
     import contextlib
     import io
 

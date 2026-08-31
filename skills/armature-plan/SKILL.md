@@ -30,7 +30,7 @@ Each named term gets a tight definition (one or two sentences, what it IS) follo
 Content requirements, regardless of destination:
 
 - **Coordinate frames:** define every frame the project will use ({W} world, {B} base, {E} end-effector, per-joint frames…), their origins, axis conventions (right-handed, z-up or z-along-joint — pick and state), and the convention family (e.g., modified DH, or product-of-exponentials). Once chosen, these are law.
-- **Symbol table:** q for joint positions, τ for torques, m_i, l_i, I_i for link properties, etc., with units. The **armature-math** skill consumes this table verbatim, so make it complete.
+- **Symbol table:** q for joint positions, τ for torques, m_i, l_i, I_i for link properties, etc., with units. The **armature-derive** skill consumes this table verbatim, so make it complete.
 - **Naming conventions:** part numbering scheme (e.g., `ARM-LNK-002`), CAD file naming, revision scheme, units policy (SI internally, always).
 - **Definitions of done** for a task, a phase, and the project.
 
@@ -38,7 +38,7 @@ Content requirements, regardless of destination:
 
 Decompose into phases where each phase ends in something *demonstrable or testable*. Typical arc (adapt, don't copy):
 
-1. **Analysis & sizing** — kinematic model, workspace check, actuator sizing from dynamics, DOF/reachability verification. Derivation tasks say "derive FK/IK/Jacobian/dynamics" and carry `armature-math` as Executor.
+1. **Analysis & sizing** — kinematic model, workspace check, actuator sizing from dynamics, DOF/reachability verification. Derivation tasks say "derive FK/IK/Jacobian/dynamics" and carry `armature-derive` as Executor.
 2. **Concept CAD & layout** — master sketch / skeleton model driving all subassemblies, envelope check, interference and service-access check, mass rollup vs. budget.
 3. **Prototype the risky bits** — each prototype task carries the question it must answer and a kill criterion.
 4. **Detail design & DFM** — part-by-part CAD, tolerance decisions, COTS selection with actual part numbers, drawings for anything outsourced, BOM with costs against budget. If the spec came with a **design-driver BOM** (from armature-spec), expand it into the full procurement BOM — the design drivers and their datasheets are settled; add quantities, fasteners, costs, and lead times. Any part still carrying a TBD or assumed spec gets a task to source and confirm its datasheet *before* its drawing is released.
@@ -59,7 +59,7 @@ Every task gets:
       T3.2b (geared wrist) activated
 ```
 
-`Executor` is `armature-math`, `armature-cad`, `armature-inventor` (agent), or `user` — name it so a fresh session knows which skill or agent picks the task up, or that it's hands-on-hardware work no skill performs. Estimates in hours, dependencies explicit, exit criteria observable. Keep tasks under ~a day of work; split anything bigger.
+`Executor` is `armature-derive`, `armature-cad`, `armature-inventor` (agent), or `user` — name it so a fresh session knows which skill or agent picks the task up, or that it's hands-on-hardware work no skill performs. Estimates in hours, dependencies explicit, exit criteria observable. Keep tasks under ~a day of work; split anything bigger.
 
 A test task — prototype (phase 3) or verification (phase 6) — names its procedure/report file under `docs/testing/` per `references/test-report-template.md`; that file, filled in, is what its `Done when` points to.
 
@@ -79,7 +79,7 @@ Plain, specific, imperative. No motivational filler. Dates and hours are estimat
 
 ## Hand-offs
 
-- Kinematics/dynamics derivation: call the Skill tool with "armature-math".
+- Kinematics/dynamics derivation: call the Skill tool with "armature-derive".
 - "I'm stuck, need a better approach for phase N": dispatch the **armature-inventor** agent.
 - A concept the plan assumes the user knows: call the Skill tool with "armature-teacher".
 - Stress-testing the plan (or the spec under it) before committing: dispatch the **armature-red-team** agent.

@@ -684,7 +684,7 @@ def demo():
     slender = compare_to_target(tube_props, {"inertia": bar["inertia"], "about": None})
     assert any("inertia[0][0]" in f for f in slender), slender
 
-    # THE THIN ROD, the standard idealization an armature-math derivation
+    # THE THIN ROD, the standard idealization an armature-derive derivation
     # hands you for a link: I_axial = 0 EXACTLY, I_transverse = m*L^2/12.
     # An absolute floor for a zero diagonal grants the axial term
     # tol * max(diagonal) — 10% of the TRANSVERSE moment, orders of

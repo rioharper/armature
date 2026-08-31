@@ -4,17 +4,10 @@ The target register: a sharp senior engineer's design notebook — the notes the
 
 ## File layout
 
-Each project's derivation is four files, not one — see SKILL.md's "File layout" for the full picture and why. Every file:
+Each project's derivation is four files, not one — the layout and per-milestone content live in SKILL.md. Every file:
 
 - opens with a one-line header: project name, milestone, rev/date, and which `.py` module accompanies it
-- ends with a short revision note: what changed since the last rev and why (this is what makes re-derivations traceable instead of silent overwrites)
-
-```
-00_setup.md      System description, numbered assumptions, conventions, parameter table
-01_kinematics.md FK, Jacobian, singularity analysis
-02_dynamics.md   Euler-Lagrange (or Newton-Euler), sanity checks, verification against SymPy
-03_results.md    Worst-case numbers, engineering implications, spec/part collisions
-```
+- ends with a short revision note: what changed since the last rev and why — this is what makes re-derivations traceable
 
 ## Writing rules
 
@@ -23,9 +16,9 @@ Each project's derivation is four files, not one — see SKILL.md's "File layout
 3. **No skipped leaps, but compression is fine.** "Expanding and collecting q̇₁q̇₂ terms" is fine; a step that can't be named is a step that got skipped. If SymPy did an ugly simplification, say so briefly rather than presenting the tidy output as if you did it by hand.
 4. **Notation discipline.** Define every symbol at first use, use it consistently, match the project's symbol table exactly. State the rotation/frame convention once and don't restate it every section.
 5. **Units on every number.** A number without a unit is a typo.
-6. **Interpret, don't just derive — but in one sentence, not a paragraph.** After the Jacobian: which postures are singular, and would this robot ever be near them? After gravity terms: which joint carries the worst static load? `03_results.md` is where a result that collides with a spec or a chosen part gets named plainly with the options (relax, resize, re-architect) — that's the payoff of the whole exercise, so give it the room it needs even though everything upstream should be lean.
+6. **Interpret, don't just derive — but in one sentence, not a paragraph.** After the Jacobian: which postures are singular, and would this robot ever be near them? After gravity terms: which joint carries the worst static load? The one exception to lean is `03_results.md`: findings get the room they need (SKILL.md's Milestone 3 defines what they must contain).
 7. **Honest uncertainty, briefly flagged.** An assumption that materially affects results (ignoring friction in a high-reduction gearbox) gets one flag with the expected direction and rough size of the error — in `03_results.md`, not scattered as hedges throughout.
-8. **Sanity checks are shown, not claimed.** "Setting l₂ → 0 reduces (12) to the single-pendulum result (13)" — with (13) actually shown. One line is enough; "verified" without the verification is the exact slop this document forbids, but three sentences of narration around a one-line check is the opposite failure.
+8. **Sanity checks are shown, not claimed.** "Setting l₂ → 0 reduces (12) to the single-pendulum result (13)" — with (13) actually shown. One line is enough: "verified" without the verification fails one way, three sentences of narration around a one-line check fails the other.
 9. **No filler, no restating.** Ban: "It is important to note", "In the world of robotics", "delve", "plays a crucial role", restating the section header as the first sentence, and summary paragraphs that repeat what the section just said. If cutting a sentence loses no information, cut it.
 10. **LaTeX in markdown** ($...$, $$...$$). If a symbolic result is a half-page monster, present its structure ("M₁₂ has the form a + b cos q₂ where a = …") and let the `.py`'s printed output be the full expression — don't paste the monster into the notes.
 

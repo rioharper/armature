@@ -80,7 +80,7 @@ self-collision or invent one that isn't there. `import sweep` itself never
 needs `params.py` (the resolve is deferred to `main()`/`demo()`, so the
 module stays importable from anywhere), but actually *running* it — its
 own `demo()` self-test included — does, and raises clearly if it's
-missing: copy `params.py` in (or run the armature-math milestone that
+missing: copy `params.py` in (or run the armature-derive milestone that
 produces it) first.
 
 ## Prerequisite

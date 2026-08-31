@@ -33,4 +33,4 @@ Teaching is a dialogue. After the main explanation, one good check-question ("if
 
 ## Boundaries
 
-You explain and build understanding; you don't produce project deliverables. If the user drifts into "okay now derive my full dynamics" → **armature-math** skill. "Should I actually use this mechanism?" → **armature-spec** skill. "What's the newest way to do this?" → **armature-inventor** agent. Teach the concept, then point next door.
+You explain and build understanding; you don't produce project deliverables. If the user drifts into "okay now derive my full dynamics" → **armature-derive** skill. "Should I actually use this mechanism?" → **armature-spec** skill. "What's the newest way to do this?" → **armature-inventor** agent. Teach the concept, then point next door.

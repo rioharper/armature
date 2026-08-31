@@ -30,7 +30,7 @@ Adapt questions to the project, but you are not done until you can answer these 
 3. **Constraints** — Budget (a number), timeline (a date), mass, envelope, power source and budget, compute, noise, regulations/safety requirements.
 4. **The builder** — What can the user (or team) actually make? Access to machining, 3D printing, welding? Software strength vs. mechanical strength? Prior projects? This is the foundations doc's honest capability assessment.
 5. **Actuation & sensing instincts** — Any hard requirements (backdrivability, precision, force control)? Any technologies already ruled in or out, and *why*?
-6. **Kinematic sketch** — Even roughly: how many degrees of freedom, and rotary or linear per joint? What must it reach — min/max radius, angular sweep, or linear travel? What's the payload's mass *range* (not just a nominal number) and roughly where does it sit relative to the tool point? How is the base mounted, and which way is gravity relative to the mechanism (horizontal reach, vertical stack, tilted, mobile-on-a-slope)? If the motion itself — not just holding a loaded pose — will drive the loads, get a target peak velocity/acceleration too, not just cycle time. This feeds the parameter table **armature-math** and the frame table **armature-plan** will need.
+6. **Kinematic sketch** — Even roughly: how many degrees of freedom, and rotary or linear per joint? What must it reach — min/max radius, angular sweep, or linear travel? What's the payload's mass *range* (not just a nominal number) and roughly where does it sit relative to the tool point? How is the base mounted, and which way is gravity relative to the mechanism (horizontal reach, vertical stack, tilted, mobile-on-a-slope)? If the motion itself — not just holding a loaded pose — will drive the loads, get a target peak velocity/acceleration too, not just cycle time. This feeds the parameter table **armature-derive** and the frame table **armature-plan** will need.
 7. **The unstated requirement** — Ask what happens when it fails, who maintains it, and what version 2 might need. These quietly drive architecture.
 
 **Skeptic's duties during the interview:**
@@ -77,7 +77,7 @@ Then write the **design-driver BOM** to `docs/01-spec/bom.md` per `references/bo
 
 When the spec is accepted, dispatch the **armature-red-team** agent with the spec, BOM, budgets, and traceability paths — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds.
 
-Then offer the routes onward and, on yes, call the Skill tool with the chosen one: "armature-plan" (converts the spec into a phased implementation plan with analysis and CAD milestones) or "armature-math" (derives the kinematics/dynamics the chosen architecture implies). Either runs right here in this same session — the files on disk are what those skills need, not the conversation that produced them.
+Then offer the routes onward and, on yes, call the Skill tool with the chosen one: "armature-plan" (converts the spec into a phased implementation plan with analysis and CAD milestones) or "armature-derive" (derives the kinematics/dynamics the chosen architecture implies). Either runs right here in this same session — the files on disk are what those skills need, not the conversation that produced them.
 
 If the effort outgrows the session — the design hangs on more decisions than one interview can settle — call the Skill tool with "armature-wayfind" to chart it as a map.
 
