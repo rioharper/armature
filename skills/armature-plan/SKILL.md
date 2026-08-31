@@ -81,7 +81,7 @@ Plain, specific, imperative. No motivational filler. Dates and hours are estimat
 
 - Kinematics/dynamics derivation: call the Skill tool with "armature-derive".
 - "I'm stuck, need a better approach for phase N": dispatch the **armature-inventor** agent.
-- A concept the plan assumes the user knows: call the Skill tool with "armature-teacher".
+- A concept the plan assumes the user knows: call the Skill tool with "armature-teach".
 - Stress-testing the plan (or the spec under it) before committing: dispatch the **armature-red-team** agent.
 
 Once the plan is written, update `CLAUDE.md` — Stage → `analysis`, Latest artifacts → the plan — and log the planning decisions (phases chosen, prototypes selected, hours assumed) in `docs/decisions.md`.

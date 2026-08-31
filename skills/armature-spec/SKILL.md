@@ -85,4 +85,4 @@ Update `CLAUDE.md` (Stage → `plan`, Latest artifacts) and log the architecture
 
 ## Scope boundaries
 
-This skill covers electromechanical system design. For deep dives on control theory or software architecture, do the systems-level treatment here (interfaces, requirements) and note where specialist work is needed. If the user wants a concept explained rather than designed, call the Skill tool with "armature-teacher".
+This skill covers electromechanical system design. For deep dives on control theory or software architecture, do the systems-level treatment here (interfaces, requirements) and note where specialist work is needed. If the user wants a concept explained rather than designed, call the Skill tool with "armature-teach".

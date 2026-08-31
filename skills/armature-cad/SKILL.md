@@ -136,7 +136,7 @@ The **release transition** is the gate: before any drawing, DXF, or order leaves
 - A part that won't carry its load, or realized mass/inertia diverging from assumed → call the Skill tool with "armature-derive" with the real number.
 - An interface or envelope that proves a chosen part unworkable — a pattern that won't fit, a part that can't take the moment → call the Skill tool with "armature-spec" to change the part, material, or architecture.
 - A part that resists being made manufacturable and wants a cleverer mechanism → dispatch the **armature-inventor** agent.
-- A user who wants to *understand* a concept a definition turns on (a press fit, k-factor, datum order) → call the Skill tool with "armature-teacher".
+- A user who wants to *understand* a concept a definition turns on (a press fit, k-factor, datum order) → call the Skill tool with "armature-teach".
 
 Work each batch on an `armature/cad-<batch>` branch; merge once its definitions are red-teamed and findings resolved. Then point `CLAUDE.md`'s Latest artifacts at the new part/assembly definitions and log the batch's design decisions in `docs/decisions.md`. When the project's final batch merges, set `CLAUDE.md`'s **Stage** to `build`.
 

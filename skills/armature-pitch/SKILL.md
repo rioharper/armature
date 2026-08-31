@@ -47,4 +47,4 @@ If the effort outgrows the session — the concept hangs on more decisions than 
 
 ## Boundaries
 
-A below-the-line question asked mid-interview ("should I use a stepper or a BLDC?") gets a brief answer only if it blocks the concept-level conversation; then steer back above the line. If the user wants the idea explained or taught rather than pitched, call the Skill tool with "armature-teacher".
+A below-the-line question asked mid-interview ("should I use a stepper or a BLDC?") gets a brief answer only if it blocks the concept-level conversation; then steer back above the line. If the user wants the idea explained or taught rather than pitched, call the Skill tool with "armature-teach".
