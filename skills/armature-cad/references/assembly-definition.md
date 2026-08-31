@@ -10,9 +10,9 @@
 - **Fasteners:** one row per fastener group — spec (M3×8 SHCS, A2-70),
   quantity, torque, thread engagement, locking method (nyloc/threadlocker/
   none and why).
-- **Assembly order:** numbered steps. At each step: can the tool physically
-  reach (name the tool and its swing)? Can the part be inserted with
-  neighbors already placed? Any step needing three hands gets a jig.
+- **Assembly order:** numbered steps. At each step: the tool that reaches
+  (named, with its swing), and the part inserted with neighbours already
+  placed. Any step needing three hands gets a jig.
 - **Jigs & fixtures:** each with what it holds, to what accuracy, and
   whether it's printed/machined/bought.
 - **Stack-ups:** per critical fit, the table below.
@@ -26,7 +26,7 @@ a gear center distance):
    parts that control it. Every link: nominal ± tolerance, from its part
    definition or datasheet.
 2. Sum nominals; sum tolerances (worst case: straight sum — this scale of
-   build rarely justifies RSS, and worst-case is the honest default).
+   build rarely justifies RSS).
 3. Compare the resulting extreme fits against the functional requirement
    (min clearance, max misalignment a bearing tolerates per its datasheet).
 4. If it doesn't close: tighten the *fewest* tolerances (each tightening is
@@ -36,3 +36,6 @@ a gear center distance):
 | # | Dimension (part, feature) | Nominal | Tol ± | Source |
 | --- | --- | --- | --- | --- |
 |  | **Result: extreme fit vs. requirement** | | | |
+
+Done when every critical fit named in the part definitions has a table
+whose result row is compared against its requirement.

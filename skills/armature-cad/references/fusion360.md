@@ -1,60 +1,55 @@
 # CAD Build Recipe — Fusion 360
 
-How to realize a part definition in Fusion 360. The part definition's build recipe says *what* to model — the feature sequence and its dimensions; this file says *how* — where the tools live and the habits that keep the model honest.
+How to realize a part definition in Fusion 360. The build recipe says *what* to model; this file says *where the tools live* and the habits that keep the model honest.
 
-## 1. Component structure — a skeleton only when it pays
+## 1. Component structure — a skeleton when SKILL.md's rule says one pays
 
-Fusion mixes bodies and components in one file, so discipline matters:
+Fusion mixes bodies and components in one file:
 
-- Make every real part a **Component** (not a loose body), named per the project part scheme. Components are what get their own origin, joints, and eventually drawings.
-- Model a part off its own component origin unless shared geometry earns more. A **base/skeleton component** earns its existence only when **three or more components share kinematic dimensions** (link lengths, joint axes) or a driving length is still expected to move; for a one-off bracket it's ceremony — skip it.
-- When a skeleton does pay: make it a component anchored at the world origin holding only the controlling sketches and construction geometry — nothing solid — and ground it. Represent the project frames as **construction planes/axes and a construction point** per joint (Construct menu), named for the plan's Section 1 frames so the model is legible against the glossary.
+- Make every real part a **Component** (not a loose body), named per the project part scheme. Components get their own origin, joints, and eventually drawings.
+- Model a part off its own component origin by default. When a skeleton pays (SKILL.md, "Skeleton and driven dimensions"): make a **base component** anchored at the world origin holding only the controlling sketches and construction geometry — nothing solid — and ground it. Represent the project frames as **construction planes/axes and a construction point** per joint (Construct menu), named for the `CONTEXT.md` frames.
 
 ## 2. Origin, base feature = datum scheme
 
-The part's datum scheme (documentation-standards §5) is its component origin plus the first sketch plane. Put the primary datum on the component's origin plane that matches the functional mounting face, sketch the base feature there, and extrude outward. Building on the component origin (rather than an arbitrary offset) is what makes joints and drawing dimensions land cleanly.
+The part's datum scheme (documentation-standards §5) is its component origin plus the first sketch plane. Put the primary datum on the origin plane matching the functional mounting face, sketch the base feature there, and extrude outward. Building on the component origin is what makes joints and drawing dimensions land cleanly.
 
-## 3. Drive dimensions from the parameter table — the Parameters dialog
+## 3. Driven dimensions — the Parameters dialog
 
-This is where design intent is won or lost in Fusion:
+For the dimensions SKILL.md's rule marks driven:
 
-- **Modify → Change Parameters** opens the parameters table. Add **User Parameters** only for dimensions that trace to `params.py` or an interface contract (`link_len = 200 mm`, `bolt_circle = 45 mm`) with units and an optional comment; every other dimension is a plain typed number — parametrizing a value nothing else depends on adds fragility, not intent.
-- In any sketch dimension or feature input, type the parameter name (or an expression like `bolt_circle/2`) instead of a raw number. The dimension now follows the parameter.
-- Editing a User Parameter updates every dimension that references it on the next compute — the model-side echo of `params.py`. Keep one parameter per real design driver and reference it everywhere, rather than typing the same number in three sketches.
-- For size families, drive a **Configuration** (Fusion's configurations table) from the parameters rather than saving copies.
+- **Modify → Change Parameters**: add a **User Parameter** per driven dimension (`link_len = 200 mm`, `bolt_circle = 45 mm`) with units and an optional comment.
+- In any sketch dimension or feature input, type the parameter name (or an expression like `bolt_circle/2`) instead of a raw number.
+- Editing a User Parameter updates every reference on the next compute — the model-side echo of `params.py`. One parameter per real design driver, referenced everywhere, rather than the same number typed in three sketches.
+- For size families, drive a **Configuration** from the parameters rather than saving copies.
 
 ## 4. Insert the COTS model and joint to it
 
-Design around the real part:
-
-- Fusion has **Insert → Insert McMaster-Carr Component**, which drops in real fasteners, bearings, and hardware directly as components — use it for standard hardware. For actuators and gearboxes, upload the supplier's STEP and insert it.
-- Constrain your part to the COTS component's interface with **Joints** or **As-Built Joints** referencing the datasheet geometry — the output flange face and bolt circle, the bearing OD and shoulder. Getting the interface right in the joint gets it right everywhere downstream.
-- Reference the COTS mounting face directly for your mating face rather than re-typing dimensions from the PDF; it kills a transcription error.
+- **Insert → Insert McMaster-Carr Component** drops in real fasteners, bearings, and hardware as components. For actuators and gearboxes, upload the supplier's STEP and insert it.
+- Constrain your part to the COTS component's interface with **Joints** or **As-Built Joints** referencing the datasheet geometry — the output flange face and bolt circle, the bearing OD and shoulder.
+- Reference the COTS mounting face directly for your mating face rather than re-typing dimensions from the PDF.
 
 ## 5. Physical properties — the loop-closing measurement
 
-The tool for closing the loop against the mathematician's assumed inertia:
-
-1. **Assign a Physical Material first** (right-click component → Physical Material, or the Modify menu) — mass and inertia are only real once density is set. For stock not in the library (PA-CF, a specific alloy), create a custom material with the BOM's density.
+1. **Assign a Physical Material first** (right-click component → Physical Material, or the Modify menu); for stock not in the library (PA-CF, a specific alloy), create a custom material with the BOM's density.
 2. Open the component's **Properties** (right-click component → Properties) or **Inspect → Physical Properties**.
-3. Physical Properties reports mass, center of mass, and the **moments of inertia** — read carefully *which point and axes* Fusion is reporting about (it gives values at the origin and at the center of mass; the panel labels which). Match this to the point and axes the mathematician's `00_setup.md` used. This match is what makes the comparison mean anything — an inertia about the component origin will not equal one the derivation took about the COM.
-4. Compare to `params.py`; beyond tolerance → route back to the mathematician with the measured mass, COM, and inertia (SKILL.md's "close the loop").
+3. Read *which point and axes* Fusion reports the **moments of inertia** about — it gives values at the origin and at the center of mass, and the panel labels which. Match the one `00_setup.md` used.
+4. Compare per SKILL.md's Close the loop.
 
 ## 6. Fits and tolerances
 
-*Which* fit — documentation-standards §6; apply it here:
+*Which* fit is documentation-standards §6; apply it here:
 
-- Fusion's **Hole** feature places standard holes and clearances; for a shaft/bore fit, add the tolerance to the dimension (edit the dimension → tolerance fields) — Fusion's parametric tolerancing is lighter than SOLIDWORKS's, so the fit intent often lives primarily on the drawing rather than in the model.
-- Tolerance the functional dimensions only; everything else rides the drawing's general-tolerance block.
-- Fusion's GD&T support in drawings covers the common controls (position, flatness, etc.); apply them where §7 says they earn their keep.
+- The **Hole** feature places standard holes and clearances; for a shaft/bore fit, add the tolerance to the dimension (edit the dimension → tolerance fields). Fusion's parametric tolerancing is lighter than SOLIDWORKS's, so fit intent usually lives on the drawing.
+- Tolerance the functional dimensions only; the rest ride the drawing's general-tolerance block.
+- Fusion's drawing GD&T covers the common controls (position, flatness, etc.); apply them where §7 says.
 
 ## 7. Sheet metal, and printed / machined parts
 
-- **Sheet Metal** workspace: set a **Sheet Metal Rule** (material, thickness, bend radius, **k-factor** to what the shop holds) before flanging, so bends and reliefs are enforced and the flat pattern is the right length.
-- **Printed parts:** apply the anisotropy and insert-boss rules from documentation-standards §4; note the intended print orientation on the drawing.
-- **Machining in-house:** Fusion's **Manufacture (CAM)** workspace generates toolpaths from the same model — a genuine advantage if you're cutting the part yourself; keep the design's minimum internal radii ≥ your smallest end mill.
+- **Sheet Metal** workspace: set a **Sheet Metal Rule** (material, thickness, bend radius, **k-factor** to what the shop holds) before flanging, so bends and reliefs are enforced and the flat pattern is true.
+- **Printed parts:** apply documentation-standards §4; note the print orientation on the drawing.
+- **Machining in-house:** the **Manufacture (CAM)** workspace generates toolpaths from the same model; keep the design's minimum internal radii ≥ your smallest end mill.
 
 ## 8. Drawing and export
 
-- **Drawing:** switch to the **Drawing** workspace from the component, dimension from the datum scheme (baseline/ordinate off the primary datum, not stacked chains), add GD&T where §7 warrants, and fill the title block (part number and rev per the project scheme, material, finish, tolerance block) plus any notes the geometry can't carry.
-- **Export:** right-click the component → Save As Mesh for **STL** (set refinement High so facets don't show on fit surfaces) for print; **Export** → **STEP** for a shop or another CAD; **DXF** from the flat pattern for laser/sheet. State format and settings — a coarse STL on a bearing bore won't press together.
+- **Drawing:** switch to the **Drawing** workspace from the component, dimension from the datum scheme (baseline/ordinate off the primary datum, not stacked chains), add GD&T where §7 warrants, fill the title block (part number and rev per the project scheme, material, finish, tolerance block), and add notes the geometry can't carry.
+- **Export:** right-click the component → Save As Mesh for **STL** (refinement High) for print; **Export** → **STEP** for a shop or another CAD; **DXF** from the flat pattern for laser/sheet. State format and settings in the definition (documentation-standards §10).
