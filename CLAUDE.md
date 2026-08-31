@@ -1,6 +1,6 @@
 # Armature
 
-Robotics engineering pipeline packaged as a Claude Code plugin: six stage skills in `skills/`, three agents in `agents/`, a SolidWorks MCP server in `mcp/solidworks/`.
+Robotics engineering pipeline packaged as a Claude Code plugin: five pipeline stages, `init`, and five cross-cutting skills in `skills/`; three agents in `agents/`; a SolidWorks MCP server in `mcp/solidworks/`.
 
 ## Agent skills
 

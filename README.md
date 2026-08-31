@@ -11,14 +11,37 @@ and get past some of the monotony. I’ve found it extremely helpful for my own 
 I think engineers deserve the beauty of Claude Code too.
 
 Install it once, then run `/armature:init` in a blank folder. It'll scaffold a
-standard project, stamp `CLAUDE.md`, and roll right into the concept interview.
-From there you work concept → spec → plan → analysis → CAD the way a real
+standard project, stamp `CLAUDE.md`, and roll right into the pitch interview.
+From there you work pitch → spec → plan → derive → CAD the way a real
 engineering team would: budgets tracked, requirements traced, decisions
 logged, and a red-team pass before anything gets built or bought.
 
+## Where to go
+
+| Your situation | Reach for |
+|---|---|
+| Blank folder, new robot idea | `/armature:init` |
+| Not sure it's worth building, or for whom | `armature-pitch` |
+| Pitch settled; need the engineering spec, a trade study, or a design review | `armature-spec` |
+| Spec in hand; need phases and the shared vocabulary later sessions will use | `armature-plan` |
+| Need equations of motion, a Jacobian, workspace or actuator-sizing math | `armature-derive` |
+| Ready to model a part, or to check a modeled part's mass and inertia against the dynamics | `armature-cad` |
+| Want to understand a concept, or why your own design behaves as it does | `armature-teach` |
+| Writing firmware, ROS nodes, or control code | `armature-test` (fires on its own) |
+| Hardware misbehaving at the bench | `/armature:armature-debug` |
+| A plan's bring-up or verification test has come due | `armature-bringup` |
+| An unknown lives with a machinist, vendor, or professor | questionnaire via `armature-spec` or `armature-cad` |
+| An effort too big or foggy for one session | `armature-wayfind` |
+| An artifact is drafted; CAD hours or purchases are next | `armature-red-team` |
+| Design stuck or conventional; unusual requirements | `armature-inventor` |
+| Need a datasheet or a vendor CAD model | `armature-librarian` |
+
+The stage skills fire on their own when the conversation fits; `init` and
+`armature-debug` are typed.
+
 ## The pipeline
 
-Six stage skills form the main path, each an interactive interview run in the
+Five stage skills form the main path, each an interactive interview run in the
 main conversation, handing its output to the next:
 
 | Stage | Skill | Produces |
@@ -29,7 +52,7 @@ main conversation, handing its output to the next:
 | 4 | `armature-derive` |  milestone-sized derivation notes and a re-runnable, cross-verified Python model. |
 | 5 | `armature-cad` |  per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 
-Cross-cutting skill and agents, pulled in from any stage:
+Cross-cutting skills and agents, pulled in from any stage:
 
 | Name | Kind | Role |
 |---|---|---|
@@ -123,11 +146,21 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
 
 ## Install
 
-Install as a Claude Code plugin — via a marketplace:
+Install as a Claude Code plugin via the marketplace:
+
+```
 /plugin marketplace add rioharper/armature
 /plugin install armature@armature-plugins
+```
 
-...Or locally with
-`--plugin-dir` pointed at this repo.
+...or locally, with `--plugin-dir` pointed at this repo.
 
 Once installed, run `/armature:init` in a blank folder to start everything.
+
+## Credits
+
+`armature-wayfind`, `armature-test`, `armature-debug`, `armature-bringup`, the
+questionnaire template, and the interview, glossary, and writing conventions
+across the skills adapt material from [Matt Pocock's skills](https://github.com/mattpocock/skills),
+used under the MIT License. The full notice and the list of adapted material
+are in [`NOTICE.md`](NOTICE.md). Changes per release are in [`CHANGELOG.md`](CHANGELOG.md).
