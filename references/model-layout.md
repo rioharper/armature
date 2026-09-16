@@ -53,6 +53,8 @@ truth/
   chain_checks.py        the builder round-tripped against the parameter block
   envelope.py            the seeded sampler every other milestone's checks draw from
   envelope_checks.py
+  equilibrium.py         settling to rest under held commands and applied loads
+  equilibrium_checks.py
   inverse.py             inverse dynamics — one submodule per query the milestones need
   inverse_checks.py
 ```

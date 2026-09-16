@@ -28,13 +28,13 @@ nothing above it:
     sample_states(n, seed)     configurations, velocities and accelerations
     inverse_dynamics(...)      torques at a state and an acceleration
 
-    settle(...)                static equilibrium under given loads
+    settle(...)                static equilibrium under held commands and loads
+
     linearise(...)             stiffness, mass, and mode frequencies there
 
-The first six are here. The last two arrive with the milestones that need them
-— settle with the statics claim, linearise with the modes — each in its own
-submodule beside `chain.py`, keeping this surface the one place to read for
-what the truth model can be asked.
+All but the last are here. `linearise` arrives with the milestone that cites a
+mode, in its own submodule beside `chain.py`, keeping this surface the one
+place to read for what the truth model can be asked.
 
 Two builders cover the conventions a mechanism arrives in: `chain.py` for a
 serial chain read off the DH or PoE table, and a floating-body builder for a
@@ -49,4 +49,5 @@ MILESTONE = (0, "Milestone 0: truth model")
 
 from truth.chain import build, site_jacobian, site_pose   # noqa: E402,F401
 from truth.envelope import sample, sample_states          # noqa: E402,F401
+from truth.equilibrium import Settled, settle              # noqa: E402,F401
 from truth.inverse import inverse_dynamics                # noqa: E402,F401
