@@ -21,7 +21,7 @@ import numpy as np
 
 from params import GRAVITY_VEC, m1
 from truth.equilibrium import settle
-from truth.floating import (Body, Cable, Floating, Joint, _f, build,
+from truth.floating import (Body, Cable, Floating, Joint, as_float, build,
                             cable_forces, spec_from_params, stiffness)
 
 # --- the fixture's own geometry ---
@@ -36,12 +36,12 @@ SLACK_LENGTH = 0.80  # and of the third, twice the gap it spans [m]
 # it is here because a rigid body cannot be built without one.
 INERTIA = np.diag([0.004, 0.004, 0.008])
 
-MASS = _f(m1)
-G = float(np.linalg.norm([_f(v) for v in GRAVITY_VEC]))
+MASS = as_float(m1)
+G = float(np.linalg.norm([as_float(v) for v in GRAVITY_VEC]))
 # Up is against gravity, whichever way the parameter block points it, and the
 # span lies along any direction across it — so the algebra below is the same in
 # a z-up block as in this one's y-up.
-UP = -np.array([_f(v) for v in GRAVITY_VEC]) / G
+UP = -np.array([as_float(v) for v in GRAVITY_VEC]) / G
 SIDE = np.cross(UP, np.eye(3)[int(np.argmin(np.abs(UP)))])
 SIDE = SIDE / np.linalg.norm(SIDE)
 
@@ -100,7 +100,7 @@ def test_builder_round_trips_the_fixture(tol=1e-12):
     assert np.allclose(np.sort(model.body_inertia[1]),
                        np.sort(np.diag(INERTIA)), atol=1e-10), \
         f"principal inertias {model.body_inertia[1]} != {np.diag(INERTIA)}"
-    assert np.allclose(model.opt.gravity, [_f(v) for v in GRAVITY_VEC], atol=tol)
+    assert np.allclose(model.opt.gravity, [as_float(v) for v in GRAVITY_VEC], atol=tol)
 
     assert model.ntendon == len(spec.cables), \
         f"{model.ntendon} tendons for {len(spec.cables)} cables"
@@ -108,7 +108,7 @@ def test_builder_round_trips_the_fixture(tol=1e-12):
         assert abs(model.tendon_stiffness[i] - stiffness(cable)) < 1e-9, \
             f"cable {cable.name!r} stiffness {model.tendon_stiffness[i]}"
         assert np.allclose(model.tendon_lengthspring[i],
-                           [0.0, _f(cable.length)], atol=tol), \
+                           [0.0, as_float(cable.length)], atol=tol), \
             (f"cable {cable.name!r} deadband {model.tendon_lengthspring[i]} is "
              f"not zero to its unstretched length — it can push")
     print(f"  [PASS] the floating model round-trips one body and "

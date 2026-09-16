@@ -97,9 +97,14 @@ Two rules keep it honest, and both are layout rules rather than physics:
   the constants drift the first time one is edited, and a check between drifted models
   proves nothing about either.
 
-Sorting first is not cosmetic: a milestone's truth check is only as good as the model it
-checks against, so the builder's round-trip against the parameter block is the first
-thing the run reports.
+Sorting first is not cosmetic, and the rule is its reason: a truth check is only as good as
+the model it checks against, so **the truth package runs before every module that makes a
+truth claim**, and its builder's round-trip against the parameter block is the first truth
+result the run reports. The parameter block itself may precede it — `params.py` is data, it
+makes no truth claim, and a block that has lost a load-case sign should fail before the
+builder ever reads it. A module that both precedes the truth package *and* carries a
+`test_truth_*` is the mistake this ordering exists to prevent: its check can pass vacuously
+against a builder nothing has validated yet.
 
 ## Checks one file over
 
@@ -153,7 +158,10 @@ TRUTH_EXEMPT = "a naming convention and a units table; no physical claim to chec
 
 Anything but a non-empty string raises. The reason appears in `layout.py`'s table and the
 red-team challenges it — the exemption a session writes under time pressure is exactly the
-one a fresh context should read.
+one a fresh context should read. The model template ships one worked example: `params_checks.py`
+argues that a block of *data* has no claim a simulator can be asked about, since its constants
+are held against the truth model where they are used. No module in either template claims a
+`LAYOUT_EXEMPT`.
 
 ## The budget: 250 code lines
 

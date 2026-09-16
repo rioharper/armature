@@ -23,7 +23,6 @@ import mujoco
 import numpy as np
 
 from params import COM_LOCAL, INERTIA, MASSES, N, GRAVITY_VEC
-from truth.chain import as_float, body_placement, joint_kind
 
 MUJOCO = "mujoco"
 PINOCCHIO = "pinocchio"
@@ -62,8 +61,17 @@ def pinocchio_chain():
     through `truth.chain`'s own DH reduction — so the two backends differ in
     their algorithm and their code and in nothing else. Returns
     `(pinocchio.Model, pinocchio.Data)`.
+
+    `truth.chain` is imported here rather than at module level, and that is a
+    layout rule rather than a style choice: this module is a **query**, and a
+    query takes the `(model, data)` pair *either* builder returns. A floating
+    project deletes `chain.py`, and a module-level import of it would take
+    `inverse_dynamics` down with it. Only this function needs the chain, and
+    only a chain project calls it.
     """
     import pinocchio as pin
+
+    from truth.chain import as_float, body_placement, joint_kind
 
     model = pin.Model()
     model.name = "truth-chain"
@@ -103,7 +111,9 @@ def inverse_dynamics(model, data, q_vals, qd_vals, qdd_vals, backend=MUJOCO):
     """
     if resolve(backend) == PINOCCHIO:
         import pinocchio as pin
-        pin_model, pin_data = _SECOND.setdefault(PINOCCHIO, pinocchio_chain())
+        if PINOCCHIO not in _SECOND:        # `setdefault` would rebuild it every call
+            _SECOND[PINOCCHIO] = pinocchio_chain()
+        pin_model, pin_data = _SECOND[PINOCCHIO]
         return np.array(pin.rnea(pin_model, pin_data,
                                  np.asarray(q_vals, dtype=float),
                                  np.asarray(qd_vals, dtype=float),

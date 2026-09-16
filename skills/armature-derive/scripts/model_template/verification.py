@@ -19,9 +19,10 @@ from collections import namedtuple
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
-from params import LOAD_CASES, N, PLANE_XY, WORKSPACE
+from params import LOAD_CASES, N, PLANE_XY
 from kinematics import J_num, fk_num
 from dynamics.statics import static_torques
+from truth.envelope import DEFAULT_SEED, WORK_HIGH, WORK_LOW
 
 # Run order and heading for `run_all.py`, which discovers this module
 # by the `test_*` callables in verification_checks.py, not by name.
@@ -29,10 +30,11 @@ MILESTONE = (3, "Milestone 3: verification")
 
 GRID_POINTS = 25        # per coordinate; the step is reported with the result
 OPT_STARTS = 8          # multi-start count, the grid's best among them
-OPT_SEED = 20260915
 
-LO = np.array([lo for lo, _ in WORKSPACE], dtype=float)
-HI = np.array([hi for _, hi in WORKSPACE], dtype=float)
+# The search runs over the intended workspace, read from the truth package's
+# envelope rather than re-derived from WORKSPACE here: two arrays built from one
+# parameter block still drift the first time somebody edits one of them.
+LO, HI = WORK_LOW, WORK_HIGH
 
 # `tau` and `q` are the answer — the worse of the two methods per joint, and
 # the posture it happens at. `grid` and `opt` are what each method alone found,
@@ -41,30 +43,80 @@ HI = np.array([hi for _, hi in WORKSPACE], dtype=float)
 Worst = namedtuple("Worst", "case tau q grid opt step")
 
 
-def combine(tau, Jv, case):
-    """Worst |joint torque| from a gravity torque and a position Jacobian [N m].
+def tip_force(case):
+    """The world-frame force [N] a fixed-direction load case applies at the tool.
 
-    Gravity plus the tip force the case names, mapped through the Jacobian
-    transpose. For a case whose direction is a *set* (`PLANE_XY`) this is the
-    exact maximum over that set rather than a search across it: the worst of
-    |tau_j + F (col_j . u)| over unit u in the plane is |tau_j| + F times the
-    norm of column j projected onto it, taking u along whichever sign of tau_j
-    is worse. Per joint independently, which is what sizing an actuator asks.
-
-    Split out from `case_torque` so the truth check can push the same load case
-    through the *truth model's* gravity torque and site Jacobian. What the two
-    sides share is this algebra, which is an identity; what differs is the
-    physics, which is the whole comparison.
+    `sign` multiplies the direction, which is what makes a signed case two rows
+    rather than one reading. A case whose direction is a *set* has no single
+    force and raises here; ask `worst_tip_force` for the heading that binds a
+    given joint.
     """
-    if case.direction == PLANE_XY:
-        return np.abs(tau) + case.magnitude * np.linalg.norm(Jv[:2, :], axis=0)
+    assert case.direction != PLANE_XY, (
+        f"load case {case.name!r} names a direction set, not a direction; its "
+        f"worst heading is per joint — use worst_tip_force")
     sense = case.sign if case.sign else 1
-    force = sense * case.magnitude * np.asarray(case.direction, dtype=float)
-    return np.abs(tau + Jv.T @ force)
+    return sense * case.magnitude * np.asarray(case.direction, dtype=float)
+
+
+def holding_torque(tau, Jv, force):
+    """Joint torque holding a posture against gravity and a tip force [N m].
+
+    Signed, and the sign is the whole point. Statics reads
+    `g(q) = tau + J_v(q)^T f` — the actuators and the external force *together*
+    balance gravity — so the torque the actuator must supply is
+
+        tau_hold = g(q) - J_v(q)^T f
+
+    with `f` the force the world applies to the tool. A load that pulls the tool
+    down loads the shoulder *more*, and the minus sign is what says so; the plus
+    sign gives a payload that lightens the arm carrying it, which is the kind of
+    result that looks like a number and is a direction error.
+    """
+    return tau - Jv.T @ np.asarray(force, dtype=float)
+
+
+def worst_tip_force(tau, Jv, case, j):
+    """The force in `case`'s direction set that loads joint j hardest [N].
+
+    For a fixed direction, that is just the case's force. For the unit circle in
+    the base plane it is exact rather than searched: `tau_hold_j` is
+    `tau_j - F (col_j . u)`, whose magnitude over unit u in the plane peaks at
+    `|tau_j| + F ||col_j restricted to the plane||`, reached with u opposing the
+    sign of tau_j. A handful of headings tried instead of this is the failure
+    the computed-worst-case rule exists to stop.
+    """
+    if case.direction != PLANE_XY:
+        return tip_force(case)
+    column = np.array([Jv[0, j], Jv[1, j], 0.0])
+    reach = float(np.linalg.norm(column))
+    if reach < 1e-12:            # this joint cannot feel a force in the plane
+        return np.zeros(3)
+    sense = -1.0 if tau[j] >= 0 else 1.0
+    return sense * case.magnitude * column / reach
+
+
+def combine(tau, Jv, case):
+    """Worst |holding torque| per joint under one load case [N m].
+
+    `holding_torque` at the worst force in the case's direction set, per joint
+    independently, which is what sizing an actuator asks. Split out from
+    `case_torque` so the truth check can push the same load case through the
+    *truth model's* gravity torque and site Jacobian.
+
+    That sharing is also this function's limit, and worth knowing before you
+    lean on it: a comparison whose two sides both call this cannot see an error
+    *in* it — a flipped force sign here is a flipped force sign on both sides,
+    which is the same blindness the truth model exists to remove, one level up.
+    Which is why Milestone 3's truth check does not stop at recomputing this: it
+    hands the force to the truth model as a real wrench and settles.
+    """
+    return np.array([abs(holding_torque(tau, Jv,
+                                        worst_tip_force(tau, Jv, case, j))[j])
+                     for j in range(N)])
 
 
 def case_torque(q_vals, case):
-    """Worst |joint torque| at `q_vals` under one load case [N m], per joint."""
+    """Worst |holding torque| at `q_vals` under one load case [N m], per joint."""
     return combine(static_torques(q_vals),
                    np.asarray(J_num(*q_vals), dtype=float)[:3, :], case)
 
@@ -87,7 +139,7 @@ def grid_search(case, points=GRID_POINTS):
     return tau, q, (HI - LO) / (points - 1)
 
 
-def optimiser_search(case, starts=OPT_STARTS, seed=OPT_SEED, q0=None):
+def optimiser_search(case, starts=OPT_STARTS, seed=DEFAULT_SEED, q0=None):
     """Worst |tau| per joint by multi-start L-BFGS-B over WORKSPACE.
 
     One maximisation per joint, from `starts` starting postures: the grid's

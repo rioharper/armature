@@ -59,7 +59,7 @@ Floating = namedtuple("Floating", "bodies cables name",
                       defaults=("truth-floating",))
 
 
-def _f(expr):
+def as_float(expr):
     """A parameter-block expression as a float, with PARAMS substituted in.
 
     The same helper chain.py opens with, repeated rather than shared so either
@@ -73,7 +73,7 @@ def _flat(values):
     """`values` as a flat list of floats, row-major, symbols substituted."""
     items = (list(values) if isinstance(values, sp.MatrixBase)
              else np.ravel(np.asarray(values, dtype=object)).tolist())
-    return [_f(v) for v in items]
+    return [as_float(v) for v in items]
 
 
 def _fmt(values):
@@ -83,7 +83,7 @@ def _fmt(values):
 
 def stiffness(cable):
     """The cable's spring rate EA/L [N/m], from the two numbers it is spec'd by."""
-    ea, length = _f(cable.ea), _f(cable.length)
+    ea, length = as_float(cable.ea), as_float(cable.length)
     assert length > 0, \
         f"cable {cable.name!r} has unstretched length {length}, which is not one"
     return ea / length
@@ -143,7 +143,7 @@ def _body_xml(spec, body, depth):
                      f'axis="{_fmt(joint.axis)}" pos="{_fmt(joint.pos)}" '
                      f'range="{_fmt(joint.range)}"/>')
     lines.append(f'{pad}  <inertial pos="{_fmt(body.com)}" '
-                 f'mass="{_f(body.mass):.17g}" fullinertia="{_fmt(full)}"/>')
+                 f'mass="{as_float(body.mass):.17g}" fullinertia="{_fmt(full)}"/>')
     for name, pos in body.sites:
         lines.append(f'{pad}  <site name="{name}" pos="{_fmt(pos)}"/>')
     for cable in spec.cables:
@@ -177,7 +177,7 @@ def mjcf(spec):
     for cable in spec.cables:
         tendon += [f'    <spatial name="{cable.name}" '
                    f'stiffness="{stiffness(cable):.17g}" '
-                   f'springlength="0 {_f(cable.length):.17g}">',
+                   f'springlength="0 {as_float(cable.length):.17g}">',
                    f'      <site site="{cable.name}_anchor"/>',
                    f'      <site site="{cable.name}_attach"/>',
                    '    </spatial>']

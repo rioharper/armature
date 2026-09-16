@@ -32,6 +32,34 @@ REST_SPEED = 1e-6       # rad/s or m/s
 REST_ACCEL = 1e-4       # rad/s^2 or m/s^2
 
 
+def site_wrench(model, data, site, force):
+    """A world-frame force at a site, as the `{body: 6-vector}` settle takes.
+
+    `settle` applies a wrench through MuJoCo's `xfrc_applied`, which acts at the
+    body's **centre of mass** (`data.xipos`) — not at its frame origin, which is
+    the easy misreading and gives a silently wrong moment. A load almost never
+    acts at either: a payload hangs off the tool, a contact lands on a pad, a
+    cable pulls at an anchor. Moving the force there adds the moment of its
+    offset, `(p_site - p_com) x f`, and both positions are read out of the
+    simulator at the current configuration, so nothing of the derivation is on
+    this side of the conversion.
+
+    It exists so a load case can be handed to the truth model as a *force the
+    model actually feels*, rather than as a generalised torque some J^T already
+    turned it into. A Jacobian-transpose mapping checked against another
+    Jacobian-transpose mapping is one expression twice; this is the other kind
+    of check, and it is where a sign error in that mapping shows up.
+    """
+    sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site)
+    assert sid >= 0, f"no site named {site!r} in the truth model"
+    bid = int(model.site_bodyid[sid])
+    name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, bid)
+    mujoco.mj_forward(model, data)
+    lever = np.array(data.site_xpos[sid]) - np.array(data.xipos[bid])
+    force = np.asarray(force, dtype=float)
+    return {name: np.concatenate([force, np.cross(lever, force)])}
+
+
 def settle(model, data, q0, hold=None, wrench=None, damping=0.0,
            min_steps=0, max_steps=MAX_STEPS, rest=REST_SPEED,
            rest_accel=REST_ACCEL):
@@ -40,7 +68,10 @@ def settle(model, data, q0, hold=None, wrench=None, damping=0.0,
     `hold` is the generalised force held constant throughout — the actuator
     command the derivation says holds this pose. `wrench` is an optional
     {body name: 6-vector} of world-frame force and torque applied at that
-    body's frame origin: a payload, a wind load, a tether pull.
+    body's **centre of mass**, which is where MuJoCo's `xfrc_applied` acts: a
+    payload, a wind load, a tether pull. A load that acts somewhere else — at a
+    tool, a pad, an anchor — goes through `site_wrench` first, which carries the
+    moment of the offset.
 
     Energy leaves by **quench**, not by damping: whenever the model turns back
     on itself (`q̇ · q̈ < 0`, so it has passed a minimum) its velocity is zeroed.

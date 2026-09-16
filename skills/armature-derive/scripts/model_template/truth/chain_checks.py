@@ -10,8 +10,11 @@ the derivation is every other milestone's check, not this one's.
 import mujoco
 import numpy as np
 
-from params import COM_LOCAL, GRAVITY_VEC, INERTIA, MASSES, N, Q_LIMITS
+from params import (COM_LOCAL, GRAVITY_VEC, INERTIA, MASSES, N, Q_LIMITS,
+                    WORKSPACE)
 from truth.chain import TOOL_SITE, as_float, build, joint_kind
+from truth.envelope import DEFAULT_SEED, sample_workspace
+from truth.equilibrium import settle
 
 KINDS = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
@@ -64,3 +67,31 @@ def test_joints_match_the_table_and_the_envelope(tol=1e-12):
     sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, TOOL_SITE)
     assert sid >= 0, f"the truth model has no {TOOL_SITE!r} site to check against"
     print("  [PASS] joint types, ranges and the tool site match the block")
+
+
+def test_the_workspace_stays_clear_of_the_joint_limits(n=64, seed=DEFAULT_SEED,
+                                                       tol=1e-9):
+    """The intended workspace, against the joint ranges the builder gave the model.
+
+    `WORKSPACE` is a claim about the machine — *this is where it works* — and
+    every later result leans on it: the singular-value bound, the IK's
+    convergence set, the posture each worst case is found at. The builder reads
+    `Q_LIMITS` into the model as its joint ranges, so this file is where the two
+    can be held against each other.
+
+    The difference is not cosmetic. On a limit MuJoCo adds a constraint force,
+    and every truth check downstream then reads the limit's torque rather than
+    the mechanism's — Milestone 3's worst-case check would confirm a number the
+    end-stop is carrying. It sits here, after the round-trip above, because a
+    check of the model is only worth its line once the model itself has been
+    held against the block.
+    """
+    model, data = build()
+    for q0 in sample_workspace(n, seed):
+        out = settle(model, data, q0, max_steps=1)
+        assert np.max(np.abs(out.forces)) < tol, (
+            f"a joint limit carries {out.forces} at q={np.round(q0, 4)}, inside "
+            f"WORKSPACE {WORKSPACE}; every truth check at that pose would read "
+            f"the end-stop's force rather than the mechanism's")
+    print(f"  [PASS] {n} sampled workspace poses sit clear of every joint limit "
+          f"the truth model carries (seed {seed})")
