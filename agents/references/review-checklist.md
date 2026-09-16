@@ -19,6 +19,18 @@ The families where robotics designs fail review, in working order: the early one
 
 ## 3. Physics, math, and budgets
 
+**Five error families produce derivations whose arithmetic is right and whose model is wrong.** Every printed number reproduces, every algebraic step holds, every self-consistency check passes — because the mistake sits on *both sides* of each of them. They are named here because a finding with a family name routes itself; each points at the probe below that hunts it and at the one file that owns its rule. They add no family to this taxonomy: all five live inside this one.
+
+| Family | Probe below | The file that owns the rule |
+|---|---|---|
+| A **frozen degree of freedom** — a coordinate the derivation fixes that the machine leaves free | *An assumption that freezes a coordinate, with no release behind it* | **armature-derive** `references/derivation-standards.md`, *The assumption table*; the skill's Step 0 |
+| A **worst case at named configurations** — "worst", "any", "anywhere" answered by a handful of postures | *A claim evidenced at named configurations*; *A worst case taken at named configurations, or by a handful of samples* | same file, *Evidence over an envelope*; the skill's Milestone 3 |
+| A **load-case sign read one way** — a signed acceleration or pull sized in its gentler sense | *A signed load case read in one sign* | same section, and `params.py`'s `LOAD_CASES` table with `params_checks.py` enforcing it |
+| A **formula outside its assumptions** — a book's closed form on a mechanism outside its class | *A closed form cited without its applicability check* | same file, *A closed form from a book* |
+| **Unswept singular values** — a matrix inverted whose rank was assumed | *An inverted matrix with no singular-value sweep*; *A mode named without a linearisation behind it* | same file, *Evidence over an envelope*; the skill's Milestone 1 |
+
+All five were found on the first real project through this plugin, in one review, after its checkpoint had passed.
+
 - **Re-run the feasibility math** with the artifact's own numbers. Does it close at the edge of the envelope, or only at nominal?
 - **Margins**: is each sized to its stakes? Actuator torque, structural stress, thermal, power, current. State the margin the consequence warrants and compare to what is there.
 - **Budgets** (`docs/01-spec/budgets.md`): current estimates against each budget, and whether recent changes were debited at all.
