@@ -1,12 +1,51 @@
 """
 dynamics/lagrangian_checks.py — self-tests for lagrangian.py, 02_dynamics.md §1–2.
+
+Every check here is **self-consistency**: it holds M, C, g and V against each
+other and against properties any correct Lagrangian has, using no model but
+this one. That is exactly what a wrong assumption survives, since the
+assumption sits on both sides of the comparison. The check that these equations
+describe the mechanism is the truth model's inverse dynamics, one milestone
+over; keep these for what they are good at, which is catching an arithmetic
+slip the moment it lands.
 """
 
 import numpy as np
 import sympy as sp
 
 from params import N, t
-from dynamics.lagrangian import M_SYM, C_SYM, M_num, C_num, g_num, total_energy
+from dynamics.lagrangian import (M_SYM, C_SYM, M_num, C_num, g_num, V_num,
+                                 total_energy)
+
+# One state, and what M, C, g and V read there. Hand-checked for the shipped
+# 2R arm and pinned so a rebuild of the symbolic construction — the move onto
+# sympy.physics.mechanics was one — has to produce the same equations, not
+# merely equations with the same properties. Replace these with your own
+# mechanism's numbers, from a source that is not this file.
+PINNED_Q = (0.3, -0.4)
+PINNED_QD = (0.7, 1.1)
+PINNED = {
+    "M": [[0.1847636596401731, 0.04613182982008655],
+          [0.04613182982008655, 0.0185]],
+    "C": [[0.012850805296185468, 0.02102859048466713],
+          [-0.00817778518848166, 0.0]],
+    "g": [4.912276488633065, 0.9760990861377432],
+    "V": 1.1196657737555127,
+}
+
+
+def test_pinned_sample(tol=1e-12):
+    """M, C, g and V at one state, against the values pinned above."""
+    got = {
+        "M": np.asarray(M_num(*PINNED_Q), dtype=float),
+        "C": np.asarray(C_num(*PINNED_Q, *PINNED_QD), dtype=float),
+        "g": np.asarray(g_num(*PINNED_Q), dtype=float).flatten(),
+        "V": np.asarray(V_num(*PINNED_Q), dtype=float).flatten(),
+    }
+    for name, want in PINNED.items():
+        expected = np.asarray(want, dtype=float).flatten()
+        assert np.allclose(got[name].flatten(), expected, atol=tol),             f"{name} at q={PINNED_Q} is {got[name]}, pinned value {want}"
+    print("  [PASS] M, C, g and V match the pinned sample")
 
 
 def test_mass_matrix_properties(trials=5, tol=1e-9):

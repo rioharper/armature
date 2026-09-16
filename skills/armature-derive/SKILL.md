@@ -34,7 +34,7 @@ analysis/model/
   kinematics_checks.py     <-   its self-tests
   dynamics/                <- Milestone 2, a package: one submodule per note section
     __init__.py            <-   MILESTONE, and nothing else
-    lagrangian.py          <-   T, V, Euler-Lagrange -> M, C, g
+    lagrangian.py          <-   T, V by sympy.physics.mechanics -> M, C, g
     lagrangian_checks.py
     statics.py             <-   holding torques
     statics_checks.py
@@ -46,7 +46,7 @@ analysis/model/
   test_derivation.py       <- the same checks, exposed to pytest
 ```
 
-At Milestone 0, copy `model_template/` from this skill's `scripts/` directory into `analysis/model/`. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`dynamics/` imports `kinematics.py`'s frames; it never needs `verification.py`).
+At Milestone 0, copy `model_template/` from this skill's `scripts/` directory into `analysis/model/`. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` is the one module that deliberately does *not* borrow: it turns its own `sympy.physics.mechanics` frames off the same DH table rather than reusing `kinematics.py`'s matrices, so the two milestones share the parameter block and nothing else.
 
 **Outline the note before writing its module.** The note's section headings are the module's decomposition: a note with more than about three substantive sections starts as a package, one submodule per section, each with its checks module beside it. Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it.
 
@@ -78,9 +78,13 @@ In `kinematics.py`: `forward_kinematics()`, `geometric_jacobian()`, and lambdifi
 
 ## Milestone 2: Dynamics
 
-In `02_dynamics.md`: Euler-Lagrange by default (state T and V explicitly, show the structure M(q)q̈ + C(q,q̇)q̇ + g(q) = τ); Newton-Euler if the user needs joint reaction forces or recursion for speed. Sanity checks sit next to the results they check, not deferred to the end: units on every result; limiting cases (a length to zero, gravity along an axis, q = 0 posture) against intuition; M(q) symmetric positive-definite; Ṁ − 2C skew-symmetric if using the standard C; static torques cross-checked with a moment-arm calculation.
+In `02_dynamics.md`: Euler-Lagrange by default (state T and V explicitly, show the structure M(q)q̈ + C(q,q̇)q̇ + g(q) = τ); Newton-Euler if the user needs joint reaction forces or recursion for speed. Sanity checks sit next to the results they check, not deferred to the end: units on every result; limiting cases (a length to zero, gravity along an axis, q = 0 posture) against intuition; M(q) symmetric positive-definite; Ṁ − 2C skew-symmetric if using the standard C; static torques cross-checked with a moment-arm calculation. **Those last are self-consistency checks, and say so in the note**: each holds the model against itself or against a property every correct Lagrangian has, so each is blind to an assumption that sits on both sides of the comparison. They catch an arithmetic slip the moment it lands, which is worth having; they are not what makes the dynamics right.
 
-In `dynamics/`: `lagrangian_dynamics()` and `total_energy()` in `lagrangian.py`, building on `kinematics.py`'s frames, and `static_torques()` in `statics.py`. Self-tests, in each submodule's checks module: mass matrix symmetric positive-definite, skew-symmetry, energy conservation under SciPy integration (`solve_ivp`), static torques against the moment-arm calculation. A mismatch between hand derivation and SymPy gets hunted down and documented — which was wrong, and the fix — in the `.md`, never silently patched in the `.py`. Run the checkpoint.
+In `dynamics/`: `lagrangian_dynamics()` and `total_energy()` in `lagrangian.py`, and `static_torques()` in `statics.py`.
+
+**The Lagrangian is built by `sympy.physics.mechanics`, never by hand.** `lagrangian.py` turns a `ReferenceFrame` per link off the DH table, places each joint origin and each COM as a `Point`, gives every point its velocity through the one- and two-point velocity theorems, hangs a `RigidBody` with mass and an inertia dyadic on each link frame, and hands the whole Lagrangian to `LagrangesMethod`. M, C and g are then read back out of the equations it returns. Two steps that used to be written out — the angular velocity read from Ṙ Rᵀ, and the d/dt(∂L/∂q̇) − ∂L/∂q loop — are exactly where an ω sign or a dropped Coriolis term used to hide behind arithmetic that still reproduced, so they are not written out. Keep the same shape if the mechanism is a floating body rather than a chain: frames, points, velocity theorems, bodies, method.
+
+Self-tests, in each submodule's checks module: the pinned numeric sample of M, C, g and V; mass matrix symmetric positive-definite; skew-symmetry; energy conservation under SciPy integration (`solve_ivp`); static torques against the moment-arm calculation. All of those are **self-consistency** — the model against itself. What makes the equations right is the truth model's inverse dynamics at randomly sampled states, checked at this milestone's checkpoint by a model that never saw the Lagrangian. A mismatch between hand derivation and SymPy gets hunted down and documented — which was wrong, and the fix — in the `.md`, never silently patched in the `.py`. Run the checkpoint.
 
 ## Milestone 3: Verification & results
 

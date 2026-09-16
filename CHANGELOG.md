@@ -10,6 +10,7 @@ Every `armature-derive` milestone is checked against an independent MuJoCo model
 
 - `scripts/env-probe.sh` checks **MuJoCo** in the core tier, beside SymPy, SciPy and NumPy, with the same `absent` / `error: <Type>` / version reading. Core rather than a tier because a machine that cannot import it cannot pass a derivation checkpoint at all. `pinocchio` joins the named checks as an optional second backend for chain dynamics — never core, since it has no Windows pip wheel.
 - `references/environment-record.md` documents both; `init` and `armature-plan` name a missing MuJoCo as Phase 0 work that the analysis phase waits on, not a footnote.
+- The model template's **Lagrangian is built by `sympy.physics.mechanics`** — frames off the DH table, points given velocities by the one- and two-point theorems, a `RigidBody` per link, `LagrangesMethod` for the equations. The angular velocity read out of Ṙ Rᵀ and the hand Euler-Lagrange loop are gone, so an ω sign or a dropped Coriolis term is impossible by construction rather than caught later. M, C, g and V are unchanged to 1e-12 on the shipped 2R arm, now pinned by a self-test; `dynamics/` no longer imports `kinematics.py`, sharing only the parameter block. The derive skill's Milestone 2 calls symmetry, skew-symmetry and energy conservation **self-consistency** checks, which is all they ever were.
 
 ### The plan lives on the issue tracker
 
