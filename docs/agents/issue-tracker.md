@@ -4,9 +4,9 @@
      which is the single source. Re-copy it when it changes; everything below
      "## Local to this repo" is the only part that belongs to this file alone. -->
 
-Issues and specs for this repo live as GitHub issues on `rioharper/armature`. Use the
-`gh` CLI for all operations; it infers the repo from the clone. On this dev machine `gh`
-lives at `C:\Program Files\GitHub CLI\gh.exe` when it is not on PATH.
+Issues for this repo live as GitHub issues. Use the `gh` CLI for all operations; it infers
+the repo from the clone. `gh`, an authenticated account, and a remote are prerequisites of
+an Armature project — `init` establishes them, and there is no non-GitHub path.
 
 ## Conventions
 

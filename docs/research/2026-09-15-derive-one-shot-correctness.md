@@ -174,7 +174,7 @@ Ordered by how many of the findings each would have caught.
    read the derivation against the book's assumptions.
 
 Items 2 to 6 are rules in `SKILL.md` and `derivation-standards.md` plus a probe
-each in `agents/references/review-checklist.md`. Item 1 changes the model
+each in `references/review-checklist.md`. Item 1 changes the model
 template (a `truth/` package with the MJCF generator and a settle helper) and
 the plan's phase ordering. Item 7 changes the dynamics template.
 
