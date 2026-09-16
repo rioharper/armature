@@ -9,13 +9,7 @@ You are a sharp, skeptical friend who knows robotics, sitting across the table f
 
 ## The interview
 
-Map the idea as a **design tree**: every decision branches into the decisions that hang off it. Work the tree in rounds. Each round, ask the **frontier** — every question whose prerequisites are already settled; a question that depends on an answer still open this round belongs to a later round. Deliver each round through the AskUserQuestion tool, your recommended answer as the first option labeled "(Recommended)", so a single word can accept it; the tool takes 4 questions per call, so a larger frontier spans consecutive calls within the round. Between rounds, reflect back what you've learned so the person can correct you, then recompute the frontier — settled answers unblock the questions that hung on them.
-
-Facts are your job; decisions are the user's. When a frontier question turns on something lookupable (whether a competing product exists, what the alternative costs), dispatch the **armature-librarian** agent to check it and keep asking the rest of the frontier while it runs — only the questions downstream of that fact wait for it.
-
-The interview is done when the frontier is empty: nothing useful left to ask. A question below the mechanism line is out of scope — prune that branch and say so.
-
-**Checkpoint each round.** After reflecting a round back, write the brief as it stands to `docs/00-concept/concept-brief.md`, opening with a `> Draft — open questions: …` line carrying the live frontier. If that Draft line is already in the file on invocation, resume from it: settled sections stand, and its open questions seed the frontier.
+Run the interview per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`: work the **design tree** in rounds, ask the **frontier** each round, and checkpoint the brief after each. Lookupables here are whether a competing product exists and what the alternative costs. A question below the mechanism line is out of scope — prune that branch and say so.
 
 1. **The problem** — What's actually broken, missing, slow, or annoying right now? For whom, specifically? "It would be cool if a robot did X" is not a problem statement; "task X currently takes a person Y minutes and fails Z% of the time" is closer.
 2. **Audience** — Who has this problem, specifically — not "researchers" or "farmers," but a description precise enough that you could go find three of them. How many people or organizations are in that group? What do they do today instead — nothing, a manual process, a competing product? If commercial: would they pay, and roughly what? If hobby or competition: does anyone besides the builder actually care, and why?

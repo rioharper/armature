@@ -28,8 +28,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env-probe.sh" ros2 gazebo cuda
 Re-probe on **every** invocation, a re-plan at a phase gate included, and
 rewrite this machine's section of `docs/environment.md` with today's date, so
 the record is never older than the last plan written against it. Format and the
-one-section-per-machine rule: `references/environment-record.md`, two levels
-above this skill. An absence the plan depends on becomes explicit Phase 0 work
+one-section-per-machine rule: `${CLAUDE_PLUGIN_ROOT}/references/environment-record.md`. An absence the plan depends on becomes explicit Phase 0 work
 with hours against it rather than a footnote — a missing ROS 2 and Gazebo are
 that phase's first tasks, and a machine with no CUDA is a dependency on some
 other machine, not a slower schedule. **A missing MuJoCo is Phase 0 before the
@@ -80,9 +79,7 @@ spec and its revision history.
 
 Resolve with the user: available hours per week, hard deadlines, whether analysis (kinematics/dynamics) precedes or parallels CAD, and any gaps the spec left open. Their calendar is theirs to state, never yours to assume.
 
-Work these questions in rounds. Each round, ask the **frontier** — the questions whose prerequisites are already settled (a phase-ordering question waits until the spec gap that drives it is resolved); recompute the frontier after each round. Deliver rounds through the AskUserQuestion tool, your recommended answer as the first option labeled "(Recommended)", so a single word can accept it; the tool takes 4 questions per call, so a larger frontier spans consecutive calls within the round. Facts are your job; decisions are the user's: send a lookupable (a lead time, a part's availability, a datasheet number) to the **armature-librarian** agent and keep asking the rest of the frontier while it runs — several at once go in waves of two or three per the plugin's `references/subagent-dispatch.md` (two levels above this skill).
-
-**Checkpoint each round.** After each round, write the plan as it stands to `docs/02-plan/draft.md`, opening with a `> Draft — open questions: …` line carrying the live frontier. If that file exists on invocation, resume from it: settled answers stand, and its open questions seed the frontier.
+Work these questions in rounds per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`, checkpointing the plan after each. A phase-ordering question waits until the spec gap that drives it is resolved. Lookupables here are a lead time, a part's availability, a datasheet number.
 
 The draft is **not** the plan and never becomes it. It is gitignored, it exists only while the interview runs, and cutting the issues is what ends it — delete it in the same step. Nothing is created on the tracker until the interview closes: a half-specified plan published as forty issues is worse than no plan, because the fog in it is now indistinguishable from work. A `draft.md` found on disk with no issues behind it is an abandoned interview; offer to resume it or delete it.
 

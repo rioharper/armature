@@ -115,7 +115,7 @@ The user invokes with a loose idea.
 2. **Map the frontier breadth-first**: fan out across the space for open decisions and first takeable steps. If no fog surfaces (the whole journey fits one session), skip the map and ask the user how to proceed.
 3. **Create the map**: Destination and Notes filled, Decisions-so-far empty, fog sketched into Not yet specified.
 4. **Create the tickets you can specify now** as children of the map, then wire blocking in a second pass (tickets need ids before they can reference each other).
-5. **Dispatch each research ticket** to its agent, in waves of two or three per the plugin's `references/subagent-dispatch.md` (two levels above this skill).
+5. **Dispatch each research ticket** to its agent, in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
 6. Stop: charting hand-resolves nothing.
 
 ### Work through the map

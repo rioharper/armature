@@ -27,8 +27,7 @@ something to plan around rather than an error. `PYTHON` is the invocation that
 works on this machine — `py` and `absent` are different answers, and reading
 them as the same is what put a stale "python is not on PATH" note in a project
 that had python all along. Step 4 writes the result to `docs/environment.md`;
-its format and rules are `references/environment-record.md`, two levels above
-this skill.
+its format and rules are `${CLAUDE_PLUGIN_ROOT}/references/environment-record.md`.
 
 **`GH` is a gate, not a note.** Every other absence the probe reports is
 something to plan around; this one stops the scaffold. An Armature project keeps

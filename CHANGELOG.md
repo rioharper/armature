@@ -9,6 +9,8 @@ Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inhe
 - The review checklist moves from `agents/references/` to `references/`. Every `.md` under `agents/` loads as an agent, so the checklist had been registered as one, with every tool and no description.
 - The project `CLAUDE.md` template's Standing rules shrink to one or two lines each. That block is loaded into every session of every project, and each rule restated something a skill body or a project file already owns — the reserve arithmetic in `budgets.md`'s own header, the issue shape in `docs/agents/issue-tracker.md`, the probe-only rule in `environment.md`'s comment. Each line now says what the rule is and where its detail lives.
 - This repo's `docs/agents/issue-tracker.md` is regenerated from its single source, and the manifest description is one sentence.
+- **`references/interview.md`** holds the interview mechanic — design tree, frontier, rounds through AskUserQuestion, facts versus decisions, the per-round checkpoint — once. `armature-pitch`, `armature-spec` and `armature-plan` had carried the same sixty-word block each; each now points at it and keeps only what is its own: the draft path, the lookupables, the mechanism line.
+- Every cross-skill pointer reads `${CLAUDE_PLUGIN_ROOT}/references/...` or `.../scripts/...`; the phrase "two levels above this skill" appeared nineteen times and is gone. The six dispatch pointers say "in waves" and point at `subagent-dispatch.md`, which owns the number, instead of restating it.
 
 ### The derivation gets a truth model
 

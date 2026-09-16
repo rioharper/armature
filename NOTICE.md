@@ -13,7 +13,7 @@ The adapted material, and what it became here:
 | `skills/armature-debug/`, `scripts/human-loop.template.sh` | `diagnosing-bugs` and its `hitl-loop.template.sh` |
 | `skills/armature-bringup/` | `wizard` |
 | `references/questionnaire.template.md` | `to-questionnaire` |
-| interview mechanics in `armature-pitch`, `armature-spec`, `armature-plan` | `grilling` |
+| `references/interview.md`, the interview run by `armature-pitch`, `armature-spec`, `armature-plan` | `grilling` |
 | glossary, `CONTEXT.md`, and ADR mechanics in `armature-plan` and `init` | `domain-modeling` |
 | `skills/armature-derive/references/phase-boundaries.md` | `phase-boundaries` |
 | `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, the `CLAUDE.md` agent-skills block | `setup-matt-pocock-skills` conventions |

@@ -23,7 +23,7 @@ Before starting, read `CONTEXT.md` (if it exists) and ADRs in the area you're to
 3. **Bench jig script.** Command a stimulus and read the measurement back through a scriptable instrument (SCPI bench supply, USB scope or logic analyzer, DAQ); assert the bound.
 4. **Model as oracle.** Re-run `analysis/model/` at the measured operating point and diff prediction against measurement; red is disagreement beyond the derivation's stated tolerance. This is the loop for every "the bench number disagrees with the math" fault.
 5. **A/B swap.** Run the same loop with one suspected part exchanged for a known-good unit, so hardware becomes the only variable. The human swaps; the human-loop script structures it.
-6. **Human-loop script.** When a human must flash, press, probe, or read the scope, drive _them_: copy the plugin's `scripts/human-loop.template.sh` (two levels above this skill), edit the steps, and run it, so the loop stays structured, gated, and captured. A rung inside any loop above; the whole loop only as a last resort.
+6. **Human-loop script.** When a human must flash, press, probe, or read the scope, drive _them_: copy `${CLAUDE_PLUGIN_ROOT}/scripts/human-loop.template.sh`, edit the steps, and run it, so the loop stays structured, gated, and captured. A rung inside any loop above; the whole loop only as a last resort.
 
 ### Tighten the loop
 
