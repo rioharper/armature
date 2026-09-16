@@ -12,10 +12,16 @@ place for provenance, arithmetic, and generation.
 Example mechanism: planar 2R arm in gravity. Replace with your robot.
 """
 
+from collections import namedtuple
 from math import pi
 
 import sympy as sp
 from sympy import Matrix, symbols
+
+# Run order and heading for `run_all.py`: the parameter block is Milestone 0
+# and sorts first, so a load-case table that has lost a sign fails before any
+# milestone that sizes against it runs. Self-tests in params_checks.py.
+MILESTONE = (0, "Milestone 0: parameter block")
 
 # --- numeric values (SI units) ---
 PARAMS = {
@@ -24,7 +30,7 @@ PARAMS = {
     "lc1": 0.15,    # link 1 COM distance from joint 1 [m]
     "lc2": 0.125,   # link 2 COM distance from joint 2 [m]
     "m1": 1.20,     # link 1 mass [kg]
-    "m2": 0.80,     # link 2 mass (include payload here or add m_p) [kg]
+    "m2": 0.80,     # link 2 mass, bare link — the payload is a tip load below [kg]
     "I1": 0.012,    # link 1 inertia about its COM, z-axis [kg m^2]
     "I2": 0.006,    # link 2 inertia about its COM, z-axis [kg m^2]
     "Ix1": 0.00024,  # link 1 inertia about its own long axis [kg m^2]
@@ -98,8 +104,12 @@ Q_LIMITS = [(-pi, pi), (-2.6, 2.6)]
 # arm's position Jacobian has determinant l1 l2 sin(q2), so it loses rank at
 # q2 = 0 — an elbow singularity sitting squarely inside Q_LIMITS — and the
 # machine is committed to the elbow-up branch to stay off it. Name yours from
-# the requirement, not from what happens to be non-singular.
-WORKSPACE = [(-pi, pi), (0.30, 2.6)]
+# the requirement, not from what happens to be non-singular. Strictly inside
+# Q_LIMITS on every coordinate, including the ones with no singularity in them:
+# a worst case found *on* a joint limit is a worst case the limit is carrying,
+# and the truth model reads the limit's constraint force rather than the
+# mechanism's torque there.
+WORKSPACE = [(-3.0, 3.0), (0.30, 2.50)]
 
 # The smallest singular value the position Jacobian must keep everywhere in
 # WORKSPACE [m/rad]. Not a tolerance: it is the worst end-effector speed one
@@ -116,6 +126,41 @@ SIGMA_MIN = 0.035
 # posture, and every Coriolis and inertial term lives in them.
 QD_LIMITS = [3.0, 4.0]
 QDD_LIMITS = [20.0, 30.0]
+
+# --- load cases ---
+# Every load the actuators are sized against, as a **table** rather than a
+# sentence: one row per (class, magnitude, direction set, sign), and **both
+# signs of every signed row spelled out**. A signed case written once and read
+# in one sign is how a design gets sized against the gentler half of its own
+# requirement — a 0.5 g deceleration read as upward when downward is the case
+# that binds, a cable pull read inboard when outboard is the one that lifts a
+# foot. The reading is not left to whoever runs the search: the row exists or
+# the case was not considered, and `params_checks.py` fails a signed class with
+# only one sign in the table.
+#
+# `direction` is a **set**, not a direction: a unit vector in the base frame
+# where the load has one, or `PLANE_XY` where the requirement says "from any
+# direction in the plane". A set is answered exactly — the worst tip force over
+# the unit circle is the norm of the Jacobian column projected onto it — and
+# never by trying a handful of headings.
+LoadCase = namedtuple("LoadCase", "name kind magnitude direction sign")
+
+PLANE_XY = "any-in-plane"       # the unit circle in the base frame's xy plane
+
+M_PAYLOAD = 0.50     # payload carried at the tool frame, not in m2 [kg]
+A_BASE = 0.5         # worst base acceleration the spec's move classes reach [g]
+F_CONTACT = 15.0     # worst contact force at the tool, any heading [N]
+
+LOAD_CASES = [
+    LoadCase("hold", "static", 0.0, (0.0, 0.0, 0.0), 0),
+    LoadCase("payload", "carried mass", M_PAYLOAD * PARAMS["g"],
+             (0.0, -1.0, 0.0), 0),
+    LoadCase("brake +x", "base acceleration",
+             M_PAYLOAD * A_BASE * PARAMS["g"], (1.0, 0.0, 0.0), +1),
+    LoadCase("brake -x", "base acceleration",
+             M_PAYLOAD * A_BASE * PARAMS["g"], (1.0, 0.0, 0.0), -1),
+    LoadCase("contact", "contact force", F_CONTACT, PLANE_XY, 0),
+]
 
 # Plain symbols for lambdify, shared by every downstream module so the
 # numeric-function signatures stay consistent across kinematics/dynamics/

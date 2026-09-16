@@ -25,7 +25,7 @@ from kinematics import J, T_EE, singular_values
 from dynamics.lagrangian import G_SYM, M_SYM
 from dynamics.statics import static_torques
 from truth.envelope import DEFAULT_SEED, sample, sample_workspace
-from verification import worst_case_static_torque
+from verification import GRID_POINTS, OPT_STARTS, worst_over_load_cases
 
 # For the reader, not for a check. Replace with your mechanism's landmarks.
 NAMED = {
@@ -59,9 +59,21 @@ for name, qv in NAMED.items():
     print(f"  {name:<34}{singular_values(qv)[0, -1]:>18.4f}  "
           f"{np.round(static_torques(qv), 3)}")
 
-# The worst static torque anywhere in the workspace, not just at one posture.
-wt, wq = worst_case_static_torque()
-print("\n03_results.md: worst-case static torque over the workspace")
-print(f"  {'joint':<7}{'|tau| [N m]':>12}  posture [rad]")
-for j in range(N):
-    print(f"  {j + 1:<7}{wt[j]:>12.3f}  {np.round(wq[j], 3)}")
+# "Worst" over the workspace, by two methods, for every row of the load-case
+# table — both signs of the signed one among them. The grid step is printed
+# beside the numbers because it bounds what the grid alone could have missed,
+# and the two methods are printed separately because a gap between them is a
+# finding rather than a rounding, and the note says which way it went.
+worst = worst_over_load_cases()
+print("")
+print("03_results.md: worst |tau| over WORKSPACE, per load case [N m]")
+print(f"  grid {GRID_POINTS} points per axis, step {np.round(worst[0].step, 4)} rad;"
+      f" multi-start optimiser, {OPT_STARTS} starts")
+print(f"  {'load case':<11}{'class':<19}{'joint':>6}{'grid':>9}{'optimiser':>11}"
+      f"{'worst':>9}  posture [rad]")
+for w in worst:
+    for j in range(N):
+        print(f"  {w.case.name if j == 0 else '':<11}"
+              f"{w.case.kind if j == 0 else '':<19}{j + 1:>6}"
+              f"{w.grid[j]:>9.3f}{w.opt[j]:>11.3f}{w.tau[j]:>9.3f}  "
+              f"{np.round(w.q[j], 3)}")

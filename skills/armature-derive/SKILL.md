@@ -29,7 +29,8 @@ analysis/derivation/
   02_dynamics.md       <- Milestone 2
   03_results.md        <- Milestone 3
 analysis/model/
-  params.py                <- Milestone 0 (parameter block + symbols + the envelope)
+  params.py                <- Milestone 0 (parameter block, symbols, envelope, load cases)
+  params_checks.py         <-   its self-tests: symbols mirror numbers, both signs present
   truth/                   <- Milestone 0, the truth model: an independent simulator model
     __init__.py            <-   MILESTONE, and the backend-neutral public surface
     chain.py               <-   a serial chain from the DH table -> a MuJoCo model
@@ -134,7 +135,13 @@ The derivation exists to change decisions. In `03_results.md`, actively hunt for
 
 For each finding: state the problem physically, name the specific spec or part it collides with, and lay out the levers (relax the requirement, resize the component, change the architecture). Routing the fix is a boundary decision — see Boundaries.
 
-In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test in `verification_checks.py`, and a worst-case-static-torque workspace search to size actuators against; `report_results.py` prints the tables `03_results.md` cites. `run_all.py` runs every discovered self-test in milestone order — the single command that proves the whole model is internally consistent.
+**"Worst", "any" and "anywhere" are computed, never sampled**, and the rule with its reasons is in `references/derivation-standards.md`. An exact set method where the set is convex — an LP, a hull, a zonotope, a norm with a closed form; a multi-start optimiser where none exists; a dense sweep only with its grid step printed beside the result. The template's search runs the grid *and* the optimiser over every row of the load-case table and returns the worse of the two, because a grid cannot see a peak narrower than its step and an optimiser cannot certify a global maximum: the pair bracket the answer, and a gap between them wider than the margin's precision is itself the finding.
+
+**Both signs of every signed load case, in the parameter block.** `params.LOAD_CASES` is a table of `(class, magnitude, direction set, sign)` rows and `params_checks.py` fails a signed class with one sign in it. On the shipped arm the two braking rows differ by 4 % at the shoulder, so a one-sign reading undersizes it — and the sign that binds is not the one anybody writes first. Where the requirement names a *set* of directions rather than a direction, the row says so and the search answers it exactly: the worst tip force over a circle of headings is a norm, not thirty-six headings tried.
+
+**Mandatory truth check:** the worst case the search found, confirmed by the truth model at the posture it found it at. A worst case is the number an actuator gets bought against, and both its inputs — g(q) from the Lagrangian, J_v from the FK — are the derivation's own; the check re-evaluates the same load case from the truth model's inverse dynamics at rest and the truth model's site Jacobian, so the algebra is shared (it is an identity) and the physics has nothing in common. Check the posture is strictly inside the joint limits first: a worst case found *on* a limit is a torque the limit is carrying.
+
+In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test in `verification_checks.py`, and the worst-case search — `grid_search`, `optimiser_search`, `worst_case_torque` per load case — to size actuators against; `report_results.py` prints the tables `03_results.md` cites, the grid and the optimiser side by side with the grid step. `run_all.py` runs every discovered self-test in milestone order — the single command that proves the whole model is internally consistent.
 
 The Milestone 3 checkpoint splits its red-team pass by question — two passes run in sequence, then the merge pass, per the split rule in the plugin's `references/subagent-dispatch.md` (two levels above this skill) — so neither carries files its question does not need. This is the worked example that rule generalises:
 

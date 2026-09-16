@@ -102,7 +102,10 @@ thing the run reports.
 ## Checks one file over
 
 A module's self-tests live in a sibling checks module named for it: `kinematics.py` →
-`kinematics_checks.py`. Locality is kept — the checks sit beside what they check — and
+`kinematics_checks.py`. That includes the parameter block: `params.py` is data, and
+`params_checks.py` holds the checks on the shape of that data — the symbol table mirroring
+the numbers, the envelope one row per coordinate, both signs of every signed load case —
+each of which is a whole class of downstream result quietly sized against the wrong thing. Locality is kept — the checks sit beside what they check — and
 neither file carries the other's lines. Discovery pairs the two by name, so moving a check
 costs no registration; pytest never collects a `*_checks.py` directly, so the one pytest
 bridge stays the only path and the two entry points cannot disagree. A checks module
