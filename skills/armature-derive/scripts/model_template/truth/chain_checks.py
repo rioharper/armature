@@ -11,7 +11,7 @@ import mujoco
 import numpy as np
 
 from params import COM_LOCAL, GRAVITY_VEC, INERTIA, MASSES, N, Q_LIMITS
-from truth.chain import TOOL_SITE, _f, build, joint_kind
+from truth.chain import TOOL_SITE, as_float, build, joint_kind
 
 KINDS = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
@@ -32,12 +32,12 @@ def test_builder_round_trips_the_parameter_block(tol=1e-12):
 
     for i in range(N):
         body = i + 1        # body 0 is the world
-        assert abs(model.body_mass[body] - _f(MASSES[i])) < tol, \
-            f"link {i + 1} mass {model.body_mass[body]} != {_f(MASSES[i])}"
-        com = [_f(v) for v in COM_LOCAL[i]]
+        assert abs(model.body_mass[body] - as_float(MASSES[i])) < tol, \
+            f"link {i + 1} mass {model.body_mass[body]} != {as_float(MASSES[i])}"
+        com = [as_float(v) for v in COM_LOCAL[i]]
         assert np.allclose(model.body_ipos[body], com, atol=tol), \
             f"link {i + 1} COM {model.body_ipos[body]} != {com}"
-        J = np.array([[_f(INERTIA[i][r, c]) for c in range(3)]
+        J = np.array([[as_float(INERTIA[i][r, c]) for c in range(3)]
                       for r in range(3)])
         principal = np.sort(np.linalg.eigvalsh(J))
         assert np.allclose(np.sort(model.body_inertia[body]), principal,
@@ -45,7 +45,7 @@ def test_builder_round_trips_the_parameter_block(tol=1e-12):
             (f"link {i + 1} principal inertias {model.body_inertia[body]} "
              f"!= {principal} — check the fullinertia ordering")
 
-    gravity = [_f(v) for v in GRAVITY_VEC]
+    gravity = [as_float(v) for v in GRAVITY_VEC]
     assert np.allclose(model.opt.gravity, gravity, atol=tol), \
         f"truth model gravity {model.opt.gravity} != {gravity}"
     print(f"  [PASS] truth model round-trips {N} links from the parameter block")

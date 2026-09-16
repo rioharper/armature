@@ -23,8 +23,12 @@ from params import (COM_LOCAL, DH, GRAVITY_VEC, INERTIA, MASSES, N, Q_LIMITS,
 TOOL_SITE = "tool"
 
 
-def _f(expr):
-    """A parameter-block expression as a float, with PARAMS substituted in."""
+def as_float(expr):
+    """A parameter-block expression as a float, with PARAMS substituted in.
+
+    Public because a second backend builds the same chain from the same block
+    and must read every constant through the same substitution.
+    """
     return float(sp.sympify(expr).subs(SUB_P))
 
 
@@ -69,7 +73,7 @@ def body_placement(i):
     the placement is exact rather than a linearisation. Change this function,
     not the caller, if the parameter block uses standard DH or PoE screws.
     """
-    alpha, a, d, theta = (_f(sp.sympify(e).subs(q[i], 0)) for e in DH[i])
+    alpha, a, d, theta = (as_float(sp.sympify(e).subs(q[i], 0)) for e in DH[i])
     R = _rot_x(alpha) @ _rot_z(theta)
     pos = np.array([a, -d * np.sin(alpha), d * np.cos(alpha)])
     return pos, _quat(R)
@@ -77,7 +81,7 @@ def body_placement(i):
 
 def tool_placement():
     """The tool frame inside the last link frame: (pos, quat), from T_TOOL."""
-    T = np.array([[_f(T_TOOL[r, c]) for c in range(4)] for r in range(4)])
+    T = np.array([[as_float(T_TOOL[r, c]) for c in range(4)] for r in range(4)])
     return T[:3, 3], _quat(T[:3, :3])
 
 
@@ -92,21 +96,21 @@ def mjcf():
     head = ['<mujoco model="truth-chain">',
             '  <compiler angle="radian" inertiafromgeom="false" '
             'autolimits="true"/>',
-            f'  <option gravity="{_fmt([_f(v) for v in GRAVITY_VEC])}"/>',
+            f'  <option gravity="{_fmt([as_float(v) for v in GRAVITY_VEC])}"/>',
             '  <worldbody>']
     body, close = [], []
     for i in range(N):
         pad = "    " + "  " * i
         pos, quat = body_placement(i)
-        com = [_f(v) for v in COM_LOCAL[i]]
-        J = [[_f(INERTIA[i][r, c]) for c in range(3)] for r in range(3)]
+        com = [as_float(v) for v in COM_LOCAL[i]]
+        J = [[as_float(INERTIA[i][r, c]) for c in range(3)] for r in range(3)]
         full = [J[0][0], J[1][1], J[2][2], J[0][1], J[0][2], J[1][2]]
         body += [
             f'{pad}<body name="link{i + 1}" pos="{_fmt(pos)}" '
             f'quat="{_fmt(quat)}">',
             f'{pad}  <joint name="q{i + 1}" type="{joint_kind(i)}" '
             f'axis="0 0 1" range="{_fmt(Q_LIMITS[i])}"/>',
-            f'{pad}  <inertial pos="{_fmt(com)}" mass="{_f(MASSES[i]):.17g}" '
+            f'{pad}  <inertial pos="{_fmt(com)}" mass="{as_float(MASSES[i]):.17g}" '
             f'fullinertia="{_fmt(full)}"/>',
         ]
         close.insert(0, f'{pad}</body>')

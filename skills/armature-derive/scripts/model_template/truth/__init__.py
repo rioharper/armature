@@ -28,6 +28,7 @@ nothing above it:
 
     sample_states(n, seed)     configurations, velocities and accelerations
     inverse_dynamics(...)      torques at a state and an acceleration
+    available()                which inverse-dynamics backends this machine has
 
     settle(...)                static equilibrium under held commands and loads
     cable_forces(...)          the tension each cable carries there
@@ -56,6 +57,15 @@ pose is not a box in its seven `qpos` — three positions and a quaternion. A
 floating project decides at Milestone 0 what its pose envelope is and samples
 from that; the sampler here is the chain's.
 
+**MuJoCo is the backend; Pinocchio is optional and only ever optional.** Where
+it imports — conda, WSL, a Linux box — `inverse_dynamics(..., backend=...)`
+builds the same chain from the same parameter block and runs its own RNEA, and
+Milestone 2's truth check runs against both and prints which ran. Where it does
+not, the call falls back to MuJoCo and says so. It has no Windows pip wheel and
+no unilateral constraints, so it can never be the model a checkpoint depends on;
+`scripts/env-probe.sh` reads it into the project's environment record beside
+MuJoCo, and the `PINOCCHIO` line there is what says whether this machine has it.
+
 Check the package alone: `python run_all.py truth`.
 """
 
@@ -69,6 +79,6 @@ from truth.envelope import sample, sample_states          # noqa: E402,F401
 from truth.equilibrium import Settled, settle             # noqa: E402,F401
 from truth.floating import build as build_floating        # noqa: E402,F401
 from truth.floating import cable_forces                   # noqa: E402,F401
-from truth.inverse import inverse_dynamics                # noqa: E402,F401
+from truth.inverse import available, inverse_dynamics     # noqa: E402,F401
 from truth.modes import Linearised, linearise             # noqa: E402,F401
 from truth.release import Released, release               # noqa: E402,F401

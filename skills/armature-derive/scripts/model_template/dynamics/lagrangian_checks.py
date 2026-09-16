@@ -18,7 +18,7 @@ from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, g_num,
                                  V_num, small_oscillation_modes, total_energy)
 from truth.chain import build
 from truth.envelope import DEFAULT_SEED, sample, sample_states
-from truth.inverse import inverse_dynamics
+from truth.inverse import available, inverse_dynamics
 from truth.modes import linearise
 
 # One state, and what M, C, g and V read there. Hand-checked for the shipped
@@ -133,25 +133,33 @@ def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     Sampled *states*, not postures: at rest C multiplies zero and the whole
     Coriolis matrix goes unexercised. Velocity and acceleration come from the
     rate envelope in the parameter block, both signs.
+
+    Run against every backend the machine has, and the backends that ran are
+    printed: MuJoCo always, Pinocchio where it imports (conda or WSL — there is
+    no Windows pip wheel, so it is optional and the environment record's
+    `PINOCCHIO` line says whether this machine has it). Two recursive
+    algorithms in two codebases off one parameter block is a third independent
+    implementation for free where it is available, and never a requirement.
     """
     model, data = build()
     Q, QD, QDD = sample_states(n, seed)
     worst, worst_at = 0.0, None
-    for qv, qdv, qddv in zip(Q, QD, QDD):
-        Mn = np.asarray(M_num(*qv), dtype=float)
-        Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
-        gn = np.asarray(g_num(*qv), dtype=float).flatten()
-        tau_model = Mn @ qddv + Cn @ qdv + gn
-        tau_truth = inverse_dynamics(model, data, qv, qdv, qddv)
-        gap = float(np.max(np.abs(tau_model - tau_truth)))
-        if gap > worst:
-            worst, worst_at = gap, (qv, qdv)
-        assert gap < tol, (
-            f"tau = M qdd + C qd + g reads {tau_model} where the truth model's "
-            f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
-            f"qdd={qddv}")
+    for backend in available():
+        for qv, qdv, qddv in zip(Q, QD, QDD):
+            Mn = np.asarray(M_num(*qv), dtype=float)
+            Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
+            gn = np.asarray(g_num(*qv), dtype=float).flatten()
+            tau_model = Mn @ qddv + Cn @ qdv + gn
+            tau_truth = inverse_dynamics(model, data, qv, qdv, qddv, backend)
+            gap = float(np.max(np.abs(tau_model - tau_truth)))
+            if gap > worst:
+                worst, worst_at = gap, (qv, qdv)
+            assert gap < tol, (
+                f"tau = M qdd + C qd + g reads {tau_model} where {backend}'s "
+                f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
+                f"qdd={qddv}")
     print(f"  [PASS] tau matches the truth model's inverse dynamics over {n} "
-          f"sampled states (seed {seed})")
+          f"sampled states (seed {seed}), backends {available()}")
     print(f"         worst |dtau| {worst:.2e} N m, at q = "
           f"{np.round(worst_at[0], 4)}, qd = {np.round(worst_at[1], 4)}")
 
