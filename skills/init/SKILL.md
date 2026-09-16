@@ -30,6 +30,15 @@ that had python all along. Step 4 writes the result to `docs/environment.md`;
 its format and rules are `references/environment-record.md`, two levels above
 this skill.
 
+**`GH` is a gate, not a note.** Every other absence the probe reports is
+something to plan around; this one stops the scaffold. An Armature project keeps
+its plan and its wayfinder maps on GitHub Issues and has no other tracker, so
+without `gh` there is nowhere for **armature-plan** to write. Where `GH` is
+absent, or `gh auth status` exits non-zero, stop and say which of the two is
+missing — install from <https://cli.github.com/>, or run `gh auth login` — and
+that re-running init is the whole of the fix. Don't scaffold a project that
+cannot be planned.
+
 ## 3. Setup interview
 
 Ask through the AskUserQuestion tool:
@@ -51,6 +60,12 @@ Ask through the AskUserQuestion tool:
 4. Builder profile: solo or team; fabrication access (printer, machining, hand
    tools); experience level; related work — the other repos or projects of
    theirs this one touches, or none.
+5. GitHub repository: create one now (**private**, named for the project), or
+   use a remote this folder already has. Say plainly what it is for — the plan,
+   its phases and every leaf become issues, so the repo will carry the spec's
+   numbers, the BOM and its costs. A public repo publishes all of that, which
+   is why private is the recommendation and the default. Where `git remote -v`
+   already names an `origin`, offer that instead of creating a second one.
 
 Done when every placeholder in the template below has a value.
 
@@ -60,7 +75,7 @@ Create (bash):
 
 ```bash
 mkdir -p docs/00-concept docs/01-spec docs/02-plan docs/testing \
-         docs/reviews docs/research docs/datasheets \
+         docs/reviews docs/research docs/datasheets docs/agents \
          analysis/derivation analysis/model \
          cad/parts cad/assemblies cad/ots-parts
 ```
@@ -82,7 +97,12 @@ Seed these files:
   `references/environment-record.md` gives: one section for this machine,
   headed by hostname, OS, and today's date, closing with the gaps this project
   will actually feel — a missing SciPy blocks **armature-derive**, a missing
-  `gh` blocks the issue tracker. No gap stops the scaffold.
+  CUDA makes a render host somebody else's machine. No gap left at this point
+  stops the scaffold; the one that would have, `gh`, was settled in step 2.
+- `docs/agents/issue-tracker.md`, copied verbatim from
+  `${CLAUDE_PLUGIN_ROOT}/skills/armature-wayfind/references/issue-tracker-github.md`.
+  That reference is the single source — copy it, never retype it, so a later
+  diff shows drift instead of hiding it.
 - `cad/ots-parts/index.md`: header + empty table
   `| File | P/N | Datasheet row | Source URL | Retrieved |`.
 - `.mcp.json`, only where step 3 said yes to the server:
@@ -102,6 +122,8 @@ __pycache__/
 *.bak
 # absolute path into this machine's plugin install
 .mcp.json
+# the planning interview's checkpoint: transient, deleted when the issues are cut
+docs/02-plan/draft.md
 ```
 
 - `CLAUDE.md` from the template below, with the setup answers filled in.
@@ -111,6 +133,34 @@ __pycache__/
 Then `git init` (if not already a repo), stage only the files this scaffold
 created or changed, and commit as `Initialize Armature project scaffold`.
 Done when `git ls-files` lists every scaffolded directory.
+
+## 4a. Bootstrap the tracker
+
+The plan and every wayfinder map live here, so the repo and its labels exist
+before any skill needs them.
+
+**The remote.** Where step 3 asked for a new repo:
+`gh repo create <name> --private --source=. --remote=origin --push`. Where it
+named an existing remote, push this branch to it. Confirm with `gh repo view`;
+a failure here stops init the way a missing `gh` does, because everything below
+writes to that repo.
+
+**The labels.** Create all sixteen from the table in the tracker doc you just
+copied, each with its colour and description:
+
+```bash
+gh label create "plan:leaf" --color BFD4F2 --description "Plan leaf (one session of known work)"
+```
+
+`gh label create` fails on a label that already exists, which is the right
+behaviour on a re-run — pass `--force` only to repair a colour or description,
+never to blank one. Done when `gh label list` shows all sixteen.
+
+**Sub-issues and dependencies.** Check once that both are available on this
+repo, since the plan's three-level shape and its blocking edges rest on them.
+Where either is not, say so and note in `docs/environment.md` that the project
+runs on the task-list and `Blocked by:` fallbacks the tracker doc describes —
+it is a degradation, not a failure.
 
 ## 5. CLAUDE.md template
 
@@ -150,7 +200,14 @@ it appears.
   docs/datasheets/index.md (the armature-librarian agent maintains it). A row
   marked CANDIDATE is unconfirmed and carries no decision until the user
   confirms it.
-- Red-team review (armature-red-team agent) before CAD hours or purchases.
+- Red-team review (armature-red-team agent) before CAD hours or purchases. A
+  large artifact set is reviewed in several passes over disjoint files, each
+  staging its findings, and a final pass merges them into the one report.
+- The plan and every wayfinder map live on this repo's GitHub Issues, never in
+  a markdown file: a `plan:index` issue with `plan:phase` children and
+  `plan:leaf` grandchildren, labelled by executor. docs/agents/issue-tracker.md
+  is the operations doc — read it before touching the tracker, and never
+  hand-write a rollup it says to derive.
 - Any change to a mass, power draw, or cost updates
   docs/01-spec/budgets.md (created by armature-spec) in the same session. A cost
   estimate cites the index row whose Price it reads; a part priced `quote only`
@@ -182,5 +239,6 @@ it appears.
 
 ## 6. Hand off
 
-Report the scaffold commit and any gap `docs/environment.md` names, then call the Skill tool with "armature-pitch"
+Report the scaffold commit, the repo URL and its visibility, and any gap
+`docs/environment.md` names, then call the Skill tool with "armature-pitch"
 and begin the interview in this session.

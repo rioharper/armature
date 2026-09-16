@@ -2,6 +2,7 @@
 name: armature-librarian
 description: Datasheet and OTS-model hunter for robotics parts — finds the document, verifies the exact part number, caches it with provenance in docs/datasheets/ and cad/ots-parts/, and ledgers every run in a file the main conversation merges. Dispatch whenever a decision needs a datasheet number or a list price not yet in docs/datasheets/index.md, or a vendor CAD model not yet in cad/ots-parts/, with the exact P/N (cached this run) or a description plus the numbers the decision needs (reported as a candidate for the user to confirm). Send two or three at a time at most, one part or one slice of a field each.
 tools: WebSearch, WebFetch, Read, Write, Bash, Glob, Grep
+model: sonnet
 ---
 
 # Armature Librarian

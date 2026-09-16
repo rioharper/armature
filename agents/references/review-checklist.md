@@ -15,7 +15,7 @@ The families where robotics designs fail review, in working order: the early one
 - Does every **Must** requirement map to a design element that satisfies it *and* a test that proves it? In `docs/01-spec/traceability.md`, a Must REQ with no analysis or test row is a hole.
 - Any **orphan design** — subsystems or features that trace to no requirement? Each is a missing requirement or gold-plating.
 - Do the numbers **survive the chain** mission → requirement → feasibility calc → chosen part → BOM? Each hop preserves the number or explains why it changed.
-- **Routed items**: a decision report's *Items routed here* table is the exit ledger for everything sent to that task. Read it against the sources that did the routing — the plan's task line, the Route lines of earlier reports in `docs/reviews/`, the TBDs of the milestone notes — and name every item with no row. An item with no row is an item lost, and it was routed because someone judged it load-bearing.
+- **Routed items**: a decision report's *Items routed here* table is the exit ledger for everything sent to that task. Read it against the sources that did the routing — the plan leaf's issue body, the Route lines of earlier reports in `docs/reviews/`, the TBDs of the milestone notes — and name every item with no row. An item with no row is an item lost, and it was routed because someone judged it load-bearing.
 
 ## 3. Physics, math, and budgets
 

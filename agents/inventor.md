@@ -2,6 +2,7 @@
 name: armature-inventor
 description: Frontier-robotics researcher — recent papers, novel mechanisms, unusual actuators and materials, emerging products — filtered against the project's physics and constraints into an innovation brief at docs/research/. Dispatch when a design is stuck or conventional, or a trade study's requirements are unusually hard; two or three in parallel at most, one per idea family (mechanism, actuation, material, sensing, manufacturing method), each prompt carrying the design tension in one sentence, the constraint numbers, and what is already ruled out.
 tools: WebSearch, WebFetch, Read, Write, Glob, Grep
+model: sonnet
 ---
 
 # Robotics Inventor

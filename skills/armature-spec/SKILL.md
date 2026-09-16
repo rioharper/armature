@@ -52,7 +52,7 @@ If the design space feels stale or the requirements are unusually hard, dispatch
 
 #### Parallel exploration (optional, for 2–3 genuine finalists)
 
-When the trade study has two or three finalists that each deserve real feasibility work — not one favorite and strawmen — offer to explore them in parallel: one git worktree per candidate, a subagent in each developing a feasibility sketch (rough sizing arithmetic, dominant risks, cost order of magnitude) written to `docs/01-spec/candidates/<name>.md` in its worktree. Compare the sketches in the trade matrix, merge the winner's sketch, and record the losers as rejected alternatives in the spec. Worktrees only when the work is actually parallel; otherwise it's ceremony.
+When the trade study has two or three finalists that each deserve real feasibility work — not one favorite and strawmen — offer to explore them in parallel: one git worktree per candidate, a subagent in each developing a feasibility sketch (rough sizing arithmetic, dominant risks, cost order of magnitude) written to `docs/01-spec/candidates/<name>.md` in its worktree. These are generic subagents, not one of the plugin's three, so nothing pins their tier and each would otherwise inherit this session's model — name the librarian's tier in the dispatch per `references/subagent-dispatch.md`, and go up only for a candidate whose feasibility turns on the arithmetic rather than the lookup. Compare the sketches in the trade matrix, merge the winner's sketch, and record the losers as rejected alternatives in the spec. Worktrees only when the work is actually parallel; otherwise it's ceremony.
 
 ### Phase 3: Write the spec
 

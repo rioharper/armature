@@ -97,7 +97,7 @@ For each finding: state the problem physically, name the specific spec or part i
 
 In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test in `verification_checks.py`, and a worst-case-static-torque workspace search to size actuators against; `report_results.py` prints the tables `03_results.md` cites. `run_all.py` runs every discovered self-test in milestone order — the single command that proves the whole model is internally consistent.
 
-The Milestone 3 checkpoint splits its red-team pass by question — two dispatches, one wave — so neither carries files its question does not need:
+The Milestone 3 checkpoint splits its red-team pass by question — two passes run in sequence, then the merge pass, per the split rule in the plugin's `references/subagent-dispatch.md` (two levels above this skill) — so neither carries files its question does not need. This is the worked example that rule generalises:
 
 - **Does the argument hold?** All four notes and nothing else: does `03_results.md` follow from what Milestones 0–2 derived? That question lives entirely in prose.
 - **Does the code mirror the equations?** Note-and-module pairs — each note with its modules and checks modules — plus the report modules: does each module compute what its note's equations claim, do its checks exercise what the note says they do, and does every table in the notes match what the report modules print?

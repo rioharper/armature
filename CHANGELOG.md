@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inheriting the main session's model. Both are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+
+### The plan lives on the issue tracker
+
+- `armature-plan` no longer writes `docs/02-plan/plan.md`. A plan is a **plan index** issue (`plan:index`) carrying scope-against-hours, the machine split, Must satisfiability, CAD process, and risks-and-hooks; `plan:phase` children carry exit criteria; `plan:leaf` grandchildren are the work. Parent tasks are flattened — a dependency that named one is wired to its last leaf.
+- **T-ids are permanent.** `T3.2a` is assigned once, rides as the issue title's prefix, and is never renumbered; an insertion is `T3.2c`. The plan stops being "a rendering, never a memory" — a tracker needs a stable name.
+- **Leaves materialise lazily**: issues for the current and next phase only, later phases kept as a task list in their phase issue. A 200-session plan is about 40 live issues.
+- **Rollups are derived, never stored.** Phase hours, session and closed counts, and estimate-versus-actual are computed on read; `Est:` stays in the leaf body, `Actual:` is the first line of the closing comment.
+- **The interview checkpoints to `docs/02-plan/draft.md`** — gitignored, resumed from, deleted when the issues are cut, and explicitly not the plan. Nothing reaches the tracker until the interview closes.
+- **Sixteen labels**, created by `init`: the five `wayfinder:*`, three `plan:*`, and eight `executor:*`. `executor:*` is cross-cutting — a wayfinder ticket wears one as readily as a leaf, which is what lets a runner batch by who does the work.
+- **GitHub is now a hard prerequisite.** `init` gates on `gh` and `gh auth status`, offers `gh repo create --private`, creates the labels, and writes `docs/agents/issue-tracker.md`; `armature-plan` re-checks. `skills/armature-wayfind/references/issue-tracker-github.md` is the single source for tracker operations and gains a **Plan operations** section.
+
+### Removed
+
+- `skills/armature-wayfind/references/issue-tracker-local.md` — the non-GitHub tracker. See ADR 0002.
+
+### Subagents are tiered by difficulty
+
+- `agents/*.md` carry a `model:` pin: **librarian `sonnet`**, **inventor `sonnet`**, **red-team `inherit`**. Previously every subagent silently inherited the main session's model, so a fleet of librarians hunting part numbers ran on whatever was chosen for the hard thinking.
+- `references/subagent-dispatch.md` gains an **Agent tier** section (the table, that a pin is a default rather than a guarantee, and the rule that overrides go upward and say why) and a **Splitting a red-team review** section.
+- **Split reviews.** Above ~40k tokens of source or three substantial artifacts, a red-team run splits **by input partition** — not by checklist family, which cannot reduce context because families 1, 2, 3 and 7 each need the whole set. Passes run sequentially and unchained, each staging its findings; a final merge pass reads the staging files, dedupes, writes the one report, and deletes what it merged. Routing stays in the dispatching session.
+- The two anonymous "dispatch a subagent" sites are addressed: `armature-pitch` names the **librarian**; `armature-spec`'s parallel-exploration worktrees stay generic subagents but now name a tier, since frontmatter cannot pin one.
+- `CONTEXT.md` gains **Agent tier** (with `_Avoid_: model`, which in this repo means the SymPy, CAD, OTS or MuJoCo model), **Ticket**, **Plan index**, and **Draft**; **Leaf** is rewritten, **Staging file** generalised to any agent run's ledger, and **Machine split** and **Executor** re-pointed.
+- `scripts/run-wayfinder-afk.sh` — pointed at `armature:armature-wayfind` (it invoked a skill that does not exist), repo and map discovered instead of hardcoded, HITL ticket types skipped, an `EXECUTOR=` filter added, and `--dangerously-skip-permissions` demoted to an explicit `YOLO=1` opt-in.
+
 ## 1.3.0 — 2026-09-11
 
 Lands the feedback log from running every stage on a demo project: each change below is a shape that project had to invent by hand, or a failure it hit. Charted and decided on the map [Land the armature-demo feedback log (1.3.0)](https://github.com/rioharper/armature/issues/26); each decision's ticket holds its reasoning. Ruled out along the way, with reasons on the map: Onshape live checks by API, an HTML rendering of briefs and reports, an electronics scaffold, and a quotable specification, RFQ, and quote register for custom parts.

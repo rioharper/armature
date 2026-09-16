@@ -1,6 +1,6 @@
 # Derivation Report <ID>: <name>
 
-Rev <n> — <date> — plan task <T-id> (`docs/02-plan/plan.md`), Executor: armature-derive
+Rev <n> — <date> — plan task <T-id> (issue #<n>), Executor: armature-derive
 
 **Status:** complete, or blocked on what. Then the decision itself in three or
 four sentences, with every number it moves, old → new. A reader who stops here

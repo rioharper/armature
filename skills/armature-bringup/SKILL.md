@@ -5,13 +5,13 @@ description: Turn a bench test or bring-up task into an executable bash procedur
 
 # Bring-up
 
-A **procedure** is a bash script under `docs/testing/` that walks the operator through a bench test stage by stage, gates the irreversible, and records every measurement into the test's report. The plan's phase 5–6 tasks name these procedure/report files; this skill makes them executable. Bash only (Git Bash on Windows).
+A **procedure** is a bash script under `docs/testing/` that walks the operator through a bench test stage by stage, gates the irreversible, and records every measurement into the test's report. The plan's phase 5–6 leaves name these procedure/report files in their `Done when`; this skill makes them executable. Bash only (Git Bash on Windows).
 
 The runner UX is already solved by [procedure.template.sh](procedure.template.sh): stage N-of-M progress, the step/confirm/capture human-loop primitive, and report writing — completed and aborted runs both land in the report's Data section, and every captured value prints as `KEY=VALUE` at the end for you to read. Your job is only to scope the procedure and author its stages. The library above the STAGES marker is identical in every procedure: never hand-edit it.
 
 ## 1. Scope
 
-Read the plan task and what it settles — the REQ-xxx or prototype kill criterion, the predicted values in `analysis/model/`, any matching seam in `docs/testing/bench-seams.md`. Then list, in run order:
+Read the plan leaf — `gh issue view <n>` for the issue the user named, else find it by T-id among the open `plan:leaf` issues — and what it settles: the REQ-xxx or prototype kill criterion, the predicted values in `analysis/model/`, any matching seam in `docs/testing/bench-seams.md`. Then list, in run order:
 
 - every **measurement**: instrument, test point, units, and the pass bound with its source — a bound with no source comes from the model or gets flagged as a guess;
 - every **irreversible action** to gate with `confirm`: first battery connect, first torque command, anything not cheaply un-done. A procedure that powers actuators opens with the template's bench-safety gate (supply current-limited, e-stop in reach).

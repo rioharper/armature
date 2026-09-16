@@ -21,7 +21,7 @@ Every map and ticket has a **name**: its title. In everything the human reads (n
 
 ## The tracker
 
-Where the map, its tickets, blocking, and frontier queries physically live is tracker-specific: consult the "Wayfinding operations" section of `docs/agents/issue-tracker.md` before touching the tracker. When that file is missing, create it first from this skill's references: with a GitHub remote (`git remote -v`), offer the user GitHub Issues (`references/issue-tracker-github.md`); otherwise copy `references/issue-tracker-local.md` without asking.
+The map, its tickets, blocking, and frontier queries live on GitHub Issues — the one tracker an Armature project has. Consult the "Wayfinding operations" section of `docs/agents/issue-tracker.md` before touching it. `init` writes that file from this skill's `references/issue-tracker-github.md` and creates the labels; where it is missing, the project predates the bootstrap — copy the reference into place and check the labels exist (`gh label list`) before charting.
 
 ## The Map
 
@@ -63,7 +63,7 @@ Each ticket's body is one question, sized to a single ~100K-token session:
 <the decision or investigation this ticket resolves>
 ```
 
-Each ticket records its type (`research`/`prototype`/`grilling`/`task`) the way the tracker doc prescribes.
+Each ticket records its **type** (`research`/`prototype`/`grilling`/`task`) and its **executor** — who works it — the way the tracker doc prescribes. The two are different axes: the type says what kind of question it is, the executor says who resolves it, and an agent is only ever an executor.
 
 A session **claims** a ticket first, before any work, so concurrent sessions skip it. A ticket is **unblocked** when everything blocking it is resolved; the **frontier** is the open, unblocked, unclaimed tickets — the edge of the known.
 

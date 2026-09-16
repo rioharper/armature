@@ -51,7 +51,7 @@ main conversation, handing its output to the next:
 |---|---|---|
 | 1 | `armature-pitch` | who it's for, why it beats what exists. Interrogates *why*, not *how*. |
 | 2 | `armature-spec` | engineering spec (software and compute architecture included), trade studies, design-driver BOM, living budgets, requirements traceability. |
-| 3 | `armature-plan` | phased implementation plan cut into one-session leaves, the machine split, and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
+| 3 | `armature-plan` | phased implementation plan cut into one-session leaves and published as GitHub issues (a `plan:index` with `plan:phase` children and `plan:leaf` grandchildren, labelled by executor), plus the machine split and the shared vocabulary (frames, symbols, naming) that keeps later sessions grounded. |
 | 4 | `armature-derive` |  milestone-sized derivation notes and a re-runnable, cross-verified Python model laid out to a line budget; a decision report for each analysis task the plan names. |
 | 5 | `armature-cad` |  per-part definitions (interfaces, loads, material, datums, tolerances, inertia targets), assembly mate schemes, and a build recipe for the chosen CAD package. |
 
@@ -60,7 +60,7 @@ Cross-cutting skills and agents, pulled in from any stage:
 | Name | Kind | Role |
 |---|---|---|
 | `armature-teach` | skill | Explains a concept, equation, or design decision using this project's own artifacts. Analogy first, then formalism. |
-| `armature-wayfind` | skill | Coordinates an effort too big for one session as a map of decision tickets on the project's issue tracker (GitHub Issues or local markdown, auto-detected); stage skills and agents resolve the tickets, one per session, until the way is clear. |
+| `armature-wayfind` | skill | Coordinates an effort too big for one session as a map of decision tickets on the project's GitHub Issues; stage skills and agents resolve the tickets, one per session, until the way is clear. |
 | `armature-test` | skill | Test-driven development for robot software (firmware, ROS nodes, control code): red → green at unit and simulation level, bench seams named and handed to `docs/testing/bench-seams.md`. Default-on when writing robot software in an Armature project. |
 | `armature-debug` | skill | Bench debugging for hardware/firmware faults: a red-capable feedback loop before any hypothesis, then 3–5 ranked falsifiable hypotheses probed one variable at a time. User-invoked: `/armature:armature-debug`. |
 | `armature-bringup` | skill | Turns a plan-named bring-up or verification test into an executable bash procedure: stage-by-stage prompts at the bench, confirm gates on irreversible steps, measurements recorded into its `docs/testing/` report. |
@@ -136,7 +136,9 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
       budgets.md             living mass/power/cost budgets with margins (§6.1)
       traceability.md        REQ → design element → analysis → test → status (§6.2)
     02-plan/
-      plan.md                armature-plan output
+      draft.md               armature-plan interview checkpoint (gitignored,
+                             deleted when the issues are cut; the plan itself is
+                             the plan:index issue on the tracker)
     testing/                 test procedures + reports (§6.3)
     reviews/                 red-team findings, dated
     research/                inventor briefs
@@ -171,6 +173,11 @@ Install as a Claude Code plugin via the marketplace:
 ```
 
 ...or locally, with `--plugin-dir` pointed at this repo.
+
+Armature keeps the plan and its wayfinder maps on GitHub Issues, so it needs
+[`gh`](https://cli.github.com/) on PATH, `gh auth login` done, and a GitHub
+remote. `/armature:init` checks for all three and offers to create the repo
+(private by default); there is no non-GitHub path.
 
 Once installed, run `/armature:init` in a blank folder to start everything.
 
