@@ -49,6 +49,13 @@ qdd = qd.diff(t)
 
 # --- modified DH table: rows of (alpha_{i-1}, a_{i-1}, d_i, theta_i) ---
 # Revolute joint: theta_i contains q[i]. Prismatic: d_i contains q[i].
+#
+# This is the serial-chain convention, and the rest of this block follows it. A
+# mechanism whose own body floats — a platform on cables, a legged or a wheeled
+# body — has no such table: it declares `FLOATING_BODIES` and `FLOATING_CABLES`
+# here instead, dicts of the fields `truth/floating.py` names, and builds the
+# floating-body model. Pick the one the machine has; the plan glossary's
+# convention family has already picked it.
 DH = [
     (0, 0,  0, q[0]),
     (0, l1, 0, q[1]),

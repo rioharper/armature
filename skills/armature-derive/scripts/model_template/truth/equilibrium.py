@@ -19,7 +19,9 @@ import mujoco
 import numpy as np
 
 # `pose` is where it came to rest, `forces` the generalised constraint forces
-# there (a joint limit pressed against, a tendon pulled taut), `stable` whether
+# there (a joint limit pressed against, a tendon against its limit) — a cable
+# modelled as a deadband spring is a passive force and is not among them, so a
+# builder that has cables reads their tension its own way. `stable` is whether
 # it came to rest at all, and `steps` how long it took — printed beside a
 # result, so a settle that only just converged is visible rather than
 # indistinguishable from one that converged at once.

@@ -55,11 +55,28 @@ truth/
   envelope_checks.py
   equilibrium.py         settling to rest under held commands and applied loads
   equilibrium_checks.py
+  floating.py            a floating base plus joints, on unilateral cables
+  floating_checks.py     the builder round-tripped, on a minimal hanging fixture
   inverse.py             inverse dynamics — one submodule per query the milestones need
   inverse_checks.py
   modes.py               linearisation: mass, stiffness and the modes they give
   modes_checks.py
 ```
+
+**One builder per convention family, and a project keeps one.** `chain.py`
+serves a serial chain on a fixed base — modified DH, standard DH, or PoE —
+and `floating.py` a floating base plus joints, where the body's own pose is six
+coordinates and cables, legs or wheels hold it up. Which one a model uses
+follows the topology the plan glossary settled; the other builder, its checks
+module and its line in `__init__.py` are deleted, so no module in the package
+reads a parameter block it was never given. Each builder names its own entry
+point `build`, and the `__init__.py` that ships both surfaces the second one
+under a second name, so whichever builder a project keeps, `truth.build` is its
+model and nothing above the package is rewritten. Every *query* — the settle,
+the inverse dynamics, the linearisation — takes the `(model, data)` pair either
+builder returns, which is what makes the surface above them one surface. The
+sampler is not a query: it reads the parameter block's envelope directly, so a
+mechanism whose coordinates are not a box in `qpos` samples its own poses.
 
 Two rules keep it honest, and both are layout rules rather than physics:
 

@@ -11,6 +11,9 @@ surprising result can be reproduced at the posture that produced it.
 
 import numpy as np
 
+# The chain builder's model. A floating mechanism keeps the other builder, so
+# this reads `from truth.floating import mjcf, spec_from_params` and prints
+# `mjcf(spec_from_params())`.
 from truth.chain import mjcf
 from truth.envelope import DEFAULT_SEED, DEFAULT_SAMPLES, sample
 

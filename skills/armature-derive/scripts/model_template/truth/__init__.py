@@ -21,6 +21,7 @@ The public surface is backend-neutral and small, so a second backend changes
 nothing above it:
 
     build()                    the simulator model of this mechanism
+    build_floating(spec)       the same, for a mechanism whose body floats
     sample(n, seed)            configurations drawn from the envelope
     site_pose(...)             where the tool frame actually ends up
     site_jacobian(...)         the tool frame's Jacobian, MuJoCo's own
@@ -29,17 +30,31 @@ nothing above it:
     inverse_dynamics(...)      torques at a state and an acceleration
 
     settle(...)                static equilibrium under held commands and loads
+    cable_forces(...)          the tension each cable carries there
 
     linearise(...)             stiffness, mass, and mode frequencies there
 
-All but the last are here. `linearise` arrives with the milestone that cites a
-mode, in its own submodule beside `chain.py`, keeping this surface the one
-place to read for what the truth model can be asked.
+Two builders cover the conventions a mechanism arrives in, and which one a
+project uses follows the topology the plan glossary settled, not a preference:
+`chain.py` for a serial chain on a fixed base, read off the DH or PoE table,
+and `floating.py` for a floating base plus joints — a platform on cables, a
+legged or a wheeled body — where the body's own pose is six coordinates and
+what holds it up is constraints. Both name their builder `build`; the template
+ships both, so the floating one is surfaced under a second name below.
 
-Two builders cover the conventions a mechanism arrives in: `chain.py` for a
-serial chain read off the DH or PoE table, and a floating-body builder for a
-body on cables, legs or wheels. Check the package alone:
-`python run_all.py truth`.
+**A project is one or the other**: delete the builder this mechanism does not
+use, its checks module, and its line below, and `truth.build` is the builder
+that remains. Every query takes the `(model, data)` pair either one returns,
+which is what keeps this one surface.
+
+The exception, and it is worth knowing before the first milestone: `sample` and
+`sample_states` are not queries. They read `Q_LIMITS` and the rate limits out of
+the parameter block, one row per generalized coordinate, and a floating body's
+pose is not a box in its seven `qpos` — three positions and a quaternion. A
+floating project decides at Milestone 0 what its pose envelope is and samples
+from that; the sampler here is the chain's.
+
+Check the package alone: `python run_all.py truth`.
 """
 
 # Run order and heading for `run_all.py`. Zero: the truth model is built before
@@ -49,5 +64,8 @@ MILESTONE = (0, "Milestone 0: truth model")
 
 from truth.chain import build, site_jacobian, site_pose   # noqa: E402,F401
 from truth.envelope import sample, sample_states          # noqa: E402,F401
-from truth.equilibrium import Settled, settle              # noqa: E402,F401
+from truth.equilibrium import Settled, settle             # noqa: E402,F401
+from truth.floating import build as build_floating        # noqa: E402,F401
+from truth.floating import cable_forces                   # noqa: E402,F401
 from truth.inverse import inverse_dynamics                # noqa: E402,F401
+from truth.modes import Linearised, linearise             # noqa: E402,F401
