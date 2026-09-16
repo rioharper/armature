@@ -152,6 +152,9 @@ From a real project run with Armature — the Ibex rover, a squatting camera pla
   analysis/
     derivation/              armature-derive milestone notes (.md)
     model/                   re-runnable model (.py), laid out per references/model-layout.md
+      truth/                 the truth model: an independent MuJoCo model of the
+                             mechanism, built from the same parameter block, that
+                             every milestone's claims are checked against
   cad/
     parts/                   part definitions (.md), + optional runnable
                              build recipes (.py) and their SVG views

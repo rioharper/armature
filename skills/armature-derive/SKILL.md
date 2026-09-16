@@ -29,7 +29,13 @@ analysis/derivation/
   02_dynamics.md       <- Milestone 2
   03_results.md        <- Milestone 3
 analysis/model/
-  params.py                <- Milestone 0 (shared parameter block + symbols)
+  params.py                <- Milestone 0 (parameter block + symbols + the envelope)
+  truth/                   <- Milestone 0, the truth model: an independent simulator model
+    __init__.py            <-   MILESTONE, and the backend-neutral public surface
+    chain.py               <-   a serial chain from the DH table -> a MuJoCo model
+    chain_checks.py
+    envelope.py            <-   the seeded sampler every milestone's checks draw from
+    envelope_checks.py
   kinematics.py            <- Milestone 1 (FK, Jacobian)
   kinematics_checks.py     <-   its self-tests
   dynamics/                <- Milestone 2, a package: one submodule per note section
@@ -41,6 +47,7 @@ analysis/model/
   verification.py          <- Milestone 3 (IK, worst-case search)
   verification_checks.py
   report_results.py        <- prints the symbolic results and tables the notes cite
+  report_truth.py          <- prints the truth model itself and the configurations sampled
   layout.py                <- the code-line budget; stdlib only
   run_all.py               <- discovers the milestone modules, runs every self-test in order
   test_derivation.py       <- the same checks, exposed to pytest
@@ -70,11 +77,23 @@ If the project has no numbers yet, derive symbolically and leave the parameter b
 
 Write the model into `00_setup.md` (system description, numbered assumptions, conventions, parameter table) and the parameter block into `params.py`, on the `armature/m0-setup` branch.
 
+**Then build the truth model, before the first analytic claim.** `truth/` is an independent simulator model of the mechanism — MuJoCo — generated from `params.py` and sharing none of the derivation's simplifying assumptions, and every milestone after this one checks its claims against it. It is built here, at Milestone 0, and not later, because a derivation has nothing to be checked against on the day it is written otherwise, and a check that arrives months after the note is a review finding rather than a checkpoint.
+
+The template ships the chain builder working on its example mechanism. Adapting it is: fill the parameter block, including **`Q_LIMITS`, the envelope** — one `(lo, hi)` per generalized coordinate, which the sampler draws from and the simulator model carries as its joint ranges, so "over the envelope" means one thing in the notes, the checks and the simulator; give every link a **physical inertia tensor**, every axis of it, because a planar derivation that only ever uses `Izz` will happily carry `diag(0, 0, Izz)` and a rigid body cannot be built from it — that zero is the planar assumption written into the parameter block; then run `python analysis/model/run_all.py truth`, which round-trips the built model's link count, masses, COMs, inertias, joint types and ranges against the block. A mechanism that is a floating body on cables, legs or wheels uses the floating-body builder rather than the chain builder; the public surface is the same either way.
+
+Two things the truth package must not do, and the layout rule in `references/model-layout.md` says so: it must not import `kinematics.py` or `dynamics/` — a truth model that borrows the derivation's frames has the derivation's assumptions on both sides of every comparison — and it must not copy a constant out of `params.py`, because two models built from two copies drift the first time one is edited.
+
+`MUJOCO=absent` in the project's environment record is a blocker for this milestone, not a footnote; install it before deriving, and say so in the plan if the machine cannot.
+
 ## Milestone 1: Kinematics
 
 In `01_kinematics.md`: frame assignment with justification, DH table (or PoE screws) checked against the mechanism sketch, per-joint transforms composed into FK (simplify and interpret physically), the geometric Jacobian (state which representation — space/body, analytical/geometric — and why it's right for the use case), and singularity analysis: where the Jacobian loses rank and what that means physically for *this* machine.
 
-In `kinematics.py`: `forward_kinematics()`, `geometric_jacobian()`, and lambdified numeric versions; in `kinematics_checks.py`, a self-test that Jacobian columns match finite-difference FK. Run the checkpoint.
+In `kinematics.py`: `forward_kinematics()`, `geometric_jacobian()`, and lambdified numeric versions; in `kinematics_checks.py`, a self-test that Jacobian columns match finite-difference FK.
+
+**Mandatory truth check:** end-effector position and the Jacobian against the truth model's site position and site Jacobian, at configurations drawn from `truth.sample(n, seed)`, with `n` and the seed printed beside the result. The finite-difference check is not a substitute and never was — it compares the Jacobian with derivatives of the same length function, so a frame assigned to the wrong axis, a DH row transcribed wrong, or a tool offset applied in the wrong frame passes it with both sides carrying the mistake. And the configurations are sampled, never named: `q = 0`, the outstretched posture and the workspace corners are the mechanism's symmetry planes, which is exactly where a wrong assumption is invisible.
+
+Run the checkpoint.
 
 ## Milestone 2: Dynamics
 

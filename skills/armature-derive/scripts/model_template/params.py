@@ -12,6 +12,8 @@ place for provenance, arithmetic, and generation.
 Example mechanism: planar 2R arm in gravity. Replace with your robot.
 """
 
+from math import pi
+
 import sympy as sp
 from sympy import Matrix, symbols
 
@@ -25,15 +27,18 @@ PARAMS = {
     "m2": 0.80,     # link 2 mass (include payload here or add m_p) [kg]
     "I1": 0.012,    # link 1 inertia about its COM, z-axis [kg m^2]
     "I2": 0.006,    # link 2 inertia about its COM, z-axis [kg m^2]
+    "Ix1": 0.00024,  # link 1 inertia about its own long axis [kg m^2]
+    "Ix2": 0.00016,  # link 2 inertia about its own long axis [kg m^2]
     "g": 9.81,      # gravitational acceleration [m/s^2]
 }
 
 # --- symbolic parameters (must mirror PARAMS keys) ---
-l1, l2, lc1, lc2, m1, m2, I1, I2, g = symbols(
-    "l1 l2 lc1 lc2 m1 m2 I1 I2 g", positive=True
+l1, l2, lc1, lc2, m1, m2, I1, I2, Ix1, Ix2, g = symbols(
+    "l1 l2 lc1 lc2 m1 m2 I1 I2 Ix1 Ix2 g", positive=True
 )
 PARAM_SYMS = {"l1": l1, "l2": l2, "lc1": lc1, "lc2": lc2,
-              "m1": m1, "m2": m2, "I1": I1, "I2": I2, "g": g}
+              "m1": m1, "m2": m2, "I1": I1, "I2": I2,
+              "Ix1": Ix1, "Ix2": Ix2, "g": g}
 
 # --- generalized coordinates ---
 N = 2
@@ -56,11 +61,27 @@ T_TOOL = Matrix([[1, 0, 0, l2],
 
 # COM of each link, expressed in that link's own frame:
 COM_LOCAL = [Matrix([lc1, 0, 0]), Matrix([lc2, 0, 0])]
-# Link inertia tensors about each COM, in the link frame (here: planar,
-# only Izz matters). Use full 3x3 tensors for spatial mechanisms.
-INERTIA = [sp.diag(0, 0, I1), sp.diag(0, 0, I2)]
+# Link inertia tensors about each COM, in the link frame. **Every axis, even
+# the ones this mechanism cannot turn about.** A planar arm's dynamics see only
+# Izz, so a tensor written diag(0, 0, Izz) gives the same M, C and g — but that
+# zero is the planar assumption written into the parameter block, where the
+# truth model, which does not make that assumption, then reads it and refuses
+# to build (a rigid body needs a physical inertia). Each link here is a slender
+# rod along its own x: Ixx from the rod's radius, Iyy = Izz from its length.
+INERTIA = [sp.diag(Ix1, I1, I1), sp.diag(Ix2, I2, I2)]
 MASSES = [m1, m2]
 GRAVITY_VEC = Matrix([0, -g, 0])   # gravity in the base frame
+
+# --- the envelope ---
+# The set of configurations every claim in this derivation is checked over:
+# one (lo, hi) per generalized coordinate, in rad for a revolute joint and m
+# for a prismatic one. The truth model's sampler draws from exactly this, and
+# the simulator model carries it as its joint ranges, so "over the envelope"
+# means one thing in the notes, the checks and the simulator. Narrow it when
+# Milestone 3's collision sweep finds a real joint limit; a wider envelope than
+# the machine has makes every worst case pessimistic, a narrower one makes
+# every one of them unproven.
+Q_LIMITS = [(-pi, pi), (-2.6, 2.6)]
 
 # Plain symbols for lambdify, shared by every downstream module so the
 # numeric-function signatures stay consistent across kinematics/dynamics/

@@ -35,6 +35,40 @@ the re-exported names callers import.
 That triple — a document section, its submodule, its checks — is the red-team's review
 unit: one coherent argument, held in view at a time.
 
+## The truth package
+
+An **armature-derive** model carries one package that is not a note's counterpart:
+`truth/`, the **truth model** — an independent simulator model of the mechanism,
+generated from `params.py`, that every milestone's claims are checked against. It is both
+a milestone package and a library package, and takes the shape of each: `MILESTONE = (0,
+"Milestone 0: truth model")` in its `__init__.py` sorts it **first** in the run, and that
+same `__init__.py` is the backend-neutral public surface — `build`, `sample`, and the
+query each milestone needs — so a second backend, or a floating-body builder beside the
+chain builder, changes nothing above it.
+
+```
+truth/
+  __init__.py            MILESTONE = (0, ...), and the public surface callers import
+  chain.py               a serial chain from the DH or PoE table -> a simulator model
+  chain_checks.py        the builder round-tripped against the parameter block
+  envelope.py            the seeded sampler every other milestone's checks draw from
+  envelope_checks.py
+```
+
+Two rules keep it honest, and both are layout rules rather than physics:
+
+- **It imports the parameter block and nothing else from the model.** No `kinematics.py`,
+  no `dynamics/`. A truth model that borrows the derivation's frames or its mass matrix
+  has the derivation's assumptions on both sides of every comparison, which is the exact
+  blindness it exists to remove.
+- **It shares `params.py` rather than copying it.** Two models built from two copies of
+  the constants drift the first time one is edited, and a check between drifted models
+  proves nothing about either.
+
+Sorting first is not cosmetic: a milestone's truth check is only as good as the model it
+checks against, so the builder's round-trip against the parameter block is the first
+thing the run reports.
+
 ## Checks one file over
 
 A module's self-tests live in a sibling checks module named for it: `kinematics.py` →
