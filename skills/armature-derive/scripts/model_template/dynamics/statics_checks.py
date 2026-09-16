@@ -9,21 +9,83 @@ from dynamics.statics import static_torques
 from truth.chain import build
 from truth.envelope import DEFAULT_SEED, sample
 from truth.equilibrium import settle
+from truth.inverse import inverse_dynamics
 
 HOLD_STEPS = 500
 
+# The assumption the moment-arm closed form rests on, named once and quoted by
+# both checks below. A closed form is a theorem about a class of mechanism, and
+# the only question that matters about one in a derivation is whether *this*
+# mechanism is in that class — so the assumption is written down, and the
+# failure message hands it to whoever reads the red bar.
+MOMENT_ARM_ASSUMES = (
+    "every joint axis parallel to z and gravity lying in the x-y plane, so "
+    "each weight's lever arm about a joint is its horizontal offset; a DH row "
+    "with a nonzero alpha, or a GRAVITY_VEC out of the plane, leaves the class")
 
-def test_static_torques_match_moment_arms(tol=1e-9):
-    """At q = 0 the arm lies along x: each joint holds the weight outboard of
-    it times that weight's lever arm. Hand-written for the 2R example —
-    replace with your mechanism's moment-arm calculation."""
+
+def moment_arm_torques(q_vals):
+    """Holding torque by lever arms, the closed form 02_dynamics.md §3 cites.
+
+    Each joint carries every weight outboard of it times that weight's
+    horizontal offset from the joint. Hand-written for the 2R example — replace
+    it with your mechanism's, and replace MOMENT_ARM_ASSUMES with the class of
+    mechanism yours is a theorem about.
+    """
     p = PARAMS
-    by_hand = p["g"] * np.array([p["m1"] * p["lc1"] + p["m2"] * (p["l1"] + p["lc2"]),
-                                 p["m2"] * p["lc2"]])
-    tau = static_torques(np.zeros(N))
-    assert np.allclose(tau, by_hand, atol=tol), \
-        f"g(0) = {tau} disagrees with the moment-arm calculation {by_hand}"
-    print("  [PASS] static torques match the moment-arm calculation")
+    q1, q12 = q_vals[0], q_vals[0] + q_vals[1]
+    shoulder = (p["m1"] * p["lc1"] + p["m2"] * p["l1"]) * np.cos(q1) \
+        + p["m2"] * p["lc2"] * np.cos(q12)
+    elbow = p["m2"] * p["lc2"] * np.cos(q12)
+    return p["g"] * np.array([shoulder, elbow])
+
+
+def test_moment_arm_form_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
+    """The closed form against the truth model, before the note cites it.
+
+    A formula out of a book is the cheapest wrong number a derivation can
+    produce: the arithmetic is somebody else's and it reproduces, the units are
+    right, and the only thing that can be wrong is whether this mechanism is in
+    the class the formula is a theorem about — a bifilar yaw stiffness on
+    converging rather than parallel cables, a taut-cable pendulum mode on a
+    cable that goes slack, a small-angle form past its range. So the form is
+    checked against a model that never read the book, at sampled configurations
+    rather than at the tidy posture where the cosines are all one, and the
+    assumption it rests on is named in the failure.
+    """
+    model, data = build()
+    rest = np.zeros(N)
+    worst, worst_at = 0.0, None
+    for qv in sample(n, seed):
+        gap = float(np.max(np.abs(moment_arm_torques(qv)
+                                  - inverse_dynamics(model, data, qv, rest, rest))))
+        if gap > worst:
+            worst, worst_at = gap, qv
+        assert gap < tol, (
+            f"the moment-arm form reads {moment_arm_torques(qv)} N m where the "
+            f"truth model reads "
+            f"{inverse_dynamics(model, data, qv, rest, rest)} N m at "
+            f"q={np.round(qv, 4)}. The form assumes {MOMENT_ARM_ASSUMES}")
+    print(f"  [PASS] the moment-arm closed form matches the truth model over "
+          f"{n} sampled postures (seed {seed})")
+    print(f"         worst |dtau| {worst:.2e} N m at q = {np.round(worst_at, 4)}; "
+          f"the form assumes {MOMENT_ARM_ASSUMES.split(',')[0]}")
+
+
+def test_static_torques_match_moment_arms(n=24, seed=DEFAULT_SEED, tol=1e-9):
+    """Self-consistency: g(q) from the Lagrangian against the same closed form.
+
+    Worth having for the arithmetic slip it catches the moment it lands, and
+    not evidence of anything else — both sides are this project's own. The
+    check above is what says the closed form describes this machine.
+    """
+    for qv in sample(n, seed):
+        tau = static_torques(qv)
+        assert np.allclose(tau, moment_arm_torques(qv), atol=tol), \
+            f"g({np.round(qv, 4)}) = {tau} disagrees with the moment-arm " \
+            f"calculation {moment_arm_torques(qv)}"
+    print(f"  [PASS] static torques match the moment-arm calculation over {n} "
+          f"sampled postures (seed {seed})")
 
 
 def test_held_posture_stays_in_truth_model(n=8, seed=DEFAULT_SEED, tol=1e-4):

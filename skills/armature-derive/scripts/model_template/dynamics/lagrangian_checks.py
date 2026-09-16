@@ -31,6 +31,17 @@ from truth.modes import linearise
 HANGING = (-np.pi / 2, 0.0)
 STIFFNESS_RANK = 2
 
+# What the small-oscillation form is a theorem about, named once so the truth
+# check can hand it over when the comparison fails. Most wrong mode frequencies
+# are not wrong by arithmetic; they are exactly right about a different
+# mechanism — a taut-cable pendulum mode on a cable that goes slack, a bifilar
+# yaw stiffness on cables that converge rather than hang parallel.
+MODES_ASSUME = (
+    "an equilibrium at this configuration and displacements small enough that "
+    "K = dg/dq is constant over them; away from equilibrium the constant term "
+    "of g moves the mechanism instead of restoring it, and a large-amplitude "
+    "swing is a different frequency")
+
 PINNED_Q = (0.3, -0.4)
 PINNED_QD = (0.7, 1.1)
 PINNED = {
@@ -174,6 +185,12 @@ def test_modes_vs_truth_model(tol=1e-4):
     meant to be, so a diagonal read as a mode, a mode named for a motion the
     mechanism cannot make, or a closed form used outside its assumptions all
     show up here as frequencies that do not match.
+
+    Like the moment-arm form one submodule over, the small-oscillation form is
+    a theorem about a class, and MODES_ASSUME names the class. Where the
+    comparison fails, the failure hands that assumption over — because the
+    number is almost never wrong by arithmetic, and almost always wrong by
+    being about a different mechanism than this one.
     """
     model, data = build()
     lin = linearise(model, data, np.array(HANGING))
@@ -182,7 +199,7 @@ def test_modes_vs_truth_model(tol=1e-4):
     assert gap < tol, (
         f"modes at the hanging configuration read {np.sort(analytic)} Hz "
         f"where the truth model's linearisation reads "
-        f"{np.sort(lin.frequencies)} Hz")
+        f"{np.sort(lin.frequencies)} Hz. The form assumes {MODES_ASSUME}")
     print(f"  [PASS] modes match the truth model's linearisation at the "
           f"hanging configuration (eps {lin.eps:g})")
     print(f"         {np.array2string(np.sort(analytic), precision=4)} Hz "

@@ -71,4 +71,17 @@ Numbers a design leans on that no vendor publishes — fatigue endurance points,
 - **Tag it `standard`** in `params.py` and name the book, edition, and the table, figure, or section the number sits in — "Zimmerli's data as Shigley reports it, §10-7"; "Associated Spring finite-life table, Norton Table 14-7". A book named without its table is memory.
 - **Find a second independent source and carry both.** Textbook design data is somebody's fit to somebody's tests, and two fits disagree: shot-peened spring wire endurance points differ by 30 % between two standard sources that agree within 6 % unpeened, which is the whole fatigue margin of a peened coil. Read the result against each source, state both, and design to the conservative one.
 - **Pin the disagreement with a self-test**, so a later edit cannot quietly swap which source the design leans on.
+
+### A closed form from a book
+
+A formula is the cheapest wrong number a derivation can produce. Its arithmetic is somebody else's and it reproduces; its units are right; the only thing that can be wrong is whether *this* mechanism is in the class the formula is a theorem about — a bifilar yaw stiffness on cables that converge rather than hang parallel (27× low, on the first project through this plugin), a taut-cable pendulum mode on a cable that goes slack, a small-angle form past its range, a parallel-wire capacitance on wires that are not parallel.
+
+- **Check it against the truth model at sampled configurations before the note cites it.** Not at the tidy posture where the cosines are all one — that posture is the symmetry plane, and it is where a formula outside its class most often happens to be right.
+- **Name the assumption the form rests on, in the check**, as a module constant the failure message quotes: "every joint axis parallel to z and gravity lying in the x-y plane". When the comparison fails, the person reading the red bar needs the class, not the residual.
+- **Cite it once in `00_setup.md`** — book, edition, chapter or equation — as the convention sources are cited.
+
+### A reference algorithm from a book
+
+A method taken whole from a book — a workspace method, a force-distribution law, an elastic-plus-geometric stiffness model, a DH convention — is **tagged `standard` and cited by book and chapter in `00_setup.md`**, the same rule the `standard` constants above follow, and the module docstring repeats the citation where the code implements it (`kinematics.py`'s `dh_transform` cites Craig eq. 3.6). An algorithm carries its book's assumptions into the derivation silently, and the red team's whole job on it is to read the derivation against the book — which it cannot do if it does not know which book. A method named without its chapter is memory.
+
 - **Ask the vendor for its own basis.** A vendor held to the number rates its part against data of its own; that question goes on the questionnaire or the part's specification (`armature-spec`), and its answer supersedes both books.
