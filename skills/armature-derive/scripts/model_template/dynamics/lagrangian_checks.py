@@ -14,17 +14,23 @@ import numpy as np
 import sympy as sp
 
 from params import N, t
-from dynamics.lagrangian import (M_SYM, C_SYM, M_num, C_num, g_num, V_num,
-                                 total_energy)
+from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, g_num,
+                                 V_num, small_oscillation_modes, total_energy)
 from truth.chain import build
 from truth.envelope import DEFAULT_SEED, sample_states
 from truth.inverse import inverse_dynamics
+from truth.modes import linearise
 
 # One state, and what M, C, g and V read there. Hand-checked for the shipped
 # 2R arm and pinned so a rebuild of the symbolic construction — the move onto
 # sympy.physics.mechanics was one — has to produce the same equations, not
 # merely equations with the same properties. Replace these with your own
 # mechanism's numbers, from a source that is not this file.
+# The configuration whose modes 02_dynamics.md quotes, and the rank the note
+# claims the gravity stiffness has there. Both are claims; both are checked.
+HANGING = (-np.pi / 2, 0.0)
+STIFFNESS_RANK = 2
+
 PINNED_Q = (0.3, -0.4)
 PINNED_QD = (0.7, 1.1)
 PINNED = {
@@ -138,3 +144,47 @@ def test_inverse_dynamics_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
           f"sampled states (seed {seed})")
     print(f"         worst |dtau| {worst:.2e} N m, at q = "
           f"{np.round(worst_at[0], 4)}, qd = {np.round(worst_at[1], 4)}")
+
+
+def test_stiffness_has_the_rank_the_note_claims(tol=1e-9):
+    """K = dg/dq at the hanging configuration, and its rank.
+
+    A rank the note assumes and never computes is the error that turns a
+    stiffness matrix into modes it does not have: read a diagonal entry of a
+    rank-deficient K as a mode and the number is plausible, dimensionally
+    right, and about a motion the mechanism cannot make. Print the singular
+    values, claim the rank, and check it.
+    """
+    K = np.asarray(K_num(*HANGING), dtype=float)
+    svals = np.linalg.svd(K, compute_uv=False)
+    rank = int(np.sum(svals > tol * max(svals[0], 1.0)))
+    assert rank == STIFFNESS_RANK, (
+        f"K at the hanging configuration has rank {rank}, not the "
+        f"{STIFFNESS_RANK} the note claims; singular values {svals}")
+    print(f"  [PASS] K has rank {rank}, singular values "
+          f"{np.array2string(svals, precision=4)}")
+
+
+def test_modes_vs_truth_model(tol=1e-4):
+    """The mandatory truth check for any mode the note cites: the analytic
+    small-oscillation frequencies against a linearisation of the truth model.
+
+    Nothing in this file's self-consistency checks constrains a mode. The
+    truth model is linearised by central differences of its own bias force at
+    the same configuration, having been told nothing about what the modes were
+    meant to be, so a diagonal read as a mode, a mode named for a motion the
+    mechanism cannot make, or a closed form used outside its assumptions all
+    show up here as frequencies that do not match.
+    """
+    model, data = build()
+    lin = linearise(model, data, np.array(HANGING))
+    analytic = small_oscillation_modes(HANGING)
+    gap = float(np.max(np.abs(np.sort(analytic) - np.sort(lin.frequencies))))
+    assert gap < tol, (
+        f"modes at the hanging configuration read {np.sort(analytic)} Hz "
+        f"where the truth model's linearisation reads "
+        f"{np.sort(lin.frequencies)} Hz")
+    print(f"  [PASS] modes match the truth model's linearisation at the "
+          f"hanging configuration (eps {lin.eps:g})")
+    print(f"         {np.array2string(np.sort(analytic), precision=4)} Hz "
+          f"analytic, worst |df| {gap:.2e} Hz")

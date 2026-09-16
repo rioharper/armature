@@ -40,6 +40,8 @@ analysis/model/
     equilibrium_checks.py
     inverse.py             <-   inverse dynamics, what Milestone 2's torques are checked on
     inverse_checks.py
+    modes.py               <-   linearisation: mass, stiffness, and the modes they give
+    modes_checks.py
   kinematics.py            <- Milestone 1 (FK, Jacobian)
   kinematics_checks.py     <-   its self-tests
   dynamics/                <- Milestone 2, a package: one submodule per note section
@@ -110,6 +112,8 @@ In `dynamics/`: `lagrangian_dynamics()` and `total_energy()` in `lagrangian.py`,
 **Mandatory truth check, the equilibrium settle:** beside whichever module makes the statics claim — `dynamics/statics.py` for a chain, a Milestone 1 module for a floating body on constraints, so this one moves with the claim rather than living at a fixed milestone — hold the analytic torque at sampled postures with `truth.settle(..., hold=tau, min_steps=...)` and assert the model is still there afterwards, and assert that a deliberately wrong torque is *not*. The held-for-a-while part is the check: an algebraic balance is written in the coordinates the derivation kept and is silent about every one it froze, so "balanced at this instant" and "still there five hundred steps later" differ exactly where a frozen degree of freedom is actually free. That difference is what blocked the first real project through this plugin, and it is why the check exists.
 
 **Mandatory truth check, the dynamics:** τ = M q̈ + C q̇ + g against `truth.inverse_dynamics` at states drawn from `truth.sample_states(n, seed)`, with `n` and the seed printed beside the result. Sampled *states*, not postures — at rest C multiplies zero and the entire Coriolis matrix goes unexercised, so a posture-only dynamics check is a statics check wearing a dynamics name. Velocities and accelerations come from the parameter block's rate envelope (`QD_LIMITS`, `QDD_LIMITS`), both signs.
+
+**Mandatory truth check, any mode the note cites:** the analytic small-oscillation frequencies against `truth.linearise` at the same configuration, with the finite-difference step printed beside them. A mode is an eigenvalue of (K, M) and an entry of K is the stiffness one coordinate feels moving alone; the two coincide only when both matrices are diagonal, so **a diagonal read as a mode** is a plausible, dimensionally correct number about a motion the mechanism cannot make. State the rank you claim for K and check it — a rank assumed and never computed is how that error survives. Frequencies are signed: a divergent configuration reads negative rather than producing a frequency that looks fine.
 
 The other self-tests, in each submodule's checks module — the pinned numeric sample of M, C, g and V; mass matrix symmetric positive-definite; skew-symmetry; energy conservation under SciPy integration (`solve_ivp`); static torques against the moment-arm calculation — are **self-consistency**, and the note says so. Each holds M, C and g against each other or against a property any correct Lagrangian has, so a term missing from T or V is missing from both sides of every one of them. They catch an arithmetic slip the moment it lands. The truth check is what says the equations describe *this* machine. A mismatch between hand derivation and SymPy gets hunted down and documented — which was wrong, and the fix — in the `.md`, never silently patched in the `.py`. Run the checkpoint.
 

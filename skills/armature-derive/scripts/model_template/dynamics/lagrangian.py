@@ -122,6 +122,28 @@ g_num = sp.lambdify(QS, G_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
 V_num = sp.lambdify(QS, V_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
 
 
+# The stiffness of the gravity field, K = dg/dq: the matrix a small-oscillation
+# mode actually comes from. Derived from g rather than separately derived,
+# which is why it sits here rather than in a module of its own.
+K_SYM = sp.simplify(G_SYM.jacobian(q))
+K_num = sp.lambdify(QS, K_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
+
+
+def small_oscillation_modes(q_vals):
+    """Mode frequencies [Hz] about `q_vals`, held in equilibrium.
+
+    Eigenvalues of (K, M), **not** the diagonal of K. An entry K_ii is the
+    stiffness felt by coordinate i moving alone; a mode is a shape the whole
+    mechanism moves in, and the two coincide only when M and K are both
+    diagonal. Signed, so a divergent configuration reads negative instead of
+    producing a plausible-looking frequency.
+    """
+    from scipy.linalg import eigh
+    lam = eigh(np.asarray(K_num(*q_vals), dtype=float),
+               np.asarray(M_num(*q_vals), dtype=float), eigvals_only=True)
+    return np.sign(lam) * np.sqrt(np.abs(lam)) / (2 * np.pi)
+
+
 def total_energy(q_vals, qd_vals):
     """Total mechanical energy E = KE + V [J] at a state."""
     Mn = np.asarray(M_num(*q_vals), dtype=float)

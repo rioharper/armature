@@ -57,6 +57,8 @@ truth/
   equilibrium_checks.py
   inverse.py             inverse dynamics — one submodule per query the milestones need
   inverse_checks.py
+  modes.py               linearisation: mass, stiffness and the modes they give
+  modes_checks.py
 ```
 
 Two rules keep it honest, and both are layout rules rather than physics:
