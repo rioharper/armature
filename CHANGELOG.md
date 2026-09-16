@@ -4,6 +4,13 @@
 
 Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inheriting the main session's model. Both are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
 
+### The derivation gets a truth model
+
+Every `armature-derive` milestone is checked against an independent MuJoCo model of the mechanism, built from the same parameter block. The reviews on the first real project found derivations whose arithmetic was right and whose model was wrong — a frozen degree of freedom, a textbook formula outside its assumptions — and the checkpoint's self-consistency checks could not see any of it, because the assumption sat on both sides. [#48](https://github.com/rioharper/armature/issues/48) tracks the effort.
+
+- `scripts/env-probe.sh` checks **MuJoCo** in the core tier, beside SymPy, SciPy and NumPy, with the same `absent` / `error: <Type>` / version reading. Core rather than a tier because a machine that cannot import it cannot pass a derivation checkpoint at all. `pinocchio` joins the named checks as an optional second backend for chain dynamics — never core, since it has no Windows pip wheel.
+- `references/environment-record.md` documents both; `init` and `armature-plan` name a missing MuJoCo as Phase 0 work that the analysis phase waits on, not a footnote.
+
 ### The plan lives on the issue tracker
 
 - `armature-plan` no longer writes `docs/02-plan/plan.md`. A plan is a **plan index** issue (`plan:index`) carrying scope-against-hours, the machine split, Must satisfiability, CAD process, and risks-and-hooks; `plan:phase` children carry exit criteria; `plan:leaf` grandchildren are the work. Parent tasks are flattened — a dependency that named one is wired to its last leaf.

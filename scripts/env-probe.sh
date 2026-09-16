@@ -7,10 +7,10 @@
 #   bash scripts/env-probe.sh ros2 gazebo cuda     # core plus a named tier
 #
 # Core is always checked: the working python invocation and whether SymPy,
-# SciPy and NumPy import under it; uv, git, gh; host, OS, bash, WSL.
+# SciPy, NumPy and MuJoCo import under it; uv, git, gh; host, OS, bash, WSL.
 #
-# Each argument adds a check. ros2, colcon, gazebo, cuda, wsl and solidworks
-# have real checks; any other name falls back to `command -v` plus
+# Each argument adds a check. ros2, colcon, gazebo, cuda, wsl, pinocchio and
+# solidworks have real checks; any other name falls back to `command -v` plus
 # `<name> --version`, so a spec can name a tool this script has never heard of.
 #
 # Absence is a value, never an error: a missing tool prints `absent` and the
@@ -68,15 +68,18 @@ done
 emit PYTHON "$PY"
 emit PYTHON_VERSION "$py_version"
 
-# One interpreter start for all three, and a failed import says which kind of
+# One interpreter start for all of them, and a failed import says which kind of
 # failure it was: a module that is not installed reads `absent`, one that is
 # installed but will not load reads `error: <Type>`. Collapsing both into
 # `absent` would send someone to install what is already there.
-if [ "$PY" = absent ]; then
-  for m in SYMPY SCIPY NUMPY; do emit "$m" absent; done
-else
-  "$PY" - <<'MODCHECK' 2>/dev/null || for m in SYMPY SCIPY NUMPY; do emit "$m" unknown; done
-for name in ("sympy", "scipy", "numpy"):
+py_modules() {
+  if [ "$PY" = absent ]; then
+    for m in "$@"; do emit "$(key_of "$m")" absent; done
+    return
+  fi
+  "$PY" - "$@" <<'MODCHECK' 2>/dev/null && return
+import sys
+for name in sys.argv[1:]:
     try:
         mod = __import__(name)
         value = getattr(mod, "__version__", "present")
@@ -86,7 +89,12 @@ for name in ("sympy", "scipy", "numpy"):
         value = "error: %s" % type(exc).__name__
     print("%s=%s" % (name.upper(), value))
 MODCHECK
-fi
+  for m in "$@"; do emit "$(key_of "$m")" unknown; done
+}
+
+# MuJoCo is core, not a tier: armature-derive's truth model is built on it, so
+# a machine that cannot import it cannot run a derivation checkpoint at all.
+py_modules sympy scipy numpy mujoco
 
 tool UV  uv  --version
 tool GIT git --version
@@ -134,6 +142,12 @@ check_cuda() {
 # Installed, which is durable and worth recording. Whether SOLIDWORKS is
 # *running* is true only while the CAD checks run, so init asks that live
 # rather than reading it here.
+# Optional second backend for chain inverse dynamics, and optional it stays:
+# there is no Windows pip wheel, so it arrives by conda or WSL or not at all.
+# A project may never require it; a machine that has it can run a third
+# independent implementation beside MuJoCo.
+check_pinocchio() { py_modules pinocchio; }
+
 check_solidworks() {
   if [ "$OS_KIND" != windows ]; then emit SOLIDWORKS "n/a"; return; fi
   local d
@@ -151,6 +165,7 @@ for name in "$@"; do
     colcon)     check_colcon ;;
     gazebo|gz)  check_gazebo ;;
     cuda|gpu)   check_cuda ;;
+    pinocchio)  check_pinocchio ;;
     solidworks) check_solidworks ;;
     *)          tool "$(key_of "$name")" "$name" --version ;;
   esac

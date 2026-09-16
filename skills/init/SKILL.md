@@ -96,9 +96,11 @@ Seed these files:
 - `docs/environment.md` from step 2's output, in the shape
   `references/environment-record.md` gives: one section for this machine,
   headed by hostname, OS, and today's date, closing with the gaps this project
-  will actually feel — a missing SciPy blocks **armature-derive**, a missing
-  CUDA makes a render host somebody else's machine. No gap left at this point
-  stops the scaffold; the one that would have, `gh`, was settled in step 2.
+  will actually feel — a missing SciPy or MuJoCo blocks **armature-derive**
+  (MuJoCo is what its truth model is built on, so without it every milestone
+  checkpoint fails at its truth check and installing it is Phase 0 work), a
+  missing CUDA makes a render host somebody else's machine. No gap left at this
+  point stops the scaffold; the one that would have, `gh`, was settled in step 2.
 - `docs/agents/issue-tracker.md`, copied verbatim from
   `${CLAUDE_PLUGIN_ROOT}/skills/armature-wayfind/references/issue-tracker-github.md`.
   That reference is the single source — copy it, never retype it, so a later

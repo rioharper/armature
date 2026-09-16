@@ -32,7 +32,10 @@ one-section-per-machine rule: `references/environment-record.md`, two levels
 above this skill. An absence the plan depends on becomes explicit Phase 0 work
 with hours against it rather than a footnote — a missing ROS 2 and Gazebo are
 that phase's first tasks, and a machine with no CUDA is a dependency on some
-other machine, not a slower schedule.
+other machine, not a slower schedule. **A missing MuJoCo is Phase 0 before the
+analysis phase can start at all**: `armature-derive` builds its truth model on
+MuJoCo, so a machine that reads `MUJOCO=absent` cannot pass a derivation
+milestone checkpoint, and the analysis phase's first leaf waits on that install.
 
 **Split the work across machines.** The spec's §8.1 `Runtime host` column
 already answers what the robot runs on in the field, so ask only for the

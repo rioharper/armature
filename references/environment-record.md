@@ -19,14 +19,23 @@ bash "<plugin>/scripts/env-probe.sh"                    # core only
 bash "<plugin>/scripts/env-probe.sh" ros2 gazebo cuda   # core plus a tier
 ```
 
-**Core**, always: the working python invocation and whether SymPy, SciPy and
-NumPy import under it; `uv`, `git`, `gh`; host, OS, bash, WSL.
+**Core**, always: the working python invocation and whether SymPy, SciPy,
+NumPy and MuJoCo import under it; `uv`, `git`, `gh`; host, OS, bash, WSL.
+
+MuJoCo is core rather than a tier because **armature-derive**'s truth model is
+built on it — a machine that cannot import MuJoCo cannot run a derivation
+checkpoint at all, whatever the spec names.
 
 **The tier** is whatever the project's own spec names — a ROS 2 distro, a
 simulator, CUDA, a target board's toolchain. Each argument adds a check;
-`ros2`, `colcon`, `gazebo`, `cuda`, `wsl` and `solidworks` have real checks,
-and any other name falls back to `command -v` plus `--version`, so a spec can
-name a tool the script has never heard of.
+`ros2`, `colcon`, `gazebo`, `cuda`, `wsl`, `pinocchio` and `solidworks` have
+real checks, and any other name falls back to `command -v` plus `--version`, so
+a spec can name a tool the script has never heard of.
+
+`pinocchio` is the tier a derivation asks for when it wants a third independent
+implementation of chain dynamics beside MuJoCo. It is never core: there is no
+Windows pip wheel, so it arrives by conda or WSL or not at all, and a project
+that does not have it loses nothing mandatory.
 
 Read `PYTHON` as the invocation that works, not as a yes/no: a machine whose
 python answers to `py` and not `python` is the case this whole record exists to
@@ -51,12 +60,17 @@ absences matter for *this* project.
 |---|---|
 | python | `python` 3.14.7 |
 | SymPy / SciPy / NumPy | 1.14.0 / 1.18.1 / 2.5.3 |
+| MuJoCo | absent |
 | uv / git / gh | 0.12.12 / 2.55.0 / 2.100.0 |
 | WSL | Ubuntu-24.04 |
 | ROS 2 / Gazebo | absent / absent |
+| Pinocchio | absent |
 
-**Gaps that matter here:** ROS 2 and Gazebo are absent and Phase 1 is entirely
-simulation, so installing them is Phase 0 work, not a footnote.
+**Gaps that matter here:** MuJoCo is absent, so every **armature-derive**
+milestone checkpoint fails at its truth check until it is installed — `pip
+install mujoco` is Phase 0's first task. ROS 2 and Gazebo are absent and Phase 1
+is entirely simulation, so installing them is Phase 0 work, not a footnote.
+Pinocchio's absence costs nothing; it is an optional second backend.
 ```
 
 Three rules hold it together:
