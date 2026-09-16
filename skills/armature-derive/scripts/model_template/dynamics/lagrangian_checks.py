@@ -17,7 +17,7 @@ from params import N, t
 from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, g_num,
                                  V_num, small_oscillation_modes, total_energy)
 from truth.chain import build
-from truth.envelope import DEFAULT_SEED, sample_states
+from truth.envelope import DEFAULT_SEED, sample, sample_states
 from truth.inverse import inverse_dynamics
 from truth.modes import linearise
 
@@ -57,10 +57,10 @@ def test_pinned_sample(tol=1e-12):
     print("  [PASS] M, C, g and V match the pinned sample")
 
 
-def test_mass_matrix_properties(trials=5, tol=1e-9):
-    rng = np.random.default_rng(1)
-    for _ in range(trials):
-        qv = rng.uniform(-np.pi, np.pi, N)
+def test_mass_matrix_properties(trials=5, seed=DEFAULT_SEED, tol=1e-9):
+    """Postures from the truth package's sampler, like every other check's, so
+    "over the envelope" is one set of configurations across the model."""
+    for qv in sample(trials, seed):
         Mn = np.asarray(M_num(*qv), dtype=float)
         assert np.allclose(Mn, Mn.T, atol=tol), "M not symmetric"
         assert np.all(np.linalg.eigvalsh(Mn) > 0), "M not positive definite"
@@ -75,11 +75,14 @@ def test_skew_symmetry(tol=1e-8):
     print("  [PASS] Mdot - 2C skew-symmetric")
 
 
-def test_energy_conservation(T_end=2.0, tol_rel=1e-4):
+def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
     """Unforced, gravity-on dynamics conserve total mechanical energy.
 
-    RK45 at tight tolerances from a nonzero posture at rest, E(T) against
-    E(0): one check that exercises the numeric M, C, g and V together.
+    RK45 at tight tolerances from a sampled posture at rest, E(T) against
+    E(0): one check that exercises the numeric M, C, g and V together. Sampled
+    rather than the tidy posture this once started from — a posture on a
+    symmetry plane releases into a planar swing that exercises fewer of the
+    coupling terms than the machine ever will.
     """
     from scipy.integrate import solve_ivp
 
@@ -91,11 +94,7 @@ def test_energy_conservation(T_end=2.0, tol_rel=1e-4):
         qddv = np.linalg.solve(Mn, -(Cn @ qdv) - gn)
         return np.concatenate([qdv, qddv])
 
-    q0 = np.zeros(N)
-    if N >= 1:
-        q0[0] = 0.3
-    if N >= 2:
-        q0[1] = -0.4
+    q0 = sample(1, seed)[0]
     s0 = np.concatenate([q0, np.zeros(N)])
     E0 = total_energy(s0[:N], s0[N:])
     sol = solve_ivp(rhs, (0.0, T_end), s0, method="RK45",

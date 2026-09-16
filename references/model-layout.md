@@ -51,7 +51,8 @@ truth/
   __init__.py            MILESTONE = (0, ...), and the public surface callers import
   chain.py               a serial chain from the DH or PoE table -> a simulator model
   chain_checks.py        the builder round-tripped against the parameter block
-  envelope.py            the seeded sampler every other milestone's checks draw from
+  envelope.py            the seeded sampler every other milestone's checks draw from,
+                         over the envelope and over the intended workspace
   envelope_checks.py
   equilibrium.py         settling to rest under held commands and applied loads
   equilibrium_checks.py
@@ -84,6 +85,12 @@ Two rules keep it honest, and both are layout rules rather than physics:
   no `dynamics/`. A truth model that borrows the derivation's frames or its mass matrix
   has the derivation's assumptions on both sides of every comparison, which is the exact
   blindness it exists to remove.
+- **Every other checks module draws its configurations from it.** One sampler, seeded, so
+  "over the envelope" is the same set in the kinematics check, the dynamics check and the
+  worst-case search, and a reviewer re-running a file gets the configurations the note was
+  written from. A checks module with a generator of its own is a check nobody can reproduce
+  from the note; the rule and the reason are in **armature-derive**'s
+  `references/derivation-standards.md`, under *Evidence over an envelope*.
 - **It shares `params.py` rather than copying it.** Two models built from two copies of
   the constants drift the first time one is edited, and a check between drifted models
   proves nothing about either.

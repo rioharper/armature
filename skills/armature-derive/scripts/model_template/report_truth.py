@@ -15,7 +15,8 @@ import numpy as np
 # this reads `from truth.floating import mjcf, spec_from_params` and prints
 # `mjcf(spec_from_params())`.
 from truth.chain import mjcf
-from truth.envelope import DEFAULT_SEED, DEFAULT_SAMPLES, sample
+from truth.envelope import (DEFAULT_SEED, DEFAULT_SAMPLES, sample,
+                            sample_workspace)
 
 print("The truth model (MJCF)\n")
 print(mjcf())

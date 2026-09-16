@@ -90,6 +90,24 @@ GRAVITY_VEC = Matrix([0, -g, 0])   # gravity in the base frame
 # every one of them unproven.
 Q_LIMITS = [(-pi, pi), (-2.6, 2.6)]
 
+# The **intended workspace**: the subset of the envelope the machine is
+# actually required to work in, and the only region where the derivation is
+# entitled to assume full rank. It is a second box because the envelope is what
+# the joints can reach and the workspace is what the requirements ask for, and
+# the gap between them is where the singularities are allowed to live. This 2R
+# arm's position Jacobian has determinant l1 l2 sin(q2), so it loses rank at
+# q2 = 0 — an elbow singularity sitting squarely inside Q_LIMITS — and the
+# machine is committed to the elbow-up branch to stay off it. Name yours from
+# the requirement, not from what happens to be non-singular.
+WORKSPACE = [(-pi, pi), (0.30, 2.6)]
+
+# The smallest singular value the position Jacobian must keep everywhere in
+# WORKSPACE [m/rad]. Not a tolerance: it is the worst end-effector speed one
+# rad/s of joint motion can buy, so its reciprocal is the joint speed and the
+# joint torque a unit of Cartesian motion or force costs at the worst posture.
+# The bound below is 0.037 at the elbow-up edge q2 = 0.30, rounded down.
+SIGMA_MIN = 0.035
+
 # The rate envelope: the fastest each coordinate is asked to move and to change
 # speed, one per generalized coordinate, in rad/s and rad/s^2 (m/s and m/s^2
 # for a prismatic one). These come from the spec's move classes, not from what

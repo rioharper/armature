@@ -8,16 +8,27 @@ the one bridge and the two entry points cannot disagree.
 
 import numpy as np
 
-from params import N
-from kinematics import J_num, fk_num
+from params import N, SIGMA_MIN
+from kinematics import J_num, fk_num, singular_values
 from truth.chain import build, site_jacobian, site_pose
-from truth.envelope import DEFAULT_SEED, sample
+from truth.envelope import DEFAULT_SEED, sample, sample_workspace
+
+# Large enough that the sweep's minimum is near the envelope's, cheap because
+# the Jacobian is lambdified: a sweep is not a settle and need not be frugal.
+SWEEP_SAMPLES = 400
 
 
-def test_jacobian_vs_finite_difference(trials=5, h=1e-7, tol=1e-5):
-    rng = np.random.default_rng(0)
-    for _ in range(trials):
-        qv = rng.uniform(-np.pi, np.pi, N)
+def test_jacobian_vs_finite_difference(trials=5, seed=DEFAULT_SEED,
+                                       h=1e-7, tol=1e-5):
+    """Self-consistency: the Jacobian against derivatives of the same FK.
+
+    The configurations come from the truth package's sampler like every other
+    check's, rather than from a generator of this file's own — one sampler is
+    what makes "over the envelope" the same set here, in the dynamics check and
+    in the worst-case search, and a check with a private seed is a check whose
+    configurations a reviewer cannot reproduce from the note.
+    """
+    for qv in sample(trials, seed):
         Jn = np.asarray(J_num(*qv), dtype=float)[:3, :]   # linear part
         for i in range(N):
             dq = np.zeros(N); dq[i] = h
@@ -61,3 +72,38 @@ def test_fk_and_jacobian_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
           f"configurations (seed {seed})")
     print(f"         worst |dp| {worst_p:.2e} m, worst |dJ| {worst_J:.2e}, "
           f"at q = {np.round(worst_at, 4)}")
+
+
+def test_jacobian_singular_values_swept(n=SWEEP_SAMPLES, seed=DEFAULT_SEED):
+    """The mandatory Milestone 1 sweep: σ(J_v) over the envelope, and the bound
+    on σ_min inside the intended workspace.
+
+    A matrix the derivation inverts or pseudo-inverts is a matrix whose rank is
+    a claim, and a rank claimed at a handful of named postures is no claim at
+    all — the postures a derivation reaches for are its symmetry planes, and a
+    structure matrix that is rank-deficient *everywhere* is still full rank
+    nowhere more convincingly than there. So the singular values are swept over
+    the sampled envelope and the smallest is printed, whatever it is.
+
+    Then the bound, and the two are different assertions. The envelope contains
+    the elbow singularity at q2 = 0, so σ_min over the envelope goes to zero
+    and must: that is the machine. What has to hold is that σ_min stays above
+    `params.SIGMA_MIN` everywhere in `params.WORKSPACE`, the region the
+    requirements actually name — a singularity inside the intended workspace is
+    a Milestone 3 finding, and this is where it surfaces.
+    """
+    over_envelope = singular_values(sample(n, seed))
+    configs = sample_workspace(n, seed)
+    over_workspace = singular_values(configs)
+    worst = float(np.min(over_workspace[:, -1]))
+    at = configs[int(np.argmin(over_workspace[:, -1]))]
+    assert worst > SIGMA_MIN, (
+        f"the position Jacobian's smallest singular value falls to {worst:.4f} "
+        f"m/rad at q={np.round(at, 4)}, inside WORKSPACE, below the "
+        f"{SIGMA_MIN} m/rad the derivation needs; the intended workspace "
+        f"contains a singularity")
+    print(f"  [PASS] sigma_min(J_v) >= {SIGMA_MIN} m/rad over {n} sampled "
+          f"workspace configurations (seed {seed})")
+    print(f"         worst {worst:.4f} m/rad at q = {np.round(at, 4)}; over "
+          f"the full envelope it falls to "
+          f"{float(np.min(over_envelope[:, -1])):.4f} (the elbow singularity)")

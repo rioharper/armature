@@ -9,6 +9,7 @@ Modified DH (Craig). Keep the structure if the note uses another convention:
 symbolic build -> numeric functions.
 """
 
+import numpy as np
 import sympy as sp
 from sympy import cos, sin, Matrix
 
@@ -69,3 +70,25 @@ print("  FK and Jacobian built.")
 # --- numeric functions, lambdified, parameterized by params.PARAMS ---
 fk_num = sp.lambdify(QS, T_EE.subs(SUB_Q).subs(SUB_P), "numpy")
 J_num = sp.lambdify(QS, J.subs(SUB_Q).subs(SUB_P), "numpy")
+
+
+def singular_values(configs):
+    """Singular values of the position Jacobian J_v at each configuration.
+
+    One row per configuration, largest first — so column -1 is σ_min, the
+    number the singularity claim is about. J_v rather than the full 6xN J
+    because J_v is the block this derivation inverts: `verification.py`'s
+    least-squares IK solves on the three position residuals, and a rank J_v
+    loses is a direction the end-effector cannot be driven in however well
+    conditioned the angular rows look.
+
+    σ_min is a *rate*, in m per rad of joint motion: its reciprocal is the
+    joint speed and the joint force one unit of Cartesian motion or force costs
+    at that posture, which is why a small one is an architecture problem rather
+    than a numerical one. For this arm it is exact — det J_v = l1 l2 sin q2 —
+    so σ_min σ_max = |l1 l2 sin q2| and the elbow singularity at q2 = 0 is
+    visible in the sweep rather than inferred.
+    """
+    return np.array([np.linalg.svd(np.asarray(J_num(*qv), dtype=float)[:3, :],
+                                   compute_uv=False)
+                     for qv in np.atleast_2d(np.asarray(configs, dtype=float))])

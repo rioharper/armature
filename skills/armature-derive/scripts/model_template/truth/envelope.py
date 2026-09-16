@@ -1,5 +1,6 @@
 """
-truth/envelope.py — the envelope, and the seeded sampler every check draws from.
+truth/envelope.py — the envelope, the intended workspace, and the seeded
+sampler every check draws from.
 
 One sampler, used by every milestone, so "over the envelope" means the same set
 of configurations in the kinematics check, the dynamics check and the
@@ -8,10 +9,12 @@ worst-case search. Self-tests in envelope_checks.py.
 
 import numpy as np
 
-from params import N, QD_LIMITS, QDD_LIMITS, Q_LIMITS
+from params import N, QD_LIMITS, QDD_LIMITS, Q_LIMITS, WORKSPACE
 
 LOW = np.array([lo for lo, _ in Q_LIMITS], dtype=float)
 HIGH = np.array([hi for _, hi in Q_LIMITS], dtype=float)
+WORK_LOW = np.array([lo for lo, _ in WORKSPACE], dtype=float)
+WORK_HIGH = np.array([hi for _, hi in WORKSPACE], dtype=float)
 RATE = np.array(QD_LIMITS, dtype=float)
 ACCEL = np.array(QDD_LIMITS, dtype=float)
 
@@ -22,7 +25,7 @@ DEFAULT_SAMPLES = 24
 DEFAULT_SEED = 20260915
 
 
-def sample(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED):
+def sample(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED, low=LOW, high=HIGH):
     """`n` configurations drawn uniformly from the envelope, reproducibly.
 
     Random, never named. The postures a derivation reaches for — home, fully
@@ -36,16 +39,33 @@ def sample(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED):
     was written from. Print `n` and the seed beside any result this backs —
     a sampled claim whose sample size is not stated is not reproducible.
 
-    Returns an (n, N) array of configurations inside `params.Q_LIMITS`.
+    Returns an (n, N) array of configurations inside `params.Q_LIMITS`, or
+    inside whatever box `low` and `high` name.
     """
     rng = np.random.default_rng(seed)
-    return LOW + (HIGH - LOW) * rng.random((int(n), N))
+    low, high = np.asarray(low, dtype=float), np.asarray(high, dtype=float)
+    return low + (high - low) * rng.random((int(n), N))
 
 
-def inside(configs, tol=0.0):
-    """Whether every row of `configs` lies within the envelope."""
+def sample_workspace(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED):
+    """`n` configurations from `params.WORKSPACE`, the region the machine is
+    required to work in.
+
+    The envelope is what the joints can reach; the workspace is what the
+    requirements ask for, and a singularity is allowed to sit in the gap. A
+    claim the derivation makes *everywhere* — the Jacobian has full rank, the
+    IK converges, a torque stays under a rating — is a claim about this set,
+    not about the envelope, and asserting it over the envelope instead is how
+    a bound gets quietly relaxed to whatever the joints happen to allow.
+    """
+    return sample(n, seed, WORK_LOW, WORK_HIGH)
+
+
+def inside(configs, tol=0.0, low=LOW, high=HIGH):
+    """Whether every row of `configs` lies within the envelope (or `low`/`high`)."""
     Q = np.atleast_2d(np.asarray(configs, dtype=float))
-    return bool(np.all(Q >= LOW - tol) and np.all(Q <= HIGH + tol))
+    return bool(np.all(Q >= np.asarray(low) - tol)
+                and np.all(Q <= np.asarray(high) + tol))
 
 
 def sample_states(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED):

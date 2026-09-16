@@ -4,8 +4,9 @@ truth/envelope_checks.py — self-tests for envelope.py.
 
 import numpy as np
 
-from params import N, Q_LIMITS
-from truth.envelope import DEFAULT_SEED, HIGH, LOW, inside, sample
+from params import N, Q_LIMITS, WORKSPACE
+from truth.envelope import (DEFAULT_SEED, HIGH, LOW, WORK_HIGH, WORK_LOW,
+                            inside, sample, sample_workspace)
 
 
 def test_envelope_mirrors_the_parameter_block():
@@ -37,3 +38,17 @@ def test_sampling_is_reproducible_and_off_the_symmetry_planes(n=64):
     assert np.min(np.abs(sample(n) - midpoint)) > 1e-6, \
         "a sample landed on a coordinate's midpoint"
     print(f"  [PASS] sampling reproducible under seed {DEFAULT_SEED}")
+
+
+def test_workspace_is_inside_the_envelope(n=200):
+    """The region the requirements name must be reachable, and it must be a
+    real narrowing — a workspace equal to the envelope is a workspace nobody
+    chose, and the full-rank bound it carries then means nothing."""
+    assert np.all(WORK_LOW >= LOW) and np.all(WORK_HIGH <= HIGH), \
+        f"WORKSPACE {list(zip(WORK_LOW, WORK_HIGH))} leaves Q_LIMITS {Q_LIMITS}"
+    assert np.all(WORK_HIGH > WORK_LOW), f"empty WORKSPACE: {WORKSPACE}"
+    Q = sample_workspace(n, seed=2)
+    assert inside(Q, low=WORK_LOW, high=WORK_HIGH), \
+        "a workspace sample fell outside WORKSPACE"
+    print(f"  [PASS] {n} workspace samples inside WORKSPACE, itself inside "
+          f"the envelope")
