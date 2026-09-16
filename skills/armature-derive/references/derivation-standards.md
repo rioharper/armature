@@ -38,6 +38,15 @@ A claim about a *set* of configurations — the Jacobian has full rank, the torq
 
 **A signed load case is enumerated in both signs, in the parameter block.** Load cases live in `params.py` as a table of `(class, magnitude, direction set, sign)` rows, and every signed class carries both rows — the check that it does is a self-test, not a habit. A 0.5 g deceleration read as upward when downward is the case that binds the floor, a cable pull read inboard when outboard is the one that lifts a foot: the sign is not a detail of the reading, it is a row that exists or does not. Where the load's direction is a *set* rather than a direction, the row says so and the search answers it exactly.
 
+## The assumption table
+
+`00_setup.md`'s numbered assumptions are a table, and it carries a **Released?** column. Every assumption that fixes a coordinate or removes a compliance — the platform stays level, the base is rigid, the elbow is locked, the gearbox has no wind-up, the cable is inextensible — owes that column one of exactly two entries:
+
+- the **name of the check that releases it** in the truth model and **what moved**, with units and sign: `test_release_platform_tilt — 0.4 mrad at the worst sampled pose`. That is an assumption sized and kept. `5.2° tilt, two cables slack` is an assumption sized and wrong, and the paragraph under the table is the finding.
+- **one sentence saying why it cannot be released**, which is always the same reason wearing different clothes: the truth model can only free a coordinate the parameter block gave it. "Not released: the base's compliance is not in the parameter block; releasing it means adding the base stiffness and the joint that carries it, scoped as T2.4." A sentence that says only "reasonable for this design" is the assumption nobody sized, which is the one that bites.
+
+A blank cell is the failure mode the column exists to make visible. Rule 7's flag — direction and rough size of the error — is what the released entry *is*, computed rather than estimated; where the release ran, the flag quotes its number.
+
 ## Which layer a sentence lives in
 
 A note and its module each carry what the other cannot, and a sentence said in both is paid for on every read of the module. Narrative, derivation, physical argument, and revision history — the story of a correction included — live in the note. The module carries the computation and the least prose a caller needs:

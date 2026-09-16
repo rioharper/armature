@@ -34,6 +34,8 @@ nothing above it:
 
     linearise(...)             stiffness, mass, and mode frequencies there
 
+    release(...)               an assumption let go: what moves, and how far
+
 Two builders cover the conventions a mechanism arrives in, and which one a
 project uses follows the topology the plan glossary settled, not a preference:
 `chain.py` for a serial chain on a fixed base, read off the DH or PoE table,
@@ -69,3 +71,4 @@ from truth.floating import build as build_floating        # noqa: E402,F401
 from truth.floating import cable_forces                   # noqa: E402,F401
 from truth.inverse import inverse_dynamics                # noqa: E402,F401
 from truth.modes import Linearised, linearise             # noqa: E402,F401
+from truth.release import Released, release               # noqa: E402,F401

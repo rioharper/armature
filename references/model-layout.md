@@ -62,6 +62,8 @@ truth/
   inverse_checks.py
   modes.py               linearisation: mass, stiffness and the modes they give
   modes_checks.py
+  release.py             an assumption let go: the displacement of what it fixed
+  release_checks.py      that, and the degenerate fixture proving the check fails
 ```
 
 **One builder per convention family, and a project keeps one.** `chain.py`
