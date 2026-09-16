@@ -40,7 +40,7 @@ def test_jacobian_vs_finite_difference(trials=5, seed=DEFAULT_SEED,
     print("  [PASS] Jacobian matches finite-difference FK")
 
 
-def test_fk_and_jacobian_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
+def test_truth_fk_and_jacobian(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The mandatory Milestone 1 truth check: FK and the Jacobian against a
     model that never saw this derivation, at configurations nobody chose.
 

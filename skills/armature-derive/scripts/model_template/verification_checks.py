@@ -64,7 +64,7 @@ def test_grid_and_optimiser_bracket_the_worst_case(rel=0.05):
         print(f"         {w.case.name:<10} worst |tau| {np.round(w.tau, 3)} N m")
 
 
-def test_worst_case_torque_vs_truth_model(tol=1e-9):
+def test_truth_worst_case_torque(tol=1e-9):
     """The mandatory Milestone 3 truth check: the worst case confirmed by the
     truth model at the posture the search found.
 

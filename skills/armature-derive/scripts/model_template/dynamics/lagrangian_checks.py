@@ -119,7 +119,7 @@ def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
     print("  [PASS] total energy conserved under SciPy integration")
 
 
-def test_inverse_dynamics_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
+def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The mandatory Milestone 2 truth check: tau = M qdd + C qd + g against
     the truth model's inverse dynamics, at sampled states.
 
@@ -175,7 +175,7 @@ def test_stiffness_has_the_rank_the_note_claims(tol=1e-9):
           f"{np.array2string(svals, precision=4)}")
 
 
-def test_modes_vs_truth_model(tol=1e-4):
+def test_truth_modes(tol=1e-4):
     """The mandatory truth check for any mode the note cites: the analytic
     small-oscillation frequencies against a linearisation of the truth model.
 

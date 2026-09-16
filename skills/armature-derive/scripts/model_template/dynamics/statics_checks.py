@@ -40,7 +40,7 @@ def moment_arm_torques(q_vals):
     return p["g"] * np.array([shoulder, elbow])
 
 
-def test_moment_arm_form_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
+def test_truth_moment_arm_form(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The closed form against the truth model, before the note cites it.
 
     A formula out of a book is the cheapest wrong number a derivation can
@@ -88,7 +88,7 @@ def test_static_torques_match_moment_arms(n=24, seed=DEFAULT_SEED, tol=1e-9):
           f"sampled postures (seed {seed})")
 
 
-def test_held_posture_stays_in_truth_model(n=8, seed=DEFAULT_SEED, tol=1e-4):
+def test_truth_held_posture_stays(n=8, seed=DEFAULT_SEED, tol=1e-4):
     """The mandatory equilibrium truth check: hold g(q) and see whether the
     machine actually stays there.
 
@@ -124,7 +124,7 @@ def test_held_posture_stays_in_truth_model(n=8, seed=DEFAULT_SEED, tol=1e-4):
     print(f"         worst drift {worst:.2e} rad, at q = {np.round(worst_at, 4)}")
 
 
-def test_wrong_torque_does_not_hold(seed=DEFAULT_SEED, moved=1e-2):
+def test_truth_wrong_torque_does_not_hold(seed=DEFAULT_SEED, moved=1e-2):
     """And the check has teeth: a torque that is not g(q) lets the arm fall.
 
     A check that passes is only evidence if it could have failed. Twenty per

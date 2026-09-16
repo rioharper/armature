@@ -13,7 +13,7 @@ The derivation is four self-contained parts, each with its own `.md` note, its o
 
 Milestones 1–3 close through the same **checkpoint**:
 
-1. Run the self-tests via Bash — `python analysis/model/run_all.py` and `pytest`, which reach the same discovered checks, the code-line budget among them. All must pass.
+1. Run the self-tests via Bash — `python analysis/model/run_all.py` and `pytest`, which reach the same discovered checks, `layout.py`'s two gates among them. All must pass. The second gate is the **truth gate**: every checks module outside the truth package defines a `test_truth_*` callable, or carries `TRUTH_EXEMPT = "<why this module's claims need none>"`, and the run fails on one with neither. That is what stops the truth model being skipped in silence under time pressure, which is the only way it ever gets skipped; `references/model-layout.md` documents the gate and the exemption, and the red team challenges every exemption.
 2. Dispatch the **armature-red-team** agent with the milestone's `.md`, its modules and their checks modules, earlier milestones as context. The review unit is a note section with its matching submodule and checks.
 3. Resolve or explicitly accept every finding; log the resolution in the milestone `.md`'s revision note.
 4. Merge the branch. The merge is the phase gate — the next milestone starts only after it.
@@ -57,7 +57,7 @@ analysis/model/
   verification_checks.py
   report_results.py        <- prints the symbolic results, the named configurations, the tables
   report_truth.py          <- prints the truth model itself and the configurations sampled
-  layout.py                <- the code-line budget; stdlib only
+  layout.py                <- the two gates: the code-line budget and the truth check
   run_all.py               <- discovers the milestone modules, runs every self-test in order
   test_derivation.py       <- the same checks, exposed to pytest
 ```

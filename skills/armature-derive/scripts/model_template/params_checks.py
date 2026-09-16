@@ -8,8 +8,13 @@ that the load-case table has not lost a sign. Each of those is a whole class of
 downstream result quietly sized against the wrong thing.
 """
 
+import numpy as np
+
 from params import (LOAD_CASES, N, PARAMS, PARAM_SYMS, PLANE_XY, QDD_LIMITS,
-                    QD_LIMITS, Q_LIMITS)
+                    QD_LIMITS, Q_LIMITS, WORKSPACE)
+from truth.chain import build
+from truth.envelope import DEFAULT_SEED, sample_workspace
+from truth.equilibrium import settle
 
 
 def test_symbols_mirror_the_numbers():
@@ -67,3 +72,31 @@ def test_every_load_case_names_a_direction_set():
             f"load case {case.name!r} direction {case.direction} is not a " \
             f"3-vector or {PLANE_XY!r}"
     print(f"  [PASS] {len(LOAD_CASES)} load cases each name a direction set")
+
+
+def test_truth_workspace_is_free_of_the_joint_limits(n=64, seed=DEFAULT_SEED):
+    """The intended workspace, against the truth model's own joint ranges.
+
+    `WORKSPACE` is a claim about the machine — *this is where it works* — and
+    every later result leans on it: the singular-value bound, the IK's
+    convergence set, the posture each worst case is found at. The truth model
+    carries `Q_LIMITS` as its joint ranges, built from the same block, so it can
+    say whether the region the requirements name is a region the machine holds
+    freely or one whose edge is a hard stop pressed against.
+
+    The difference is not cosmetic. On a limit MuJoCo adds a constraint force,
+    and every truth check downstream then reads the limit's torque rather than
+    the mechanism's — the Milestone 3 worst-case check would confirm a number
+    the end-stop is carrying. Settling at each sampled pose under the truth
+    model's own gravity torque and asserting no constraint is active is what
+    says the set is clean.
+    """
+    model, data = build()
+    for q0 in sample_workspace(n, seed):
+        out = settle(model, data, q0, max_steps=1)
+        assert np.max(np.abs(out.forces)) < 1e-9, (
+            f"a joint limit carries {out.forces} at q={np.round(q0, 4)}, inside "
+            f"WORKSPACE {WORKSPACE}; every truth check at that pose would read "
+            f"the end-stop's force rather than the mechanism's")
+    print(f"  [PASS] {n} sampled workspace poses sit clear of every joint limit "
+          f"the truth model carries (seed {seed})")

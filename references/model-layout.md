@@ -123,6 +123,38 @@ Table formatting and long printed results live in a report module: `report_<scop
 Discovery never takes a report module for a milestone module, and a report module never
 checks anything, so a renderer never inflates the file a red-team reads to check equations.
 
+## The truth gate
+
+A milestone's self-consistency checks are blind to the assumption sitting on both sides of
+them, so a milestone whose only evidence is self-consistency has shown its equations
+consistent and nothing about the machine. The gate is what stops the truth model being
+skipped in silence, which is the only way it ever gets skipped:
+
+**Every checks module outside the truth package defines a `test_truth_*` callable, or says
+why it does not.** `layout.py` reports one truth column per module — the count, `n/a`, or
+the exemption — and the full run fails on a gated module with neither. The prefix is a
+naming convention rather than a registry because `layout.py` imports nothing but the
+standard library: it reads the source's function names with `ast`, so it works on a machine
+where MuJoCo will not import, which is exactly the machine most likely to have skipped the
+truth model.
+
+Three things sit outside the gate by nature, and the check knows it. The truth package's own
+modules — asking the truth model to check its claims against the truth model is circular;
+`layout.py` itself; and **any directory with no truth package at all**, where the gate
+reports `n/a` and passes, which is what lets the same file ship in the CAD part template
+unchanged.
+
+A module that genuinely makes no claim a truth model can reach says so, at module level,
+with the same argued-exemption mechanism the budget uses and the same reader parsing it:
+
+```python
+TRUTH_EXEMPT = "a naming convention and a units table; no physical claim to check"
+```
+
+Anything but a non-empty string raises. The reason appears in `layout.py`'s table and the
+red-team challenges it — the exemption a session writes under time pressure is exactly the
+one a fresh context should read.
+
 ## The budget: 250 code lines
 
 A **code line** is any line not blank, not comment-only, and not part of a docstring.
@@ -130,10 +162,10 @@ Documentation is free; the only way under the budget is to split. `layout.py` co
 `ast` for docstrings, `tokenize` for comments — and ships inside each template, stdlib only,
 because a copied project cannot import the plugin:
 
-- `python layout.py` (in the template's directory) prints every module's count, and the
-  line counts of the documents beside them — milestone notes, part definitions — for
-  information, since documents carry no budget, then exits
-  nonzero on a violation. It imports nothing but the standard library, so it runs where
+- `python layout.py` (in the template's directory) prints every module's count and its
+  truth column, and the line counts of the documents beside them — milestone notes, part
+  definitions — for information, since documents carry no budget, then exits
+  nonzero on a violation of either gate. It imports nothing but the standard library, so it runs where
   SymPy, SciPy, or build123d cannot.
 - `run_all.py` — the same discovery runner in both templates — collects `layout.py`'s
   checks like any other, so the full run fails on a module over budget: in
