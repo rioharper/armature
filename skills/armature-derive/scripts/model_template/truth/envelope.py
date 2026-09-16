@@ -8,10 +8,12 @@ worst-case search. Self-tests in envelope_checks.py.
 
 import numpy as np
 
-from params import N, Q_LIMITS
+from params import N, QD_LIMITS, QDD_LIMITS, Q_LIMITS
 
 LOW = np.array([lo for lo, _ in Q_LIMITS], dtype=float)
 HIGH = np.array([hi for _, hi in Q_LIMITS], dtype=float)
+RATE = np.array(QD_LIMITS, dtype=float)
+ACCEL = np.array(QDD_LIMITS, dtype=float)
 
 # What a check draws when it is asked for "the envelope" and says nothing more.
 # Small enough that a milestone's checks stay seconds, large enough that a
@@ -44,3 +46,22 @@ def inside(configs, tol=0.0):
     """Whether every row of `configs` lies within the envelope."""
     Q = np.atleast_2d(np.asarray(configs, dtype=float))
     return bool(np.all(Q >= LOW - tol) and np.all(Q <= HIGH + tol))
+
+
+def sample_states(n=DEFAULT_SAMPLES, seed=DEFAULT_SEED):
+    """`n` full states: (configurations, velocities, accelerations).
+
+    A dynamics claim checked at rest is a statics claim. The velocities and
+    accelerations are drawn from the rate envelope in the parameter block,
+    both signs, so the Coriolis and inertial terms a posture-only check never
+    exercises are the ones a sampled state hits hardest.
+
+    Returns three (n, N) arrays, from one generator so the seed reproduces the
+    whole state and not just its posture.
+    """
+    rng = np.random.default_rng(seed)
+    n = int(n)
+    Q = LOW + (HIGH - LOW) * rng.random((n, N))
+    QD = RATE * rng.uniform(-1.0, 1.0, (n, N))
+    QDD = ACCEL * rng.uniform(-1.0, 1.0, (n, N))
+    return Q, QD, QDD

@@ -83,6 +83,15 @@ GRAVITY_VEC = Matrix([0, -g, 0])   # gravity in the base frame
 # every one of them unproven.
 Q_LIMITS = [(-pi, pi), (-2.6, 2.6)]
 
+# The rate envelope: the fastest each coordinate is asked to move and to change
+# speed, one per generalized coordinate, in rad/s and rad/s^2 (m/s and m/s^2
+# for a prismatic one). These come from the spec's move classes, not from what
+# the actuator happens to manage. A dynamics claim checked only at rest is a
+# statics claim; these are what makes a sampled *state* rather than a sampled
+# posture, and every Coriolis and inertial term lives in them.
+QD_LIMITS = [3.0, 4.0]
+QDD_LIMITS = [20.0, 30.0]
+
 # Plain symbols for lambdify, shared by every downstream module so the
 # numeric-function signatures stay consistent across kinematics/dynamics/
 # verification.

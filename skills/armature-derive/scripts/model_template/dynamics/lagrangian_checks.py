@@ -16,6 +16,9 @@ import sympy as sp
 from params import N, t
 from dynamics.lagrangian import (M_SYM, C_SYM, M_num, C_num, g_num, V_num,
                                  total_energy)
+from truth.chain import build
+from truth.envelope import DEFAULT_SEED, sample_states
+from truth.inverse import inverse_dynamics
 
 # One state, and what M, C, g and V read there. Hand-checked for the shipped
 # 2R arm and pinned so a rebuild of the symbolic construction — the move onto
@@ -98,3 +101,40 @@ def test_energy_conservation(T_end=2.0, tol_rel=1e-4):
     assert abs(E1 - E0) / scale < tol_rel, \
         f"Energy drift {(E1 - E0) / scale:.2e} exceeds {tol_rel}"
     print("  [PASS] total energy conserved under SciPy integration")
+
+
+def test_inverse_dynamics_vs_truth_model(n=24, seed=DEFAULT_SEED, tol=1e-9):
+    """The mandatory Milestone 2 truth check: tau = M qdd + C qd + g against
+    the truth model's inverse dynamics, at sampled states.
+
+    This is the check that makes the dynamics *right*, as against
+    self-consistent. Everything else in this file holds M, C and g against each
+    other or against a property every correct Lagrangian has, and a term
+    missing from T or V is missing from both sides of all of them. MuJoCo's
+    recursive inverse dynamics never saw T, V or this file, so a missing term
+    shows up here as a torque that does not match.
+
+    Sampled *states*, not postures: at rest C multiplies zero and the whole
+    Coriolis matrix goes unexercised. Velocity and acceleration come from the
+    rate envelope in the parameter block, both signs.
+    """
+    model, data = build()
+    Q, QD, QDD = sample_states(n, seed)
+    worst, worst_at = 0.0, None
+    for qv, qdv, qddv in zip(Q, QD, QDD):
+        Mn = np.asarray(M_num(*qv), dtype=float)
+        Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
+        gn = np.asarray(g_num(*qv), dtype=float).flatten()
+        tau_model = Mn @ qddv + Cn @ qdv + gn
+        tau_truth = inverse_dynamics(model, data, qv, qdv, qddv)
+        gap = float(np.max(np.abs(tau_model - tau_truth)))
+        if gap > worst:
+            worst, worst_at = gap, (qv, qdv)
+        assert gap < tol, (
+            f"tau = M qdd + C qd + g reads {tau_model} where the truth model's "
+            f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
+            f"qdd={qddv}")
+    print(f"  [PASS] tau matches the truth model's inverse dynamics over {n} "
+          f"sampled states (seed {seed})")
+    print(f"         worst |dtau| {worst:.2e} N m, at q = "
+          f"{np.round(worst_at[0], 4)}, qd = {np.round(worst_at[1], 4)}")

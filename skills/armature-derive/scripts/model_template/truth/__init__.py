@@ -25,15 +25,16 @@ nothing above it:
     site_pose(...)             where the tool frame actually ends up
     site_jacobian(...)         the tool frame's Jacobian, MuJoCo's own
 
-    settle(...)                static equilibrium under given loads
-    linearise(...)             stiffness, mass, and mode frequencies there
+    sample_states(n, seed)     configurations, velocities and accelerations
     inverse_dynamics(...)      torques at a state and an acceleration
 
-The first four are here. The last three arrive with the milestones that need
-them — settle and linearise with the statics and modes of Milestone 1 and 2,
-inverse dynamics with the Lagrangian check of Milestone 2 — and each lands in
-its own submodule beside `chain.py`, keeping this surface the one place to
-read for what the truth model can be asked.
+    settle(...)                static equilibrium under given loads
+    linearise(...)             stiffness, mass, and mode frequencies there
+
+The first six are here. The last two arrive with the milestones that need them
+— settle with the statics claim, linearise with the modes — each in its own
+submodule beside `chain.py`, keeping this surface the one place to read for
+what the truth model can be asked.
 
 Two builders cover the conventions a mechanism arrives in: `chain.py` for a
 serial chain read off the DH or PoE table, and a floating-body builder for a
@@ -47,4 +48,5 @@ body on cables, legs or wheels. Check the package alone:
 MILESTONE = (0, "Milestone 0: truth model")
 
 from truth.chain import build, site_jacobian, site_pose   # noqa: E402,F401
-from truth.envelope import sample                         # noqa: E402,F401
+from truth.envelope import sample, sample_states          # noqa: E402,F401
+from truth.inverse import inverse_dynamics                # noqa: E402,F401

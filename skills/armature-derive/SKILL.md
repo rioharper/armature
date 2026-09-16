@@ -36,6 +36,8 @@ analysis/model/
     chain_checks.py
     envelope.py            <-   the seeded sampler every milestone's checks draw from
     envelope_checks.py
+    inverse.py             <-   inverse dynamics, what Milestone 2's torques are checked on
+    inverse_checks.py
   kinematics.py            <- Milestone 1 (FK, Jacobian)
   kinematics_checks.py     <-   its self-tests
   dynamics/                <- Milestone 2, a package: one submodule per note section
@@ -103,7 +105,9 @@ In `dynamics/`: `lagrangian_dynamics()` and `total_energy()` in `lagrangian.py`,
 
 **The Lagrangian is built by `sympy.physics.mechanics`, never by hand.** `lagrangian.py` turns a `ReferenceFrame` per link off the DH table, places each joint origin and each COM as a `Point`, gives every point its velocity through the one- and two-point velocity theorems, hangs a `RigidBody` with mass and an inertia dyadic on each link frame, and hands the whole Lagrangian to `LagrangesMethod`. M, C and g are then read back out of the equations it returns. Two steps that used to be written out — the angular velocity read from Ṙ Rᵀ, and the d/dt(∂L/∂q̇) − ∂L/∂q loop — are exactly where an ω sign or a dropped Coriolis term used to hide behind arithmetic that still reproduced, so they are not written out. Keep the same shape if the mechanism is a floating body rather than a chain: frames, points, velocity theorems, bodies, method.
 
-Self-tests, in each submodule's checks module: the pinned numeric sample of M, C, g and V; mass matrix symmetric positive-definite; skew-symmetry; energy conservation under SciPy integration (`solve_ivp`); static torques against the moment-arm calculation. All of those are **self-consistency** — the model against itself. What makes the equations right is the truth model's inverse dynamics at randomly sampled states, checked at this milestone's checkpoint by a model that never saw the Lagrangian. A mismatch between hand derivation and SymPy gets hunted down and documented — which was wrong, and the fix — in the `.md`, never silently patched in the `.py`. Run the checkpoint.
+**Mandatory truth check:** τ = M q̈ + C q̇ + g against `truth.inverse_dynamics` at states drawn from `truth.sample_states(n, seed)`, with `n` and the seed printed beside the result. Sampled *states*, not postures — at rest C multiplies zero and the entire Coriolis matrix goes unexercised, so a posture-only dynamics check is a statics check wearing a dynamics name. Velocities and accelerations come from the parameter block's rate envelope (`QD_LIMITS`, `QDD_LIMITS`), both signs.
+
+The other self-tests, in each submodule's checks module — the pinned numeric sample of M, C, g and V; mass matrix symmetric positive-definite; skew-symmetry; energy conservation under SciPy integration (`solve_ivp`); static torques against the moment-arm calculation — are **self-consistency**, and the note says so. Each holds M, C and g against each other or against a property any correct Lagrangian has, so a term missing from T or V is missing from both sides of every one of them. They catch an arithmetic slip the moment it lands. The truth check is what says the equations describe *this* machine. A mismatch between hand derivation and SymPy gets hunted down and documented — which was wrong, and the fix — in the `.md`, never silently patched in the `.py`. Run the checkpoint.
 
 ## Milestone 3: Verification & results
 
