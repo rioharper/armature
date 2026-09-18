@@ -81,7 +81,7 @@ builder returns, which is what makes the surface above them one surface. The
 sampler is not a query: it reads the parameter block's envelope directly, so a
 mechanism whose coordinates are not a box in `qpos` samples its own poses.
 
-Two rules keep it honest, and both are layout rules rather than physics:
+Three rules keep it honest, all of them layout rules rather than physics:
 
 - **It imports the parameter block and nothing else from the model.** No `kinematics.py`,
   no `dynamics/`. A truth model that borrows the derivation's frames or its mass matrix

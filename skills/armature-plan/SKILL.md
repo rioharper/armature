@@ -31,10 +31,8 @@ the record is never older than the last plan written against it. Format and the
 one-section-per-machine rule: `${CLAUDE_PLUGIN_ROOT}/references/environment-record.md`. An absence the plan depends on becomes explicit Phase 0 work
 with hours against it rather than a footnote — a missing ROS 2 and Gazebo are
 that phase's first tasks, and a machine with no CUDA is a dependency on some
-other machine, not a slower schedule. **A missing MuJoCo is Phase 0 before the
-analysis phase can start at all**: `armature-derive` builds its truth model on
-MuJoCo, so a machine that reads `MUJOCO=absent` cannot pass a derivation
-milestone checkpoint, and the analysis phase's first leaf waits on that install.
+other machine, not a slower schedule. **A missing MuJoCo is Phase 0 work the
+analysis phase waits on**: no `armature-derive` checkpoint passes without it.
 
 **Split the work across machines.** The spec's §8.1 `Runtime host` column
 already answers what the robot runs on in the field, so ask only for the
@@ -146,7 +144,7 @@ Decompose into phases where each phase ends in something *demonstrable or testab
 
 Typical arc (adapt, don't copy):
 
-1. **Analysis & sizing** — the parameter block and its envelope first; then **generate the truth model from it**, before any analytic milestone; then the kinematic model, workspace check, actuator sizing from dynamics, DOF/reachability verification. Derivation tasks say "derive FK/IK/Jacobian/dynamics" and carry `armature-derive` as Executor, and so does the truth-model leaf. Order it that way deliberately: the truth model is an independent simulator model of the mechanism that every later milestone's claims are checked against, and a derivation with nothing to be checked against on the day it is written gets its wrong assumption found at review months later instead of at its own checkpoint. A project's **later simulation tasks consume that package** rather than starting from nothing — a bench model for a bring-up procedure, a rig model for controller work, a sim for a prototype's kill criterion all build on `analysis/model/truth/`, which already carries the parameter block's geometry, inertias and envelope. Where MuJoCo is absent from the environment record, installing it is Phase 0 work with hours against it and this leaf waits on it.
+1. **Analysis & sizing** — the parameter block and its envelope first; then **the truth model generated from it**, before any analytic milestone, so every later claim has something independent to be checked against on the day it is written; then the kinematic model, workspace check, actuator sizing from dynamics, DOF/reachability verification. Derivation tasks say "derive FK/IK/Jacobian/dynamics" and carry `armature-derive` as Executor, and so does the truth-model leaf. A project's **later simulation tasks consume that package** rather than starting from nothing — a bench model for a bring-up procedure, a rig model for controller work, a sim for a prototype's kill criterion all build on `analysis/model/truth/`.
 2. **Concept CAD & layout** — master sketch / skeleton model driving all subassemblies, envelope check, interference and service-access check, mass rollup vs. budget.
 3. **Prototype the risky bits** — each prototype task carries the question it must answer and a kill criterion.
 4. **Detail design & DFM** — part-by-part CAD, tolerance decisions, COTS selection with actual part numbers, drawings for anything outsourced, BOM with costs against budget. If the spec came with a **design-driver BOM** (from armature-spec), expand it into the full procurement BOM — the design drivers and their datasheets are settled; add quantities, fasteners, costs, and lead times. Any part still carrying a TBD or assumed spec gets a task to source and confirm its datasheet *before* its drawing is released.
