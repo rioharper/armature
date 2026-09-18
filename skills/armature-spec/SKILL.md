@@ -1,6 +1,6 @@
 ---
 name: armature-spec
-description: Turn a concept — an armature-pitch brief, or a described idea — into a defensible engineering spec through a skeptical technical interview covering architecture, kinematics, feasibility, and parts. Use when the user wants to design or "spec out" a robot, mechanism, or subsystem; wants a trade study or design review of an electromechanical design or proposed change; or wants spec questions drafted into a questionnaire for a third party who holds the answers. An idea still at the "worth building, and for whom" stage goes to armature-pitch first — this skill assumes that's settled and goes deep on the engineering.
+description: Turn a concept into a defensible engineering spec through a skeptical technical interview covering architecture, kinematics, feasibility, and parts. Use when the user wants to design or "spec out" a robot, mechanism, or subsystem; wants a trade study or design review of an electromechanical design or proposed change; or wants spec questions drafted into a questionnaire for a third party who holds the answers. An idea still at the "worth building, and for whom" stage goes to armature-pitch first.
 ---
 
 # Robotics Spec Design
@@ -59,7 +59,7 @@ Write the document to `docs/01-spec/spec.md` using the structure in `references/
 - Fill in Section 6 (Kinematic & Motion Envelope) with real numbers, not placeholders, once the architecture is chosen.
 - Fill in Section 8 (Software & Compute Architecture) to the same standard: every link carries a budget and a seam-level verification, every data artifact names its schema.
 - Open questions are a first-class section; an honest "TBD pending prototype" beats a confident guess.
-- Write like an engineer: short declarative sentences, numbers with units, always SI (imperial in parentheses only if the user's shop works in it).
+- Every number carries its unit, in SI (imperial in parentheses only if the user's shop works in it).
 - Seed `docs/01-spec/budgets.md` and `docs/01-spec/traceability.md` from their templates in `references/`.
 
 ### Phase 4: Lock the major parts and capture their datasheets

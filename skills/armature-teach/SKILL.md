@@ -1,6 +1,6 @@
 ---
 name: armature-teach
-description: Teach an engineering concept, equation, or design decision from a robotics project — a load-bearing everyday analogy first, then the formalism, in the project's own notation. Use when the user wants to understand something rather than have it produced: a concept ("what even is a Jacobian"), or why their own design behaves as it does ("why does the plan put the encoder on the motor shaft").
+description: Teach an engineering concept, equation, or design decision from a robotics project — a load-bearing everyday analogy first, then the formalism, in the project's own notation. Use when the user wants to understand something rather than have it produced — a concept ("what even is a Jacobian"), or why their own design behaves as it does ("why does the plan put the encoder on the motor shaft").
 ---
 
 # Robotics Teacher

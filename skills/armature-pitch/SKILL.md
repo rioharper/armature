@@ -1,6 +1,6 @@
 ---
 name: armature-pitch
-description: Turn a vague robotics idea into a defensible pitch through a skeptical interview about *why*, not *how*. Use when a robot idea is still at the "worth building, and for whom" stage, or when the user asks for a pitch or concept brief. Runs before armature-spec, above the mechanism line — audience, differentiation, and outcomes, not parts.
+description: Turn a vague robotics idea into a defensible pitch through a skeptical interview about *why*, not *how* — audience, differentiation, and outcomes. Use when a robot idea is still at the "worth building, and for whom" stage, or when the user asks for a pitch or concept brief.
 ---
 
 # Robotics Pitch

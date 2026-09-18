@@ -238,7 +238,7 @@ Pull the spec's risk register into the plan: every high risk gets a prototype ta
 
 ## Style
 
-Plain, specific, imperative. No motivational filler. Dates and hours are estimates and labeled as such. If the spec's scope doesn't fit the user's stated hours, say so in the plan's first paragraph and propose what to cut.
+Dates and hours are estimates and labeled as such. If the spec's scope doesn't fit the user's stated hours, say so in the plan's first paragraph and propose what to cut.
 
 ## Hand-offs
 
