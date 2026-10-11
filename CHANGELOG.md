@@ -4,6 +4,12 @@
 
 Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inheriting the main session's model. Both are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
 
+### The engine: one mechanism description, compiled through MuJoCo
+
+[#64](https://github.com/rioharper/armature/issues/64) tracks the effort; ADRs 0003 and 0004 record why.
+
+- **`engine/` is a new package, imported as `armature`**, pinned to `mujoco ~= 3.15.0` and tested by `uv run pytest` in its own environment. A description is `mechanism(p)`, built from `body`, `joint`, `site` and `cable` (plus an optional `gravity`), with every number in the base frame at home. `armature.compile(mechanism, params)` validates it before MjSpec is touched (duplicate names, unreachable bodies, non-unit axes, unphysical inertia and undefined parameters, each naming its element), compiles it in radians with explicit inertia, and `m.at(q=..., qd=...)` gives an immutable state keyed by coordinate name. `s.linearise()` reads joint springs and cables, which `truth/modes.py` reads as 0 N/m: on fixture 5, a 0.5 kg mass on a 1000 N/m spring or cable reads 1000 N/m and 7.1176 Hz, and the slack cable reads 0. `m.model` is the raw `MjModel`, kept reachable for code that needs its arrays.
+
 ### A writing pass over the plugin's own documents
 
 - The review checklist moves from `agents/references/` to `references/`. Every `.md` under `agents/` loads as an agent, so the checklist had been registered as one, with every tool and no description.
