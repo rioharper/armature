@@ -76,9 +76,7 @@ def tangent(compiled, data, rates=None):
     angular velocity in base axes. Reads the kinematics already in `data`."""
     model = compiled.model
     out, drift = np.eye(model.nv), np.zeros(model.nv)
-    for jid in range(model.njnt):
-        if model.jnt_type[jid] != mujoco.mjtJoint.mjJNT_FREE:
-            continue
+    for jid in compiled._free:  # read once, at compile: every query asks
         d = model.jnt_dofadr[jid]
         rotation = data.xmat[model.jnt_bodyid[jid]].reshape(3, 3)
         lever = rotation @ compiled._offset[model.joint(jid).name]  # point→COM
@@ -255,7 +253,6 @@ class Closure:
         so the solve stays on the branch connected to home. Raises, naming
         the constraint, where the posture cannot close."""
         compiled, model = self.compiled, self.model
-        data = mujoco.MjData(model)  # qpos0 is home
         start = {n: compiled.home(n) for n in values}
         scalar = [n for n in values if not isinstance(values[n], tuple)
                   and compiled._coordinate[n][0].name in self.around]
@@ -263,29 +260,31 @@ class Closure:
         steps = max(1, math.ceil(span / CONTINUATION_STEP))
         adr = [model.jnt_qposadr[model.joint(n).id] for n in scalar]
         dof = [model.jnt_dofadr[model.joint(n).id] for n in scalar]
-        mujoco.mj_kinematics(model, data)
-        mujoco.mj_comPos(model, data)
-        for k in range(1, steps + 1):
-            now = {n: (start[n] + k / steps * (values[n] - start[n])
-                       if n in scalar else values[n]) for n in values}
-            # Predict along the branch's tangent before correcting: near a
-            # singularity the other branch is close, and Newton started from
-            # the last step's posture can fall onto it.
-            _, jac = self.rows(data)
-            move = np.array([now[n] for n in scalar]) - data.qpos[adr]
-            data.qpos[self._dep_adr] -= _solve(jac[:, self._dep_dof],
-                                               jac[:, dof] @ move)
-            write_q(compiled, data, now)
-            gap = self.close(data)
-            if not np.max(np.abs(gap), initial=0.0) <= CLOSE_TOL:
-                which, size = self.worst(gap)
-                raise ClosureError(
-                    f"{which} cannot close at this posture: it is still "
-                    f"{size:.3g} {'' if which.startswith('couple') else 'm'} "
-                    f"apart after the solve (from home, "
-                    f"{k - 1} of {steps} steps along the way closed)", which)
-        return {n: float(data.qpos[a])
-                for n, a in zip(self.dependent, self._dep_adr)}
+        with compiled._scratch() as data:  # reset, so qpos0: home
+            mujoco.mj_kinematics(model, data)
+            mujoco.mj_comPos(model, data)
+            for k in range(1, steps + 1):
+                now = {n: (start[n] + k / steps * (values[n] - start[n])
+                           if n in scalar else values[n]) for n in values}
+                # Predict along the branch's tangent before correcting: near
+                # a singularity the other branch is close, and Newton started
+                # from the last step's posture can fall onto it.
+                _, jac = self.rows(data)
+                move = np.array([now[n] for n in scalar]) - data.qpos[adr]
+                data.qpos[self._dep_adr] -= _solve(jac[:, self._dep_dof],
+                                                   jac[:, dof] @ move)
+                write_q(compiled, data, now)
+                gap = self.close(data)
+                if not np.max(np.abs(gap), initial=0.0) <= CLOSE_TOL:
+                    which, size = self.worst(gap)
+                    unit = "" if which.startswith("couple") else "m"
+                    raise ClosureError(
+                        f"{which} cannot close at this posture: it is still "
+                        f"{size:.3g} {unit} apart after the solve (from home, "
+                        f"{k - 1} of {steps} steps along the way closed)",
+                        which)
+            return {n: float(data.qpos[a])
+                    for n, a in zip(self.dependent, self._dep_adr)}
 
     def complete(self, data, jac, given, constant):
         """`given` (over the dofs, dependent entries ignored) with the
@@ -311,10 +310,10 @@ class Closure:
 
     def _choose_dependent(self):
         compiled, model = self.compiled, self.model
-        data = mujoco.MjData(model)
-        mujoco.mj_kinematics(model, data)
-        mujoco.mj_comPos(model, data)
-        _, jac = self.rows(data)
+        with compiled._scratch() as data:
+            mujoco.mj_kinematics(model, data)
+            mujoco.mj_comPos(model, data)
+            _, jac = self.rows(data)
         actuated = {model.joint(int(model.actuator_trnid[i, 0])).name
                     for i in range(model.nu)}
         followers = {c.a for c in compiled.description.couples}
