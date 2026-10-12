@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pillow>=12", "pytest>=8"]
 
 [build-system]
 requires = ["uv_build>=0.9,<0.13"]

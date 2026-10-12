@@ -220,6 +220,38 @@ def test_loop_faults(mjspec_untouched, bad, why):
     _fails(lambda p: arm(p) + [extra, bad], "loop 'closure'", why)
 
 
+def _closed(gap):
+    """The arm's tip pinned to the world through a site `gap` m off it."""
+    pin = site("pin", body="world", pos=(2, gap, 0))
+    return lambda p: arm(p) + [pin, loop("closure", "tip", "pin")]
+
+
+def test_a_loop_open_at_home_names_the_loop(mjspec_untouched):
+    err = _fails(_closed(1e-3), "loop 'closure'", "does not close at home")
+    assert "0.001" in str(err)
+
+
+def test_a_loop_within_its_bound_at_home_passes():
+    """Rounding a metre-scale drawing to the micrometre is not an assembly
+    error; a millimetre is."""
+    bound = armature.description.LOOP_HOME_BOUND
+    describe = armature.describe
+    describe(_closed(0.5 * bound), {"m": 1.0})
+    with pytest.raises(DescriptionError, match="loop 'closure'"):
+        describe(_closed(2 * bound), {"m": 1.0})
+
+
+def test_an_unused_parameter_is_named(mjspec_untouched):
+    err = _fails(arm, "parameter 'reach'", "never used",
+                 params={"m": 1.0, "reach": 2.0})
+    assert len(err.problems) == 1
+
+
+def test_an_unused_parameter_is_named_on_the_symbolic_side():
+    with pytest.raises(DescriptionError, match="parameter 'reach'"):
+        armature.symbolic(arm, {"m": 1.0, "reach": 2.0})
+
+
 @pytest.mark.parametrize("reductions, why", [
     ((couple("wrist", "shoulder", 1.0, assumption="A1"),),
      "no coordinate named 'wrist'"),
@@ -240,7 +272,7 @@ def test_couple_faults(mjspec_untouched, reductions, why):
 
 def test_a_couple_ties_scalar_coordinates_only(mjspec_untouched):
     def hung(p):
-        return [body("plate", mass=1.0, com=(0, 0, 0), inertia=I),
+        return [body("plate", mass=p["m"], com=(0, 0, 0), inertia=I),
                 body("arm", mass=1.0, com=(1, 0, 0), inertia=I),
                 joint("hang", "free", parent="world", child="plate",
                       point=(0, 0, 0)),

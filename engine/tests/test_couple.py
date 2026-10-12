@@ -15,7 +15,7 @@ import armature
 from armature import actuator, body, couple, gravity, joint
 
 P = {"l1": 0.30, "lc1": 0.15, "lc2": 0.125, "m1": 1.20, "m2": 0.80,
-     "I": 0.006, "g": 9.81, "N1": 50.0, "N2": 30.0}
+     "I": 0.006, "g": 9.81, "N1": 50.0}  # N2 joins with the second motor
 RATIO = 0.5
 
 
@@ -77,7 +77,8 @@ def test_the_couple_is_a_constraint_row(m, q1):
 def test_two_motors_on_a_coupled_pair_split_the_load_any_way():
     both = armature.reduce(lambda p: arm(p, both=True),
                            couple("elbow", "shoulder", RATIO, assumption="A4"))
-    inv = armature.compile(both, P).at(q={"shoulder": 0.4}).inverse()
+    inv = armature.compile(both, {**P, "N2": 30.0}).at(
+        q={"shoulder": 0.4}).inverse()
     assert (inv.rank, inv.unknowns) == (2, 3)
     assert math.isnan(inv.torque["shoulder_motor"])
     assert math.isnan(inv.torque["elbow_motor"])

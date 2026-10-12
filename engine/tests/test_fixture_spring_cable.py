@@ -14,6 +14,7 @@ import armature
 from armature import body, cable, joint
 
 PARAMS = {"m": 0.5, "k": 1000.0, "drop": 1.0, "rest": 0.99}
+SPRING = {"m": 0.5, "k": 1000.0}  # the spring reads neither drop nor rest
 F_TRUE = math.sqrt(1000.0 / 0.5) / (2 * math.pi)
 
 
@@ -47,7 +48,7 @@ def test_frequency_is_the_closed_form():
 
 @pytest.mark.parametrize("z", [-0.05, 0.0, 0.03])
 def test_spring_reads_its_stiffness(z):
-    lin = armature.compile(on_spring, PARAMS).at(q={"z": z}).linearise()
+    lin = armature.compile(on_spring, SPRING).at(q={"z": z}).linearise()
     assert lin.stiffness == pytest.approx(np.array([[1000.0]]), rel=1e-6)
     assert lin.mass == pytest.approx(np.array([[0.5]]), rel=1e-12)
     assert lin.frequencies == pytest.approx([F_TRUE], rel=1e-6)
@@ -68,7 +69,7 @@ def test_slack_cable_reads_zero():
 
 
 def test_record_carries_method_and_step():
-    lin = armature.compile(on_spring, PARAMS).at().linearise(eps=1e-7)
+    lin = armature.compile(on_spring, SPRING).at().linearise(eps=1e-7)
     assert lin.dofs == ("z",)
     assert "mjd_inverseFD" in lin.method
     assert lin.eps == 1e-7

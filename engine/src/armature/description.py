@@ -21,6 +21,9 @@ ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity)
 DEFAULT_GRAVITY = (0.0, 0.0, -9.81)
 UNIT_TOL = 1e-9        # |‖axis‖ − 1| allowed, so (0, √½, √½) written in floats passes
 INERTIA_TOL = 1e-12    # relative to the trace, for symmetry and the triangle inequality
+LOOP_HOME_BOUND = 1e-6  # m: how far apart a loop's sites may be written at home,
+    # the slack a settle allows; a metre-scale drawing rounded to six digits
+    # passes, a typo does not
 
 
 @dataclass(frozen=True)
@@ -187,6 +190,9 @@ def describe(mechanism, params):
     joints = {j.name: j for j in by_kind[Joint]}
     for a in by_kind[Actuator]:
         problems += _check_actuator(a, joints)
+    problems += [f"parameter {n!r} is defined but never used; the description "
+                 f"lacks the element that reads it, or it is stale"
+                 for n in sorted(set(p) - p.used)]
     if problems:
         raise DescriptionError(problems)
 
@@ -409,6 +415,13 @@ def _check_loop(loop, sites):
     if len(ends) == 2 and ends[0] == ends[1]:
         problems.append(f"{owner}: both sites are on {ends[0]!r}; a loop "
                         f"closes two different bodies")
+    if len(ends) == 2:  # written at home, the two sites must already meet
+        a, b = _array(sites[loop.a].pos), _array(sites[loop.b].pos)
+        gap = None if a is None or b is None else np.linalg.norm(a - b)
+        if gap is not None and not gap <= LOOP_HOME_BOUND:
+            problems.append(f"{owner}: does not close at home; sites "
+                            f"{loop.a!r} and {loop.b!r} are {gap:.6g} m apart "
+                            f"(bound {LOOP_HOME_BOUND:g} m)")
     return problems
 
 
