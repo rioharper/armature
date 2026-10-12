@@ -26,8 +26,12 @@ gets the states it was written from; every result prints n and the seed.
 - `sample_states` adds rates and accelerations, uniform within ± the limits
   it is given, both signs, so a dynamics claim is not checked at rest.
 
-The limits come from `params.py` until Overhaul 02 replaces this sampler
-with its search.
+The core is a map, `unit_cube`: a point in [0, 1]^d to a state, or to a
+rejection naming what refused it, the same state every time for the same
+point. `sample` feeds it uniform draws from its seed. The sampler stays for
+the truth checks, and Overhaul 02's search drives the same map with its own
+points, so "over the envelope" is one set of states for both. The limits
+come from `params.py`.
 """
 
 import math
@@ -125,11 +129,13 @@ def tilt_yaw(rotation, up):
 
 
 class Rejected(NamedTuple):
-    """A draw the sampler did not keep: `q`, as drawn, keyed by
-    independent coordinate, and `reason`, what refused it. That is the
-    constraint `at()` could not close (`"loop 'pin'"`), the joint closing
-    would put out of range (`"joint 'B'"`), or the contact `rest_on` could
-    not bring to touch (`"contact 'tyre'"`)."""
+    """A draw the sampler did not keep, or a point the map refused: `q`, as
+    drawn, keyed by independent coordinate (less any `rest_on` solves), and
+    `reason`, what refused it. That is the constraint `at()` could not
+    close (`"loop 'pin'"`), the joint closing would put out of range
+    (`"joint 'B'"`), the contact `rest_on` could not bring to touch
+    (`"contact 'tyre'"`), or the envelope a rebuilt chain's pose fell
+    outside (`"pose envelope 'base'"`)."""
     q: MappingProxyType
     reason: str
 
@@ -235,8 +241,7 @@ def sample_states(compiled, n=DEFAULT_SAMPLES, seed=DEFAULT_SEED, *,
 
 def _sample(compiled, n, seed, poses, within, rest_on, limits):
     n = int(n)
-    draw = _plan(compiled, dict(poses or {}), dict(within or {}),
-                 dict(rest_on or {}))
+    cube = unit_cube(compiled, poses=poses, within=within, rest_on=rest_on)
     postures, rates = (np.random.default_rng(s)
                        for s in np.random.SeedSequence(seed).spawn(2))
     states, accels, rejected, drawn = [], [], [], 0
@@ -246,20 +251,14 @@ def _sample(compiled, n, seed, poses, within, rest_on, limits):
             raise ValueError(f"only {len(states)} of {drawn} draws closed "
                              f"(n = {n}, seed = {seed}): {_listed(reasons)}")
         drawn += 1
-        values = draw(postures)
+        point = cube._draw(postures)
         qd = qdd = None
         if limits:
             qd, qdd = ({d: float(rates.uniform(-lim, lim))
                         for d, lim in limit.items()} for limit in limits)
-        try:
-            state = (_rest(compiled, values, rest_on) if rest_on
-                     else compiled.at(q=values, qd=qd))
-        except _Refused as refused:
-            rejected.append(Rejected(MappingProxyType(values), refused.reason))
-            continue
-        except ClosureError as refused:
-            rejected.append(Rejected(MappingProxyType(values),
-                                     refused.constraint))
+        state = cube._state(point, qd)
+        if isinstance(state, Rejected):
+            rejected.append(state)
             continue
         states.append(state)
         if limits:
@@ -279,11 +278,94 @@ def clearance(state, contact):
     return _clearance(state.compiled.model, state._data(), contact)
 
 
-# --- the plan: how each independent coordinate is drawn ------------------------
-def _plan(compiled, poses, within, rest_on):
-    """A function drawing one posture from a generator, keyed by
-    independent coordinate, after checking every argument against
-    `compiled`."""
+# --- the map: a point in the unit cube to a state -----------------------------
+class UnitCube:
+    """The map from a point in the unit cube to a state of `compiled`: what
+    `sample` feeds from its seed, and the search drives with its own
+    points. Make one with `unit_cube`.
+
+    `axes` names the cube's `d` axes, in the order a point lists them, 0 at
+    each one's low end and 1 at its high:
+    - an independent hinge or slide, by its coordinate name, over its joint
+      range or `within`;
+    - a floating body, as `name:x`, `name:y` and `name:z` across its box,
+      then `name:tilt`, the share of the cap of up directions within its
+      tilt bound (0 upright, 1 the full lean, so equal steps cover equal
+      areas of the cap), `name:azimuth`, which way round up it leans, and
+      `name:yaw`, within its yaw bounds;
+    - a rebuilt chain, by its free components' coordinate names, each over
+      the box or within ±tilt or the yaw bounds. Those bounds can hold
+      poses the envelope does not (two tilts at once lean further than
+      either), and such a point is rejected, naming the envelope. It is
+      never redrawn: the map draws nothing of its own, so a search reads
+      the miss as outside the space.
+    A coordinate `rest_on` solves is not an axis.
+    """
+
+    def __init__(self, compiled, steps, rest_on):
+        self.compiled, self._steps, self._rest_on = compiled, steps, rest_on
+        self.axes = tuple(axis for step in steps for axis in step.axes)
+
+    @property
+    def d(self):
+        """How many axes the cube has."""
+        return len(self.axes)
+
+    def map(self, points):
+        """The state at each of `points`, an (n, d) array with every value
+        in [0, 1], in order: a `State` at rest, or a `Rejected` naming the
+        loop, joint, contact or pose envelope that refused the point. The
+        same point gives the same state every time."""
+        points = np.asarray(points, dtype=float)
+        if points.ndim != 2 or points.shape[1] != self.d:
+            raise ValueError(f"points are an (n, {self.d}) array, one row per "
+                             f"point along the {self.d} axes "
+                             f"{list(self.axes)}; got shape {points.shape}")
+        outside = ~((0.0 <= points) & (points <= 1.0))  # NaN is outside too
+        if outside.any():
+            row = int(np.argwhere(outside)[0][0])
+            raise ValueError(f"a point lies in the unit cube, every value in "
+                             f"[0, 1]; point {row} is "
+                             f"{points[row].tolist()}")
+        return tuple(self._state(point) for point in points.tolist())
+
+    def _state(self, point, qd=None):
+        """The state at `point`, a list of d floats, with rates `qd`, or the
+        `Rejected` that refused it."""
+        values, start, outside = {}, 0, None
+        for step in self._steps:
+            outside = (step.place(point[start:start + len(step.axes)], values)
+                       or outside)
+            start += len(step.axes)
+        if outside:
+            return Rejected(MappingProxyType(values), outside)
+        try:
+            if self._rest_on:
+                return _rest(self.compiled, values, self._rest_on)
+            return self.compiled.at(q=values, qd=qd)
+        except _Refused as refused:
+            return Rejected(MappingProxyType(values), refused.reason)
+        except ClosureError as refused:
+            return Rejected(MappingProxyType(values), refused.constraint)
+
+    def _draw(self, rng):
+        """A point drawn uniformly from `rng`, number for number as the
+        sampler has always drawn it: a coordinate `rest_on` solves still
+        spends its draw, and a rebuilt chain is redrawn until its pose lies
+        inside the envelope."""
+        point = []
+        for step in self._steps:
+            point += step.draw(rng)
+        return point
+
+
+def unit_cube(compiled, *, poses=None, within=None, rest_on=None):
+    """The `UnitCube` mapping a point in [0, 1]^d to a state of `compiled`,
+    with `poses`, `within` and `rest_on` as `sample` takes them and checked
+    as it checks them. `axes` gives the order of a point's values, and `d`
+    their number."""
+    poses, within, rest_on = (dict(poses or {}), dict(within or {}),
+                              dict(rest_on or {}))
     description = compiled.description
     floating = {j.name: j for j in description.joints if j.kind == "free"}
     scalar = {n: compiled._coordinate[n][0] for n in compiled.coordinates
@@ -323,12 +405,13 @@ def _plan(compiled, poses, within, rest_on):
 
     gravity = np.array(description.gravity, dtype=float)
     up = -gravity / np.linalg.norm(gravity) if gravity.any() else None
-    steps = []  # each takes the generator and fills the posture
+    steps = []  # each spans its axes and fills its part of the posture
     for name in compiled.independent:
         joint, component = compiled._coordinate[name]
         if joint.kind != "free":
             lo, hi = within.get(name, tuple(float(v) for v in joint.range))
-            steps.append(_uniform(name, lo, hi))
+            steps.append(_Solved() if name in solved
+                         else _Uniform(name, lo, hi))
         elif component is None or not any(s.owner == joint.name for s in steps
                                           if isinstance(s, _Chain)):
             envelope = poses.get(joint.name)
@@ -343,13 +426,7 @@ def _plan(compiled, poses, within, rest_on):
                                  f"this mechanism has no gravity")
             steps.append(_Free(name, envelope, up) if component is None
                          else _Chain(compiled, joint, envelope, up))
-
-    def draw(rng):
-        values = {}
-        for step in steps:
-            step(rng, values)
-        return values
-    return draw
+    return UnitCube(compiled, tuple(steps), rest_on)
 
 
 def _drawable(compiled, name, label):
@@ -363,38 +440,75 @@ def _drawable(compiled, name, label):
                          f"{list(compiled.independent)}")
 
 
-def _uniform(name, lo, hi):
-    def step(rng, values):
-        values[name] = float(rng.uniform(lo, hi))
-    return step
+# Each step spans `axes`, places its part of a posture from its slice of a
+# point (returning the envelope its pose falls outside, if any), and draws
+# that slice from a generator as the sampler always has.
+def _between(lo, hi, u):
+    """lo + (hi − lo)·u, as NumPy's `uniform` computes it, so a seeded draw
+    lands where it always did; never past hi, so the cube's corner 1 is the
+    range's end."""
+    return min(hi, lo + (hi - lo) * u)
+
+
+class _Uniform:
+    """An independent hinge or slide, over (lo, hi)."""
+
+    def __init__(self, name, lo, hi):
+        self.axes, self.lo, self.hi = (name,), lo, hi
+
+    def draw(self, rng):
+        return [rng.random()]
+
+    def place(self, u, values):
+        values[self.axes[0]] = _between(self.lo, self.hi, u[0])
+
+
+class _Solved:
+    """A hinge or slide `rest_on` solves: no axis. Its draw is still spent,
+    and thrown away, so the draws after it fall where they always did."""
+    axes = ()
+
+    def draw(self, rng):
+        rng.random()
+        return []
+
+    def place(self, u, values):
+        pass
 
 
 class _Free:
-    """An unlocked floating body's draw: a `Placement` from its envelope."""
+    """An unlocked floating body: a `Placement` from its envelope."""
 
     def __init__(self, name, envelope, up):
         self.name, self.envelope, self.up = name, envelope, up
+        self.axes = tuple(f"{name}:{a}" for a in ("x", "y", "z", "tilt",
+                                                  "azimuth", "yaw"))
         # two level directions, so a lean can point any way round up
         other = AXES[int(np.argmin(np.abs(up)))]
         self.level = np.cross(up, other) / np.linalg.norm(np.cross(up, other))
         self.across = np.cross(up, self.level)
 
-    def __call__(self, rng, values):
+    def draw(self, rng):
+        return [rng.random() for _ in self.axes]
+
+    def place(self, u, values):
         box, tilt, yaw = self.envelope
-        position = np.array([rng.uniform(lo, hi) for lo, hi in box])
+        position = np.array([_between(lo, hi, v) for (lo, hi), v
+                             in zip(box, u)])
         # uniform over the cap: cos θ uniform between cos(tilt) and 1
-        lean = math.acos(1.0 - rng.random() * (1.0 - math.cos(tilt)))
-        azimuth = rng.uniform(0.0, 2 * math.pi)
-        heading = rng.uniform(*yaw)
+        lean = math.acos(1.0 - u[3] * (1.0 - math.cos(tilt)))
+        azimuth = _between(0.0, 2 * math.pi, u[4])
+        heading = _between(*yaw, u[5])
         about = math.cos(azimuth) * self.level + math.sin(azimuth) * self.across
         rotation = turn(about, lean) @ turn(self.up, heading)
         values[self.name] = (position, rotation)
 
 
 class _Chain:
-    """A rebuilt floating body's draw: each of its independent components,
-    the slides from the box and the turns within ±tilt or the yaw bounds,
-    redrawn until the whole pose lies inside the envelope."""
+    """A rebuilt floating body: each of its independent components, the
+    slides from the box and the turns within ±tilt or the yaw bounds. A
+    pose outside the envelope is refused by the map, and redrawn by the
+    seeded draw."""
 
     def __init__(self, compiled, joint, envelope, up):
         self.owner, self.envelope, self.up = joint.name, envelope, up
@@ -429,23 +543,32 @@ class _Chain:
                     f"'{joint.name}:{c}' turns about {axis.round(6).tolist()}, "
                     f"neither level nor upright, so neither the tilt nor the "
                     f"yaw bounds it")
+        self.axes = tuple(f"{self.owner}:{c}" for c, _, _ in self.components)
 
-    def __call__(self, rng, values):
+    def draw(self, rng):
         for _ in range(POSE_TRIES):
-            drawn = {c: float(rng.uniform(lo, hi))
-                     for c, lo, hi in self.components}
-            position = [drawn.get(c, self.held_position.get(c))
-                        for c in "xyz"]
-            rotation = floating_rotation(
-                self.held_turns, {c: v for c, v in drawn.items()
-                                  if c.startswith("r")})
-            if self.envelope.contains(position, rotation, self.up):
-                values.update({f"{self.owner}:{c}": v
-                               for c, v in drawn.items()})
-                return
+            u = [rng.random() for _ in self.components]
+            if self._inside(self._components(u)):
+                return u
         raise ValueError(f"the pose envelope of {self.owner!r} holds no pose "
                          f"its chain allows: {POSE_TRIES} draws all fell "
                          f"outside it (held: {self.held_position})")
+
+    def place(self, u, values):
+        drawn = self._components(u)
+        values.update({f"{self.owner}:{c}": v for c, v in drawn.items()})
+        return None if self._inside(drawn) else f"pose envelope {self.owner!r}"
+
+    def _components(self, u):
+        return {c: _between(lo, hi, v)
+                for (c, lo, hi), v in zip(self.components, u)}
+
+    def _inside(self, drawn):
+        position = [drawn.get(c, self.held_position.get(c)) for c in "xyz"]
+        rotation = floating_rotation(
+            self.held_turns, {c: v for c, v in drawn.items()
+                              if c.startswith("r")})
+        return self.envelope.contains(position, rotation, self.up)
 
 
 # --- resting contacts, and what the states measure ----------------------------
