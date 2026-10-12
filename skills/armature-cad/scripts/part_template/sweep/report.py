@@ -46,6 +46,7 @@ def print_summary(hits, summary, qs):
         )
     if hits:
         print(
-            "\nThis is an armature-derive finding, not a CAD one: tighten a joint\n"
-            "limit or change a link length in params.py, re-derive, re-run."
+            "\nThis is an armature-derive finding, not a CAD one: narrow a joint's\n"
+            "range in mechanism.py or change a link length in params.py,\n"
+            "re-derive, re-run."
         )

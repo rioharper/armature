@@ -4,14 +4,14 @@ verification_checks.py — Milestone 3's self-tests, beside verification.py.
 
 import numpy as np
 
-from params import N
+import armature
+from armature.sampler import DEFAULT_SEED
+
 from kinematics import fk_num
-from truth.chain import TOOL_SITE, build, site_jacobian
-from truth.envelope import DEFAULT_SEED, sample_workspace
-from truth.equilibrium import settle, site_wrench
-from truth.inverse import inverse_dynamics
-from verification import (holding_torque, inverse_kinematics, worst_tip_force,
-                          worst_over_load_cases)
+from mechanism import TOOL, commands, named, truth, vector
+from params import WORKSPACE
+from verification import (N, holding_torque, inverse_kinematics,
+                          worst_tip_force, worst_over_load_cases)
 
 HOLD_STEPS = 500
 _WORST = []
@@ -35,14 +35,16 @@ def worst():
 def test_ik_roundtrip(trials=8, seed=DEFAULT_SEED, tol=1e-4):
     """FK -> IK -> FK must return to the same end-effector position.
 
-    Targets from the truth package's workspace sampler, not from a generator of
-    this file's own: the IK inverts J_v, so its conditioning is exactly the
+    Targets from the engine's sampler over the workspace, not from a generator
+    of this file's own: the IK inverts J_v, so its conditioning is exactly the
     singular-value sweep one milestone back, and the set it has to converge over
     is `params.WORKSPACE` — the region the requirements name — rather than the
     envelope, which contains the elbow singularity the IK cannot pass through.
+    The start perturbation is not evidence, so it keeps a generator of its own.
     """
     rng = np.random.default_rng(seed)
-    for q_true in sample_workspace(trials, seed):
+    for s in armature.sample(truth(), trials, seed, within=WORKSPACE):
+        q_true = vector(s.q)
         target = np.asarray(fk_num(*q_true), dtype=float)[:3, 3]
         start = q_true + rng.uniform(-0.2, 0.2, N)   # near a valid branch
         q_sol, _ok, res = inverse_kinematics(target, q0=start)
@@ -63,9 +65,15 @@ def test_grid_and_optimiser_bracket_the_worst_case(rel=0.05):
     a rounding: refine the grid or add starts until the two agree to the
     precision the margin is quoted at.
     """
+    low = vector({c: lo for c, (lo, _hi) in WORKSPACE.items()})
+    high = vector({c: hi for c, (_lo, hi) in WORKSPACE.items()})
     for w in worst():
         assert np.all(w.tau >= w.grid - 1e-12) and np.all(w.tau >= w.opt - 1e-12), \
             f"{w.case.name}: the reported worst case is below a method's own"
+        assert np.all((w.q >= low) & (w.q <= high)), (
+            f"{w.case.name}: a worst posture {np.round(w.q, 4)} lies outside "
+            f"WORKSPACE {WORKSPACE}; the search is not over the region the "
+            f"requirements name")
         scale = np.maximum(w.tau, 1e-9)
         gap = float(np.max(np.abs(w.opt - w.grid) / scale))
         assert gap < rel, (
@@ -89,49 +97,47 @@ def test_truth_worst_case_torque(tol=1e-6):
     tempting check is to recompute that expression from the truth model's
     gravity torque and site Jacobian, and it is not enough: the mapping
     `tau = g - J^T f` would sit on *both* sides, so a flipped sign in it is a
-    flipped sign in the comparison too. That is the blindness this whole package
+    flipped sign in the comparison too. That is the blindness the truth model
     exists to remove, and it is easy to rebuild one level up.
 
-    So the load case goes to the truth model as a **force**, converted to a body
-    wrench by `truth.site_wrench` and applied at the tool. The claimed torque is
-    held, the model is released for `HOLD_STEPS` steps, and it has to still be
-    there. Nothing of the derivation is on that side: MuJoCo feels the force,
-    integrates the motion, and either stays or does not. A sign error in the
-    Jacobian transpose sends the arm away from the posture, hard.
+    So the load case goes to the truth model as a **force**: `s.settle` takes
+    it as a load at the tool site and applies it there, at the site's current
+    position every step. The claimed torque is held, the model is released for
+    at least `HOLD_STEPS` steps, and it has to still be there. Nothing of the
+    derivation is on that side: MuJoCo feels the force, integrates the motion,
+    and either stays or does not. A sign error in the Jacobian transpose sends
+    the arm away from the posture, hard.
 
-    `inverse_dynamics` asserts no constraint is active at the posture, so a
-    worst case found *on* a joint limit — a torque the end-stop would be
-    carrying — fails loudly here rather than being confirmed quietly.
+    `s.inverse()` refuses a state with a joint limit active, so a worst case
+    found *on* a limit — a torque the end-stop would be carrying — fails
+    loudly here rather than being confirmed quietly.
     """
-    model, data = build()
-    rest = np.zeros(N)
     worst_gap, worst_at, worst_drift = 0.0, None, 0.0
     for w in worst():
         for j in range(N):
-            qv = w.q[j]
-            tau_truth = inverse_dynamics(model, data, qv, rest, rest)
-            Jv = site_jacobian(model, data, qv)[:3, :]
+            s = truth().at(q=named(w.q[j]))
+            tau_truth = vector(s.inverse().generalised)
+            Jv = s.jacobian(TOOL).linear
             force = worst_tip_force(tau_truth, Jv, w.case, j)
             tau_hold = holding_torque(tau_truth, Jv, force)
 
             gap = abs(abs(tau_hold[j]) - w.tau[j])
-            if gap > worst_gap:
-                worst_gap, worst_at = gap, (w.case.name, j, qv)
+            if worst_at is None or gap > worst_gap:
+                worst_gap, worst_at = gap, (w.case.name, j, w.q[j])
             assert gap < tol, (
                 f"{w.case.name}: joint {j + 1}'s worst case reads "
                 f"{w.tau[j]:.6f} N m where the truth model reads "
-                f"{abs(tau_hold[j]):.6f} N m at q={np.round(qv, 4)}")
+                f"{abs(tau_hold[j]):.6f} N m at q={np.round(w.q[j], 4)}")
 
-            out = settle(model, data, qv, hold=tau_hold,
-                         wrench=site_wrench(model, data, TOOL_SITE, force),
-                         min_steps=HOLD_STEPS)
-            drift = float(np.max(np.abs(out.pose - qv)))
+            out = s.settle(hold=commands(named(tau_hold)),
+                           loads={TOOL: force}, min_steps=HOLD_STEPS)
+            drift = max(abs(v) for v in out.moved.values())
             worst_drift = max(worst_drift, drift)
             assert out.stable and drift < 1e-3, (
                 f"{w.case.name}: holding {np.round(tau_hold, 4)} N m under a "
                 f"{np.round(force, 3)} N tool force, the truth model left "
-                f"q={np.round(qv, 4)} for {np.round(out.pose, 4)} — the torque "
-                f"that sizes this actuator does not hold the machine there")
+                f"q={np.round(w.q[j], 4)} for {dict(out.q)} — the torque that "
+                f"sizes this actuator does not hold the machine there")
     name, j, qv = worst_at
     print(f"  [PASS] every load case's worst torque holds the truth model "
           f"still under its own tool force ({len(worst())} cases, {N} joints, "

@@ -2,54 +2,35 @@
 params_checks.py — self-tests for the parameter block, 00_setup.md.
 
 The block is data, so its checks are about the shape of that data rather than
-about physics: that the symbol table mirrors the numbers, that the envelope and
-the intended workspace are the sets the rest of the model thinks they are, and
-that the load-case table has not lost a sign. Each of those is a whole class of
-downstream result quietly sized against the wrong thing.
+about physics: that the load-case table has not lost a sign and that every row
+names a direction set. Each of those is a whole class of downstream result
+quietly sized against the wrong thing. The workspace and the rate envelope are
+held against the description's coordinates in mechanism_checks.py, which owns
+the joint envelope they sit inside.
 
 It carries no truth check and says why below: the block's constants are held
 against the truth model where they are *used*, and there is nothing in a shape
 for a simulator to be asked about.
 """
 
-from params import (LOAD_CASES, N, PARAMS, PARAM_SYMS, PLANE_XY, QDD_LIMITS,
-                    QD_LIMITS, Q_LIMITS)
+from params import LOAD_CASES, PLANE_XY
 
 # The parameter block is data. Every constant in it reaches the truth model
-# through the builder, and is checked there — `truth/chain_checks.py`
-# round-trips the masses, COMs, inertias, joint types and ranges, and checks
-# that the intended workspace stays clear of those ranges; the envelope is what
-# every milestone samples; the load-case table is confirmed at the posture
-# Milestone 3's search finds. What is left here is the *shape* of the data, and
-# a shape has nothing a simulator can be asked about.
+# through mechanism(p), which the engine validates when it compiles — a value
+# defined and never read fails there, naming it, as does one read and never
+# defined — and each is then checked where a milestone uses it; the load-case
+# table is confirmed at the posture Milestone 3's search finds. What is left
+# here is the *shape* of the data, and a shape has nothing a simulator can be
+# asked about.
 #
 # This is the argued exemption the truth gate takes, and it is written out
 # rather than waved at because the red team challenges every one of them. If
 # your parameter block grows a claim — a derived inertia, a reduction ratio
 # computed from a tooth count — that claim belongs in a module with a truth
 # check beside it, not behind this sentence.
-TRUTH_EXEMPT = ("the parameter block is data; its constants are checked "
-                "against the truth model where they are used, and the "
-                "builder's round-trip in truth/chain_checks.py is where the "
-                "block itself is held against the model")
-
-
-def test_symbols_mirror_the_numbers():
-    """A symbol with no number substitutes to itself and lambdifies to a
-    function of an extra argument; a number with no symbol is a constant no
-    equation can reach. Either way the two representations have drifted."""
-    assert set(PARAM_SYMS) == set(PARAMS), (
-        f"PARAM_SYMS and PARAMS disagree: only in PARAM_SYMS "
-        f"{sorted(set(PARAM_SYMS) - set(PARAMS))}, only in PARAMS "
-        f"{sorted(set(PARAMS) - set(PARAM_SYMS))}")
-    print(f"  [PASS] {len(PARAMS)} parameters carry both a number and a symbol")
-
-
-def test_rate_envelope_is_one_row_per_coordinate():
-    for name, rows in (("Q_LIMITS", Q_LIMITS), ("QD_LIMITS", QD_LIMITS),
-                       ("QDD_LIMITS", QDD_LIMITS)):
-        assert len(rows) == N, f"{name} has {len(rows)} rows for {N} coordinates"
-    print(f"  [PASS] envelope and rate envelope are {N} rows each")
+TRUTH_EXEMPT = ("the parameter block is data; its constants reach the truth "
+                "model through mechanism(p), which the engine validates when "
+                "it compiles, and are checked against it where they are used")
 
 
 def test_every_signed_load_case_appears_in_both_signs():

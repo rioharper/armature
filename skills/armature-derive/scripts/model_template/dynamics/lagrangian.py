@@ -1,80 +1,60 @@
 """
 dynamics/lagrangian.py — 02_dynamics.md §1–2: T, V, and M(q) q̈ + C q̇ + g = τ.
 
-Built with `sympy.physics.mechanics`: reference frames turned off the DH table,
-points placed and given velocities by the one- and two-point velocity theorems,
-rigid bodies carrying mass and an inertia dyadic, and `LagrangesMethod` for the
-equations. Two hand-rolled steps used to live here and no longer do — the
-angular velocity read out of Ṙ Rᵀ, and the d/dt(∂L/∂q̇) − ∂L/∂q loop — because
-each was a place a sign error or a missing Coriolis term could hide in a
-derivation whose every printed number still reproduced.
+Built with `sympy.physics.mechanics` on the description's own frames: the
+engine's symbolic view gives every body's ReferenceFrame, its COM as a Point
+with its velocity already set, its mass, its inertia dyadic and gravity, all as
+functions of the variant's coordinates. This module hangs a RigidBody on each
+and hands the Lagrangian to `LagrangesMethod`. Two hand-rolled steps used to
+live here and no longer do — the angular velocity read out of Ṙ Rᵀ, and the
+d/dt(∂L/∂q̇) − ∂L/∂q loop — because each was a place a sign error or a missing
+Coriolis term could hide in a derivation whose every printed number still
+reproduced. The frames are not this module's either: it reads the view rather
+than kinematics.py's matrices, so the two milestones share the description and
+nothing else.
 
 That buys construction, not verification: these equations agree with themselves
 whatever mechanism they describe. Whether they describe *this* one is the truth
 model's inverse-dynamics check, and the checks one file over — symmetry,
-skew-symmetry, energy conservation — are self-consistency only.
+skew-symmetry, energy conservation — are self-consistency only. The view
+carries no rotor inertia: a geared actuator's reflected N²J is the derivation's
+to add to M, and the truth model, which does carry it, will say so if it is
+missing.
 
 Self-tests in lagrangian_checks.py.
 """
 
 import numpy as np
 import sympy as sp
-from sympy.physics.mechanics import (Lagrangian, LagrangesMethod, Point,
-                                     ReferenceFrame, RigidBody, inertia)
+from sympy.physics.mechanics import (Lagrangian, LagrangesMethod, RigidBody,
+                                     dynamicsymbols)
 
-from params import (COM_LOCAL, DH, GRAVITY_VEC, INERTIA, MASSES, N,
-                    q, qd, qdd, QS, QDS, SUB_Q, SUB_P)
+from mechanism import numeric, view
 
-
-def link_frames():
-    """The chain as mechanics frames and points, read off the DH table.
-
-    Modified DH (Craig): frame {i} is frame {i-1} turned by alpha about its x,
-    then by theta about the new z, with its origin a along the parent's x plus
-    d along that same new z. Returns (base frame, base origin, [(frame, origin)
-    per link]) with every velocity in the base frame already set.
-    """
-    base = ReferenceFrame("N")
-    root = Point("O0")
-    root.set_vel(base, 0)
-    parent, origin, chain = base, root, []
-    for i, (alpha, a, d, theta) in enumerate(DH):
-        tilt = parent.orientnew(f"A{i + 1}", "Axis", (alpha, parent.x))
-        frame = tilt.orientnew(f"F{i + 1}", "Axis", (theta, tilt.z))
-        offset = a * parent.x + d * tilt.z
-        point = origin.locatenew(f"O{i + 1}", offset)
-        # One-point theory covers both joint types, so there is no branch on
-        # the row to get wrong. For a revolute joint `offset` is constant in
-        # the parent, the sliding term is zero, and this *is* the two-point
-        # theorem; for a prismatic joint d carries q and the term is the slide.
-        point.set_vel(parent, offset.dt(parent))
-        point.v1pt_theory(origin, base, parent)
-        chain.append((frame, point))
-        parent, origin = frame, point
-    return base, root, chain
+VIEW = view()
+t = dynamicsymbols._t
+# The generalized coordinates, the variant's, in order; and their rates.
+q = sp.Matrix(list(VIEW.q.values()))
+qd = q.diff(t)
+qdd = qd.diff(t)
+N = len(q)
 
 
-def rigid_bodies(base, root, chain):
-    """One RigidBody per link: COM, link frame, mass, inertia dyadic, weight.
+def rigid_bodies():
+    """One RigidBody per body of the view: COM, frame, mass, inertia dyadic
+    about the COM, and its weight.
 
     Gravity enters as each body's potential energy rather than as an applied
     force, so `V_SYM` below is the same object the Lagrangian was built from
     and the energy check cannot drift from the equations it checks.
     """
-    gravity = sum((GRAVITY_VEC[k] * axis
-                   for k, axis in enumerate((base.x, base.y, base.z))),
-                  0 * base.x)
     bodies = []
-    for i, (frame, joint) in enumerate(chain):
-        c = COM_LOCAL[i]
-        com = joint.locatenew(f"C{i + 1}",
-                              c[0] * frame.x + c[1] * frame.y + c[2] * frame.z)
-        com.v2pt_theory(joint, base, frame)   # the COM is fixed in its link
-        J = INERTIA[i]
-        dyadic = inertia(frame, J[0, 0], J[1, 1], J[2, 2],
-                         J[0, 1], J[1, 2], J[0, 2])
-        body = RigidBody(f"link{i + 1}", com, frame, MASSES[i], (dyadic, com))
-        body.potential_energy = -MASSES[i] * gravity.dot(com.pos_from(root))
+    for name, frame in VIEW.frames.items():
+        com = VIEW.com[name]
+        body = RigidBody(name, com, frame, VIEW.mass[name],
+                         (VIEW.inertia[name], com))
+        body.potential_energy = -VIEW.mass[name] * VIEW.gravity.dot(
+            com.pos_from(VIEW.origin))
         bodies.append(body)
     return bodies
 
@@ -88,9 +68,9 @@ def lagrangian_dynamics():
     than assembled, so what is checked downstream is what Lagrange's method
     produced.
     """
-    base, root, chain = link_frames()
-    bodies = rigid_bodies(base, root, chain)
-    method = LagrangesMethod(Lagrangian(base, *bodies), list(q), frame=base)
+    bodies = rigid_bodies()
+    method = LagrangesMethod(Lagrangian(VIEW.world, *bodies), list(q),
+                             frame=VIEW.world)
     eqs = sp.expand(sp.trigsimp(method.form_lagranges_equations()))
 
     M = eqs.jacobian(qdd)
@@ -116,17 +96,17 @@ M_SYM, C_SYM, G_SYM, V_SYM = lagrangian_dynamics()
 print("  Dynamics built.")
 
 # --- numeric functions, lambdified, parameterized by params.PARAMS ---
-M_num = sp.lambdify(QS, M_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
-C_num = sp.lambdify(QS + QDS, C_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
-g_num = sp.lambdify(QS, G_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
-V_num = sp.lambdify(QS, V_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
+M_num = numeric(M_SYM)
+C_num = numeric(C_SYM, rates=True)
+g_num = numeric(G_SYM)
+V_num = numeric(V_SYM)
 
 
 # The stiffness of the gravity field, K = dg/dq: the matrix a small-oscillation
 # mode actually comes from. Derived from g rather than separately derived,
 # which is why it sits here rather than in a module of its own.
 K_SYM = sp.simplify(G_SYM.jacobian(q))
-K_num = sp.lambdify(QS, K_SYM.subs(SUB_Q).subs(SUB_P), "numpy")
+K_num = numeric(K_SYM)
 
 
 def small_oscillation_modes(q_vals):

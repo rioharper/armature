@@ -13,13 +13,16 @@ from sweep import bodies
 from sweep.grid import joint_limits_and_interior
 from sweep.summary import main, summarize
 
-# A coarse grid (n=13, ~170 postures rather than ~1400) has the same
-# q1-redundancy shape as the default and costs a fraction of it.
-COARSE = joint_limits_and_interior(13)
+def coarse():
+    """A coarse grid (n=13, ~170 postures rather than ~1400): the same
+    q1-redundancy shape as the default at a fraction of the cost. Built per
+    check rather than at import, because the grid reads its limits from the
+    mechanism description, which importing the package never needs."""
+    return joint_limits_and_interior(13)
 
 
 def test_one_row_per_pair_bounded_by_pairs_not_grid():
-    bodies.ensure_geometry()
+    COARSE = coarse()
     # link1<->link2's overlap doesn't depend on q1, so its raw hit count
     # scales with however finely q1 is sampled; the summary is one row per
     # pair however many raw postures collided.
@@ -67,7 +70,7 @@ def test_printed_report_is_safe_to_act_on():
     # reason armature-derive routes here.
     captured = io.StringIO()
     with contextlib.redirect_stdout(captured):
-        main(COARSE)
+        main(coarse())
     printed = captured.getvalue()
     # Labelled as a SAMPLE: "onset (nearest clear)" named a posture that
     # interferes by 1.3 cm^3 and sits 29 deg inside the collision.

@@ -5,7 +5,10 @@ bounds what a clean sweep can claim. Self-tests in grid_checks.py.
 
 from __future__ import annotations
 
+import itertools
 import math
+
+from sweep import bodies
 
 
 def joint_limits_and_interior(n: int = 37):
@@ -48,16 +51,17 @@ def joint_limits_and_interior(n: int = 37):
             f"joint_limits_and_interior: n={n}, need at least 2 samples so "
             "both joint limits are included - a single sample can't hold both."
         )
-    q1_range = (-math.pi, math.pi)
-    # Elbow stops aren't set yet — sweeping the unrestricted range is how
-    # you find out where they belong. Once they're chosen, narrow this to
-    # the chosen limits so the sweep keeps checking the real envelope.
-    q2_range = (-math.pi, math.pi)
+    # The limits are the description's joint ranges, the one envelope the
+    # derivation and the truth model share. The worked example's elbow range
+    # is the whole turn because its stops aren't set yet — sweeping it is how
+    # you find out where they belong. Once they're chosen, narrow the range
+    # in mechanism.py, and the sweep keeps checking the real envelope.
+    bodies.ensure_geometry()
 
     def grid(lo, hi):
         return [lo + (hi - lo) * i / (n - 1) for i in range(n)]
 
-    return [(a, b) for a in grid(*q1_range) for b in grid(*q2_range)]
+    return list(itertools.product(*(grid(lo, hi) for lo, hi in bodies.RANGES)))
 
 
 def grid_steps(qs):

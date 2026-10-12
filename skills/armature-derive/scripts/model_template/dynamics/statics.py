@@ -12,6 +12,7 @@ from dynamics.lagrangian import g_num
 def static_torques(q_vals):
     """Joint torques to hold posture q against gravity, g(q) of eq. (2) [N m].
 
-    Positive about each joint's +z; the magnitude is what an actuator holds.
+    Positive about each joint's axis as the description writes it; the
+    magnitude is what an actuator holds.
     """
     return np.asarray(g_num(*q_vals), dtype=float).flatten()

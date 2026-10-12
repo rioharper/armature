@@ -6,3 +6,8 @@ skills/armature-cad/scripts/part_template/part-*.svg
 # the engine's own environment
 engine/.venv/
 .pytest_cache/
+# the model template's environment, lock and review artifact, made by running
+# it in place; a copied project pins its own
+skills/armature-derive/scripts/model_template/.venv/
+skills/armature-derive/scripts/model_template/uv.lock
+skills/armature-derive/scripts/model_template/review/

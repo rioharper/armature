@@ -1,31 +1,27 @@
 """
 dynamics/lagrangian_checks.py — self-tests for lagrangian.py, 02_dynamics.md §1–2.
 
-Every check here is **self-consistency**: it holds M, C, g and V against each
-other and against properties any correct Lagrangian has, using no model but
-this one. That is exactly what a wrong assumption survives, since the
-assumption sits on both sides of the comparison. The check that these equations
-describe the mechanism is the truth model's inverse dynamics, one milestone
-over; keep these for what they are good at, which is catching an arithmetic
-slip the moment it lands.
+Every check here but two is **self-consistency**: it holds M, C, g and V
+against each other and against properties any correct Lagrangian has, using no
+model but this one. That is exactly what a wrong assumption survives, since the
+assumption sits on both sides of the comparison. The two truth checks — the
+inverse dynamics and the modes — hold the equations against the truth model;
+keep the rest for what they are good at, which is catching an arithmetic slip
+the moment it lands.
 """
 
 import numpy as np
 import sympy as sp
 
-from params import N, t
-from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, g_num,
-                                 V_num, small_oscillation_modes, total_energy)
-from truth.chain import build
-from truth.envelope import DEFAULT_SEED, sample, sample_states
-from truth.inverse import available, inverse_dynamics
-from truth.modes import linearise
+import armature
+from armature.sampler import DEFAULT_SEED
 
-# One state, and what M, C, g and V read there. Hand-checked for the shipped
-# 2R arm and pinned so a rebuild of the symbolic construction — the move onto
-# sympy.physics.mechanics was one — has to produce the same equations, not
-# merely equations with the same properties. Replace these with your own
-# mechanism's numbers, from a source that is not this file.
+from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, N, g_num,
+                                 V_num, q, small_oscillation_modes, t,
+                                 total_energy)
+from mechanism import derived, named, truth, vector
+from params import QDD_LIMITS, QD_LIMITS
+
 # The configuration whose modes 02_dynamics.md quotes, and the rank the note
 # claims the gravity stiffness has there. Both are claims; both are checked.
 HANGING = (-np.pi / 2, 0.0)
@@ -42,6 +38,12 @@ MODES_ASSUME = (
     "of g moves the mechanism instead of restoring it, and a large-amplitude "
     "swing is a different frequency")
 
+# One state, and what M, C, g and V read there. Hand-checked for the shipped
+# 2R arm and pinned so a rebuild of the symbolic construction — the move onto
+# sympy.physics.mechanics was one, the move onto the description's symbolic
+# view another — has to produce the same equations, not merely equations with
+# the same properties. Replace these with your own mechanism's numbers, from a
+# source that is not this file.
 PINNED_Q = (0.3, -0.4)
 PINNED_QD = (0.7, 1.1)
 PINNED = {
@@ -54,6 +56,16 @@ PINNED = {
 }
 
 
+def test_coordinates_match_the_variant():
+    """The coordinates LagrangesMethod was given are the variant's, by name:
+    a coordinate leaves these equations only through a reduction in DERIVED,
+    never by being left out of the list. `armature.account` names any
+    coordinate at fault."""
+    armature.account(derived(), list(q))
+    print(f"  [PASS] the equations are in the variant's coordinates "
+          f"{list(derived().coordinates)}")
+
+
 def test_pinned_sample(tol=1e-12):
     """M, C, g and V at one state, against the values pinned above."""
     got = {
@@ -64,15 +76,16 @@ def test_pinned_sample(tol=1e-12):
     }
     for name, want in PINNED.items():
         expected = np.asarray(want, dtype=float).flatten()
-        assert np.allclose(got[name].flatten(), expected, atol=tol),             f"{name} at q={PINNED_Q} is {got[name]}, pinned value {want}"
+        assert np.allclose(got[name].flatten(), expected, atol=tol), \
+            f"{name} at q={PINNED_Q} is {got[name]}, pinned value {want}"
     print("  [PASS] M, C, g and V match the pinned sample")
 
 
 def test_mass_matrix_properties(trials=5, seed=DEFAULT_SEED, tol=1e-9):
-    """Postures from the truth package's sampler, like every other check's, so
-    "over the envelope" is one set of configurations across the model."""
-    for qv in sample(trials, seed):
-        Mn = np.asarray(M_num(*qv), dtype=float)
+    """Postures from the engine's sampler, like every other check's, so "over
+    the envelope" is one set of configurations across the model."""
+    for s in armature.sample(truth(), trials, seed):
+        Mn = np.asarray(M_num(*vector(s.q)), dtype=float)
         assert np.allclose(Mn, Mn.T, atol=tol), "M not symmetric"
         assert np.all(np.linalg.eigvalsh(Mn) > 0), "M not positive definite"
     print("  [PASS] M(q) symmetric positive-definite")
@@ -105,7 +118,7 @@ def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
         qddv = np.linalg.solve(Mn, -(Cn @ qdv) - gn)
         return np.concatenate([qdv, qddv])
 
-    q0 = sample(1, seed)[0]
+    q0 = vector(armature.sample(truth(), 1, seed).states[0].q)
     s0 = np.concatenate([q0, np.zeros(N)])
     E0 = total_energy(s0[:N], s0[N:])
     sol = solve_ivp(rhs, (0.0, T_end), s0, method="RK45",
@@ -121,45 +134,40 @@ def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
 
 def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The mandatory Milestone 2 truth check: tau = M qdd + C qd + g against
-    the truth model's inverse dynamics, at sampled states.
+    the truth model's inverse dynamics, `s.inverse(qdd)`, at sampled states.
 
     This is the check that makes the dynamics *right*, as against
     self-consistent. Everything else in this file holds M, C and g against each
     other or against a property every correct Lagrangian has, and a term
-    missing from T or V is missing from both sides of all of them. MuJoCo's
-    recursive inverse dynamics never saw T, V or this file, so a missing term
-    shows up here as a torque that does not match.
+    missing from T or V is missing from both sides of all of them. The engine's
+    explicit solve never saw T, V or this file — it reads MuJoCo's mass matrix
+    and bias forces — so a missing term, or a rotor the derivation forgot to
+    reflect, shows up here as a torque that does not match. `generalised` is
+    the torque each coordinate needs, whatever its actuators' gearing.
 
     Sampled *states*, not postures: at rest C multiplies zero and the whole
     Coriolis matrix goes unexercised. Velocity and acceleration come from the
     rate envelope in the parameter block, both signs.
-
-    Run against every backend the machine has, and the backends that ran are
-    printed: MuJoCo always, Pinocchio where it imports (conda or WSL — there is
-    no Windows pip wheel, so it is optional and the environment record's
-    `PINOCCHIO` line says whether this machine has it). Two recursive
-    algorithms in two codebases off one parameter block is a third independent
-    implementation for free where it is available, and never a requirement.
     """
-    model, data = build()
-    Q, QD, QDD = sample_states(n, seed)
+    samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
+                                     qdd_limits=QDD_LIMITS)
     worst, worst_at = 0.0, None
-    for backend in available():
-        for qv, qdv, qddv in zip(Q, QD, QDD):
-            Mn = np.asarray(M_num(*qv), dtype=float)
-            Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
-            gn = np.asarray(g_num(*qv), dtype=float).flatten()
-            tau_model = Mn @ qddv + Cn @ qdv + gn
-            tau_truth = inverse_dynamics(model, data, qv, qdv, qddv, backend)
-            gap = float(np.max(np.abs(tau_model - tau_truth)))
-            if gap > worst:
-                worst, worst_at = gap, (qv, qdv)
-            assert gap < tol, (
-                f"tau = M qdd + C qd + g reads {tau_model} where {backend}'s "
-                f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
-                f"qdd={qddv}")
-    print(f"  [PASS] tau matches the truth model's inverse dynamics over {n} "
-          f"sampled states (seed {seed}), backends {available()}")
+    for s, accel in zip(samples, samples.qdd):
+        qv, qdv, qddv = vector(s.q), vector(s.qd), vector(accel)
+        Mn = np.asarray(M_num(*qv), dtype=float)
+        Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
+        gn = np.asarray(g_num(*qv), dtype=float).flatten()
+        tau_model = Mn @ qddv + Cn @ qdv + gn
+        tau_truth = vector(s.inverse(qdd=accel).generalised)
+        gap = float(np.max(np.abs(tau_model - tau_truth)))
+        if gap > worst:
+            worst, worst_at = gap, (qv, qdv)
+        assert gap < tol, (
+            f"tau = M qdd + C qd + g reads {tau_model} where the truth model's "
+            f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
+            f"qdd={qddv}")
+    print(f"  [PASS] tau matches the truth model's inverse dynamics over "
+          f"{samples}")
     print(f"         worst |dtau| {worst:.2e} N m, at q = "
           f"{np.round(worst_at[0], 4)}, qd = {np.round(worst_at[1], 4)}")
 
@@ -185,14 +193,16 @@ def test_stiffness_has_the_rank_the_note_claims(tol=1e-9):
 
 def test_truth_modes(tol=1e-4):
     """The mandatory truth check for any mode the note cites: the analytic
-    small-oscillation frequencies against a linearisation of the truth model.
+    small-oscillation frequencies against the truth model's linearisation,
+    `s.linearise()`.
 
     Nothing in this file's self-consistency checks constrains a mode. The
-    truth model is linearised by central differences of its own bias force at
-    the same configuration, having been told nothing about what the modes were
-    meant to be, so a diagonal read as a mode, a mode named for a motion the
-    mechanism cannot make, or a closed form used outside its assumptions all
-    show up here as frequencies that do not match.
+    engine linearises the truth model by central differences of MuJoCo's own
+    inverse dynamics at the same configuration — springs and cables included,
+    which a gradient of gravity alone reads as zero — having been told nothing
+    about what the modes were meant to be, so a diagonal read as a mode, a mode
+    named for a motion the mechanism cannot make, or a closed form used outside
+    its assumptions all show up here as frequencies that do not match.
 
     Like the moment-arm form one submodule over, the small-oscillation form is
     a theorem about a class, and MODES_ASSUME names the class. Where the
@@ -200,8 +210,7 @@ def test_truth_modes(tol=1e-4):
     number is almost never wrong by arithmetic, and almost always wrong by
     being about a different mechanism than this one.
     """
-    model, data = build()
-    lin = linearise(model, data, np.array(HANGING))
+    lin = truth().at(q=named(HANGING)).linearise()
     analytic = small_oscillation_modes(HANGING)
     gap = float(np.max(np.abs(np.sort(analytic) - np.sort(lin.frequencies))))
     assert gap < tol, (

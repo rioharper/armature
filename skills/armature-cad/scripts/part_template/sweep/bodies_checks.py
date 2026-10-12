@@ -1,8 +1,9 @@
 """
 sweep/bodies_checks.py — self-tests for bodies.py: the sweep finds a
 collision that is there and none for a mechanism that clears, the pair
-excuses hold what their comments claim, and link lengths come from params.py
-or nowhere. Each is written to FAIL if the guard it covers is removed.
+excuses hold what their comments claim, link lengths come from params.py
+or nowhere, and postures from the engine's truth model of mechanism.py or
+nowhere. Each is written to FAIL if the guard it covers is removed.
 """
 
 import importlib
@@ -11,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from build123d import Box, Location, Rotation
+from build123d import Box, Location, Rotation, Vector
 
 from check import interference, sweep_clearance
 from sweep import bodies
@@ -156,3 +157,62 @@ def test_link_lengths_come_from_params_or_nowhere():
     # params.py at all - `exc.name != "params"` must re-raise it.
     assert _raised(ModuleNotFoundError, resolve_with, "import definitely_not_a_real_module_xyz\n")
     print("  [PASS] link lengths from params.py, no silent fallback")
+
+
+def test_envelopes_ride_on_the_engines_sites():
+    bodies.ensure_geometry()
+    # The tool end of link2's envelope, at a posture off every symmetry
+    # plane, is where the engine's truth model puts the tool site - the
+    # sweep keeps no forward kinematics of its own to disagree with it. A
+    # posture written as the derivation's (q1, q2) must land on the
+    # description's (shoulder, elbow), in that order.
+    q = (0.7, -1.9)
+    tip = bodies.TRUTH.at(q=dict(zip(bodies.TRUTH.independent, q))).pose("tip")
+    link2 = bodies.pose(q)["link2"]
+    far_face = max(link2.faces(), key=lambda f: f.center().dot(
+        Vector(*tip.position)))
+    assert (far_face.center() - Vector(*[1000 * v for v in tip.position])).length < 1e-6, (
+        far_face.center(), tip.position)
+    # And the swept ranges are the description's joint ranges, not a box
+    # typed here: the grid's limits move when mechanism.py's do.
+    ranges = {j.name: j.range for j in bodies.TRUTH.description.joints}
+    assert bodies.RANGES == [tuple(ranges[n]) for n in bodies.TRUTH.independent], bodies.RANGES
+    print("  [PASS] envelopes ride on the engine's sites, over the description's ranges")
+
+
+def test_poses_come_from_the_description_or_nowhere():
+    def resolve_with(mechanism_src):
+        """Resolve the truth model against a mechanism.py written to a temp
+        dir, beside a params.py, with every other mechanism.py dropped from
+        sys.path for the duration - the same hermetic setup as above."""
+        saved = sys.path[:]
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "params.py").write_text("PARAMS = {'l': 0.3}\n")
+            if mechanism_src is not None:
+                Path(tmp, "mechanism.py").write_text(mechanism_src)
+            sys.path[:] = [tmp] + [p for p in saved
+                                   if not Path(p or ".", "mechanism.py").exists()]
+            for name in ("params", "mechanism"):
+                sys.modules.pop(name, None)
+            importlib.invalidate_caches()
+            try:
+                return bodies._resolve_truth()
+            finally:
+                sys.path[:] = saved
+                for name in ("params", "mechanism"):
+                    sys.modules.pop(name, None)
+
+    pendulum = (
+        "from armature import body, joint\n"
+        "def mechanism(p):\n"
+        "    return [body('bob', mass=1.0, com=(p['l'], 0, 0),\n"
+        "                 inertia=[[1e-4, 0, 0], [0, 1e-4, 0], [0, 0, 1e-4]]),\n"
+        "            joint('swing', 'hinge', parent='world', child='bob',\n"
+        "                  axis=(0, 0, 1), point=(0, 0, 0), range=(-1, 1))]\n")
+    assert resolve_with(pendulum).coordinates == ("swing",)
+    # No mechanism.py anywhere: fatal, not a fallback to a pose computed
+    # some other way - that would be the second forward kinematics.
+    assert _raised(RuntimeError, resolve_with, None)
+    # mechanism.py failing its own import is not the same as no mechanism.py.
+    assert _raised(ModuleNotFoundError, resolve_with, "import definitely_not_a_real_module_xyz\n")
+    print("  [PASS] poses from the description through the engine, no fallback")

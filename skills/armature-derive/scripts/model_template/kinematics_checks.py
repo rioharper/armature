@@ -8,30 +8,42 @@ the one bridge and the two entry points cannot disagree.
 
 import numpy as np
 
-from params import N, SIGMA_MIN
-from kinematics import J_num, fk_num, singular_values
-from truth.chain import build, site_jacobian, site_pose
-from truth.envelope import DEFAULT_SEED, sample, sample_workspace
+import armature
+from armature.sampler import DEFAULT_SEED
+
+from kinematics import J_num, Q, fk_num, singular_values
+from mechanism import COORDINATES, TOOL, derived, truth, vector
+from params import SIGMA_MIN, WORKSPACE
 
 # Large enough that the sweep's minimum is near the envelope's, cheap because
 # the Jacobian is lambdified: a sweep is not a settle and need not be frugal.
 SWEEP_SAMPLES = 400
 
 
+def test_coordinates_match_the_variant():
+    """The coordinates this milestone differentiates against are its
+    variant's, by name: none dropped without a reduction, none a reduction
+    holds. `armature.account` names any coordinate at fault."""
+    armature.account(derived(), Q)
+    print(f"  [PASS] the Jacobian's columns are the variant's coordinates "
+          f"{list(COORDINATES)}")
+
+
 def test_jacobian_vs_finite_difference(trials=5, seed=DEFAULT_SEED,
                                        h=1e-7, tol=1e-5):
     """Self-consistency: the Jacobian against derivatives of the same FK.
 
-    The configurations come from the truth package's sampler like every other
+    The configurations come from the engine's sampler like every other
     check's, rather than from a generator of this file's own — one sampler is
     what makes "over the envelope" the same set here, in the dynamics check and
     in the worst-case search, and a check with a private seed is a check whose
     configurations a reviewer cannot reproduce from the note.
     """
-    for qv in sample(trials, seed):
+    for s in armature.sample(truth(), trials, seed):
+        qv = vector(s.q)
         Jn = np.asarray(J_num(*qv), dtype=float)[:3, :]   # linear part
-        for i in range(N):
-            dq = np.zeros(N); dq[i] = h
+        for i in range(len(qv)):
+            dq = np.zeros(len(qv)); dq[i] = h
             p1 = np.asarray(fk_num(*(qv + dq)), dtype=float)[:3, 3]
             p0 = np.asarray(fk_num(*(qv - dq)), dtype=float)[:3, 3]
             fd = (p1 - p0) / (2 * h)
@@ -41,36 +53,40 @@ def test_jacobian_vs_finite_difference(trials=5, seed=DEFAULT_SEED,
 
 
 def test_truth_fk_and_jacobian(n=24, seed=DEFAULT_SEED, tol=1e-9):
-    """The mandatory Milestone 1 truth check: FK and the Jacobian against a
-    model that never saw this derivation, at configurations nobody chose.
+    """The mandatory Milestone 1 truth check: FK and the Jacobian against the
+    truth model, at configurations nobody chose.
 
     The finite-difference check above compares the Jacobian with derivatives of
-    the same length function — it cannot see a frame assigned to the wrong
-    axis, a DH row transcribed wrong, or a tool offset applied in the wrong
-    frame, because both sides carry the mistake. This one can: the positions
-    and the Jacobian on the right are MuJoCo's, computed from a body tree built
-    off the parameter block.
+    the same position function, so a Jacobian in the wrong representation —
+    body rather than space, an angular row read in the wrong frame — passes it.
+    Both sides read the description, so a frame written wrong in mechanism.py
+    is on both sides of this check too, and the review artifact is its check.
+    What this one sees is everything the derivation builds on the frames: the
+    tool on the wrong body, a velocity read in the wrong frame, a closed form
+    the note writes out by hand. The right-hand side is MuJoCo's own site pose
+    and site Jacobian, `s.pose` and `s.jacobian`.
     """
-    model, data = build()
-    configs = sample(n, seed)
+    samples = armature.sample(truth(), n, seed)
     worst_p, worst_J, worst_at = 0.0, 0.0, None
-    for qv in configs:
-        p_model = np.asarray(fk_num(*qv), dtype=float)[:3, 3]
-        p_truth, _R = site_pose(model, data, qv)
+    for s in samples:
+        qv = vector(s.q)
+        T_model = np.asarray(fk_num(*qv), dtype=float)
+        pose, jac = s.pose(TOOL), s.jacobian(TOOL)
         J_model = np.asarray(J_num(*qv), dtype=float)
-        J_truth = site_jacobian(model, data, qv)
-        dp = float(np.max(np.abs(p_model - p_truth)))
+        J_truth = np.vstack([jac.linear, jac.angular])
+        dp = float(np.max(np.abs(T_model[:3, 3] - pose.position)))
+        dR = float(np.max(np.abs(T_model[:3, :3] - pose.rotation)))
         dJ = float(np.max(np.abs(J_model - J_truth)))
         if max(dp, dJ) > max(worst_p, worst_J):
             worst_at = qv
-        worst_p, worst_J = max(worst_p, dp), max(worst_J, dJ)
-        assert dp < tol, (f"end-effector position {p_model} disagrees with the "
-                          f"truth model's {p_truth} at q={qv}")
+        worst_p, worst_J = max(worst_p, dp, dR), max(worst_J, dJ)
+        assert dp < tol and dR < tol, (
+            f"the tool pose {T_model[:3, 3]} disagrees with the truth model's "
+            f"{pose.position} at q={qv} (rotation off by {dR:.2e})")
         assert dJ < tol, (f"Jacobian disagrees with the truth model's by {dJ:.2e} "
                           f"at q={qv}")
-    print(f"  [PASS] FK and Jacobian match the truth model over {n} sampled "
-          f"configurations (seed {seed})")
-    print(f"         worst |dp| {worst_p:.2e} m, worst |dJ| {worst_J:.2e}, "
+    print(f"  [PASS] FK and Jacobian match the truth model over {samples}")
+    print(f"         worst |dp|, |dR| {worst_p:.2e}, worst |dJ| {worst_J:.2e}, "
           f"at q = {np.round(worst_at, 4)}")
 
 
@@ -86,14 +102,16 @@ def test_jacobian_singular_values_swept(n=SWEEP_SAMPLES, seed=DEFAULT_SEED):
     the sampled envelope and the smallest is printed, whatever it is.
 
     Then the bound, and the two are different assertions. The envelope contains
-    the elbow singularity at q2 = 0, so σ_min over the envelope goes to zero
+    the elbow singularity at elbow = 0, so σ_min over the envelope goes to zero
     and must: that is the machine. What has to hold is that σ_min stays above
     `params.SIGMA_MIN` everywhere in `params.WORKSPACE`, the region the
     requirements actually name — a singularity inside the intended workspace is
     a Milestone 3 finding, and this is where it surfaces.
     """
-    over_envelope = singular_values(sample(n, seed))
-    configs = sample_workspace(n, seed)
+    envelope = armature.sample(truth(), n, seed)
+    over_envelope = singular_values([vector(s.q) for s in envelope])
+    workspace = armature.sample(truth(), n, seed, within=WORKSPACE)
+    configs = [vector(s.q) for s in workspace]
     over_workspace = singular_values(configs)
     worst = float(np.min(over_workspace[:, -1]))
     at = configs[int(np.argmin(over_workspace[:, -1]))]
@@ -102,8 +120,8 @@ def test_jacobian_singular_values_swept(n=SWEEP_SAMPLES, seed=DEFAULT_SEED):
         f"m/rad at q={np.round(at, 4)}, inside WORKSPACE, below the "
         f"{SIGMA_MIN} m/rad the derivation needs; the intended workspace "
         f"contains a singularity")
-    print(f"  [PASS] sigma_min(J_v) >= {SIGMA_MIN} m/rad over {n} sampled "
-          f"workspace configurations (seed {seed})")
+    print(f"  [PASS] sigma_min(J_v) >= {SIGMA_MIN} m/rad over the workspace, "
+          f"{workspace}")
     print(f"         worst {worst:.4f} m/rad at q = {np.round(at, 4)}; over "
           f"the full envelope it falls to "
           f"{float(np.min(over_envelope[:, -1])):.4f} (the elbow singularity)")

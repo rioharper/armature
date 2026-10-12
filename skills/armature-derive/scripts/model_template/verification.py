@@ -19,10 +19,12 @@ from collections import namedtuple
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
-from params import LOAD_CASES, N, PLANE_XY
+from armature.sampler import DEFAULT_SEED
+
+from params import LOAD_CASES, PLANE_XY, WORKSPACE
+from mechanism import COORDINATES
 from kinematics import J_num, fk_num
 from dynamics.statics import static_torques
-from truth.envelope import DEFAULT_SEED, WORK_HIGH, WORK_LOW
 
 # Run order and heading for `run_all.py`, which discovers this module
 # by the `test_*` callables in verification_checks.py, not by name.
@@ -31,10 +33,11 @@ MILESTONE = (3, "Milestone 3: verification")
 GRID_POINTS = 25        # per coordinate; the step is reported with the result
 OPT_STARTS = 8          # multi-start count, the grid's best among them
 
-# The search runs over the intended workspace, read from the truth package's
-# envelope rather than re-derived from WORKSPACE here: two arrays built from one
-# parameter block still drift the first time somebody edits one of them.
-LO, HI = WORK_LOW, WORK_HIGH
+# The search runs over the intended workspace, the box the sampler's `within`
+# reads, laid out in the order the numeric functions take their coordinates.
+N = len(COORDINATES)
+LO = np.array([WORKSPACE[c][0] for c in COORDINATES], dtype=float)
+HI = np.array([WORKSPACE[c][1] for c in COORDINATES], dtype=float)
 
 # `tau` and `q` are the answer — the worse of the two methods per joint, and
 # the posture it happens at. `grid` and `opt` are what each method alone found,
@@ -108,7 +111,7 @@ def combine(tau, Jv, case):
     *in* it — a flipped force sign here is a flipped force sign on both sides,
     which is the same blindness the truth model exists to remove, one level up.
     Which is why Milestone 3's truth check does not stop at recomputing this: it
-    hands the force to the truth model as a real wrench and settles.
+    hands the force to the truth model as a real load at the tool and settles.
     """
     return np.array([abs(holding_torque(tau, Jv,
                                         worst_tip_force(tau, Jv, case, j))[j])

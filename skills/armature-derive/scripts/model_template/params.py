@@ -1,22 +1,23 @@
 """
-params.py — Milestone 0: parameter block + symbols + generalized coordinates.
+params.py — Milestone 0: the parameter block, the intended workspace, the rate
+envelope and the load cases.
 
-Mirrors 00_setup.md. This is the only file you should need to edit routinely:
+Mirrors 00_setup.md's parameter table. This is the file to edit routinely:
 when a design parameter changes (link length, payload, motor, ...), change it
-in PARAMS and re-run run_all.py. Every other module imports from here.
+in PARAMS and re-run run_all.py. The geometry those numbers build is
+`mechanism.py`'s; the joint envelope is its joint ranges, and the symbols the
+derivation works in are generated from PARAMS' keys, so each name is written
+once.
 
 If this block grows per-constant provenance and emits a `params.toml`, the
 TOML is where anyone who needs a *value* looks it up; this file stays the
-place for provenance, arithmetic, and generation.
+place for provenance, arithmetic, and generation. Standard library only, so a
+CAD part file can read a mass target from it without the model's environment.
 
 Example mechanism: planar 2R arm in gravity. Replace with your robot.
 """
 
 from collections import namedtuple
-from math import pi
-
-import sympy as sp
-from sympy import Matrix, symbols
 
 # Run order and heading for `run_all.py`: the parameter block is Milestone 0
 # and sorts first, so a load-case table that has lost a sign fails before any
@@ -24,6 +25,8 @@ from sympy import Matrix, symbols
 MILESTONE = (0, "Milestone 0: parameter block")
 
 # --- numeric values (SI units) ---
+# Exactly what mechanism(p) reads: the engine refuses a parameter defined and
+# never used, as it refuses one used and never defined, naming it.
 PARAMS = {
     "l1": 0.30,     # link 1 length [m]
     "l2": 0.25,     # link 2 length [m]
@@ -38,94 +41,39 @@ PARAMS = {
     "g": 9.81,      # gravitational acceleration [m/s^2]
 }
 
-# --- symbolic parameters (must mirror PARAMS keys) ---
-l1, l2, lc1, lc2, m1, m2, I1, I2, Ix1, Ix2, g = symbols(
-    "l1 l2 lc1 lc2 m1 m2 I1 I2 Ix1 Ix2 g", positive=True
-)
-PARAM_SYMS = {"l1": l1, "l2": l2, "lc1": lc1, "lc2": lc2,
-              "m1": m1, "m2": m2, "I1": I1, "I2": I2,
-              "Ix1": Ix1, "Ix2": Ix2, "g": g}
-
-# --- generalized coordinates ---
-N = 2
-t = symbols("t")
-q = Matrix([sp.Function(f"q{i+1}")(t) for i in range(N)])   # q_i(t)
-qd = q.diff(t)
-qdd = qd.diff(t)
-
-# --- modified DH table: rows of (alpha_{i-1}, a_{i-1}, d_i, theta_i) ---
-# Revolute joint: theta_i contains q[i]. Prismatic: d_i contains q[i].
-#
-# This is the serial-chain convention, and the rest of this block follows it. A
-# mechanism whose own body floats — a platform on cables, a legged or a wheeled
-# body — has no such table: it declares `FLOATING_BODIES` and `FLOATING_CABLES`
-# here instead, dicts of the fields `truth/floating.py` names, and builds the
-# floating-body model. Pick the one the machine has; the plan glossary's
-# convention family has already picked it.
-DH = [
-    (0, 0,  0, q[0]),
-    (0, l1, 0, q[1]),
-]
-# Transform from the last joint frame to the end-effector / tool frame:
-T_TOOL = Matrix([[1, 0, 0, l2],
-                 [0, 1, 0, 0],
-                 [0, 0, 1, 0],
-                 [0, 0, 0, 1]])
-
-# COM of each link, expressed in that link's own frame:
-COM_LOCAL = [Matrix([lc1, 0, 0]), Matrix([lc2, 0, 0])]
-# Link inertia tensors about each COM, in the link frame. **Every axis, even
-# the ones this mechanism cannot turn about.** A planar arm's dynamics see only
-# Izz, so a tensor written diag(0, 0, Izz) gives the same M, C and g — but that
-# zero is the planar assumption written into the parameter block, where the
-# truth model, which does not make that assumption, then reads it and refuses
-# to build (a rigid body needs a physical inertia). Each link here is a slender
-# rod along its own x: Ixx from the rod's radius, Iyy = Izz from its length.
-INERTIA = [sp.diag(Ix1, I1, I1), sp.diag(Ix2, I2, I2)]
-MASSES = [m1, m2]
-GRAVITY_VEC = Matrix([0, -g, 0])   # gravity in the base frame
-
-# --- the envelope ---
-# The set of configurations every claim in this derivation is checked over:
-# one (lo, hi) per generalized coordinate, in rad for a revolute joint and m
-# for a prismatic one. The truth model's sampler draws from exactly this, and
-# the simulator model carries it as its joint ranges, so "over the envelope"
-# means one thing in the notes, the checks and the simulator. Narrow it when
-# Milestone 3's collision sweep finds a real joint limit; a wider envelope than
-# the machine has makes every worst case pessimistic, a narrower one makes
-# every one of them unproven.
-Q_LIMITS = [(-pi, pi), (-2.6, 2.6)]
-
 # The **intended workspace**: the subset of the envelope the machine is
 # actually required to work in, and the only region where the derivation is
-# entitled to assume full rank. It is a second box because the envelope is what
-# the joints can reach and the workspace is what the requirements ask for, and
-# the gap between them is where the singularities are allowed to live. This 2R
-# arm's position Jacobian has determinant l1 l2 sin(q2), so it loses rank at
-# q2 = 0 — an elbow singularity sitting squarely inside Q_LIMITS — and the
-# machine is committed to the elbow-up branch to stay off it. Name yours from
-# the requirement, not from what happens to be non-singular. Strictly inside
-# Q_LIMITS on every coordinate, including the ones with no singularity in them:
-# a worst case found *on* a joint limit is a worst case the limit is carrying,
-# and the truth model reads the limit's constraint force rather than the
-# mechanism's torque there.
-WORKSPACE = [(-3.0, 3.0), (0.30, 2.50)]
+# entitled to assume full rank. One (lo, hi) per coordinate the derivation
+# keeps, keyed by the description's joint name, in rad for a hinge and m for a
+# slide. It is a second box because the envelope (`mechanism.py`'s joint
+# ranges) is what the joints can reach and the workspace is what the
+# requirements ask for, and the gap between them is where the singularities are
+# allowed to live. This 2R arm's position Jacobian has determinant
+# l1 l2 sin(elbow), so it loses rank at elbow = 0 — an elbow singularity
+# sitting squarely inside the envelope — and the machine is committed to the
+# elbow-up branch to stay off it. Name yours from the requirement, not from
+# what happens to be non-singular. Strictly inside the joint ranges on every
+# coordinate, including the ones with no singularity in them: a worst case
+# found *on* a joint limit is a worst case the limit is carrying, and the truth
+# model's settle names the limit among the constraints holding it there.
+WORKSPACE = {"shoulder": (-3.0, 3.0), "elbow": (0.30, 2.50)}
 
 # The smallest singular value the position Jacobian must keep everywhere in
 # WORKSPACE [m/rad]. Not a tolerance: it is the worst end-effector speed one
 # rad/s of joint motion can buy, so its reciprocal is the joint speed and the
 # joint torque a unit of Cartesian motion or force costs at the worst posture.
-# The bound below is 0.037 at the elbow-up edge q2 = 0.30, rounded down.
+# The bound below is 0.037 at the elbow-up edge elbow = 0.30, rounded down.
 SIGMA_MIN = 0.035
 
-# The rate envelope: the fastest each coordinate is asked to move and to change
-# speed, one per generalized coordinate, in rad/s and rad/s^2 (m/s and m/s^2
-# for a prismatic one). These come from the spec's move classes, not from what
-# the actuator happens to manage. A dynamics claim checked only at rest is a
-# statics claim; these are what makes a sampled *state* rather than a sampled
+# The rate envelope: the fastest each degree of freedom is asked to move and
+# to change speed, keyed by the truth model's dof names (a floating body's
+# `f:x` ... `f:rz`; a hinge's is its joint's name), in rad/s and rad/s^2 (m/s
+# and m/s^2 for a slide). These come from the spec's move classes, not from
+# what the actuator happens to manage. A dynamics claim checked only at rest is
+# a statics claim; these are what makes a sampled *state* rather than a sampled
 # posture, and every Coriolis and inertial term lives in them.
-QD_LIMITS = [3.0, 4.0]
-QDD_LIMITS = [20.0, 30.0]
+QD_LIMITS = {"shoulder": 3.0, "elbow": 4.0}
+QDD_LIMITS = {"shoulder": 20.0, "elbow": 30.0}
 
 # --- load cases ---
 # Every load the actuators are sized against, as a **table** rather than a
@@ -147,7 +95,7 @@ LoadCase = namedtuple("LoadCase", "name kind magnitude direction sign")
 
 PLANE_XY = "any-in-plane"       # the unit circle in the base frame's xy plane
 
-M_PAYLOAD = 0.50     # payload carried at the tool frame, not in m2 [kg]
+M_PAYLOAD = 0.50     # payload carried at the tool site, not in m2 [kg]
 A_BASE = 0.5         # worst base acceleration the spec's move classes reach [g]
 F_CONTACT = 15.0     # worst contact force at the tool, any heading [N]
 
@@ -161,11 +109,3 @@ LOAD_CASES = [
              M_PAYLOAD * A_BASE * PARAMS["g"], (1.0, 0.0, 0.0), -1),
     LoadCase("contact", "contact force", F_CONTACT, PLANE_XY, 0),
 ]
-
-# Plain symbols for lambdify, shared by every downstream module so the
-# numeric-function signatures stay consistent across kinematics/dynamics/
-# verification.
-QS = symbols(f"x0:{N}")           # posture
-QDS = symbols(f"v0:{N}")          # velocity
-SUB_Q = list(zip(list(qd), QDS)) + list(zip(list(q), QS))
-SUB_P = [(PARAM_SYMS[k], v) for k, v in PARAMS.items()]

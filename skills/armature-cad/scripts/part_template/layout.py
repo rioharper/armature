@@ -12,8 +12,8 @@ it runs where build123d does not:
 fails on a module over budget. Running one module or package
 (`run_all.py check`) leaves them out: a file still being written is not
 red-barred mid-work. The same file ships in armature-derive's model template;
-a part directory has no truth package, so the truth gate stands down here and
-reports n/a.
+a part directory has no mechanism description, so the truth gate stands down
+here and reports n/a.
 """
 
 
@@ -37,7 +37,9 @@ EXEMPT = "LAYOUT_EXEMPT"
 # source says it is called.
 TRUTH_EXEMPT = "TRUTH_EXEMPT"
 TRUTH_PREFIX = "test_truth_"
-TRUTH_PACKAGE = "truth"
+# What says a directory has a truth model: the mechanism description it is
+# compiled from. The truth model itself is the engine's, outside this tree.
+DESCRIPTION = "mechanism.py"
 
 HERE = Path(__file__).resolve().parent
 # Reported beside the modules for information only; part definitions carry
@@ -46,7 +48,7 @@ NOTES = HERE
 
 # `truth` is the list of truth checks the gate found, or None where the gate
 # does not apply — a module that is not a checks module, or a directory with no
-# truth package at all.
+# mechanism description at all.
 Row = namedtuple("Row", "where lines exempt truth truth_exempt")
 
 _NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
@@ -131,18 +133,17 @@ def model_files(root=HERE):
 
 def gated(path, root):
     """
-    Whether the truth gate applies to this file.
+    Whether the truth gate applies to this file: a checks module, in a
+    directory with a mechanism description.
 
-    Only a checks module, and only outside the truth package: that package *is*
-    the truth model, so asking it to check its claims against one is circular.
-    A directory with no truth package — a `cad/parts/` tree, a model whose
-    truth package has not landed yet — is outside the gate entirely, which is
-    what lets this file ship in both templates.
+    The description is what the truth model is compiled from, so a directory
+    that has one has a truth model to check against, and every checks module
+    in it — the description's own among them — is held to the gate. A
+    directory without one — a `cad/parts/` tree, a model whose description has
+    not landed yet — is outside the gate entirely, which is what lets this
+    file ship in both templates.
     """
-    if not (root / TRUTH_PACKAGE / "__init__.py").is_file():
-        return False
-    return (path.stem.endswith("_checks")
-            and path.relative_to(root).parts[0] != TRUTH_PACKAGE)
+    return (root / DESCRIPTION).is_file() and path.stem.endswith("_checks")
 
 
 def size_table(root=HERE):
@@ -190,8 +191,8 @@ def test_checks_modules_are_paired():
 
 def test_milestone_checks_carry_a_truth_check():
     """
-    Every checks module outside the truth package defines a `test_truth_*`,
-    or says why it does not.
+    Every checks module beside a mechanism description defines a
+    `test_truth_*`, or says why it does not.
 
     A milestone's self-consistency checks are blind to the assumption sitting
     on both sides of them, so a milestone whose only evidence is
@@ -201,7 +202,7 @@ def test_milestone_checks_carry_a_truth_check():
     """
     rows = size_table()
     if all(row.truth is None for row in rows):
-        print("  [PASS] no truth package here; the truth gate is n/a")
+        print("  [PASS] no mechanism description here; the truth gate is n/a")
         return
     missing = unchecked_claims(rows)
     assert not missing, (
@@ -217,7 +218,8 @@ def test_milestone_checks_carry_a_truth_check():
 def test_the_truth_gate_has_teeth():
     """
     The gate against fixtures: it fails a bare checks module, passes an argued
-    one, refuses an unargued exemption, and stands down with no truth package.
+    one, refuses an unargued exemption, and stands down with no mechanism
+    description.
 
     Built in a temporary directory rather than asserted against this one,
     because a gate is only evidence once it has been seen to fail, and this
@@ -232,10 +234,10 @@ def test_the_truth_gate_has_teeth():
         checks.write_text(bare, encoding="utf-8")
         assert all(row.truth is None for row in size_table(root)) \
             and not unchecked_claims(size_table(root)), \
-            "the truth gate fired in a directory with no truth package"
+            "the truth gate fired in a directory with no mechanism description"
 
-        (root / TRUTH_PACKAGE).mkdir()
-        (root / TRUTH_PACKAGE / "__init__.py").write_text("", encoding="utf-8")
+        (root / DESCRIPTION).write_text("def mechanism(p):\n    return []\n",
+                                        encoding="utf-8")
         assert unchecked_claims(size_table(root)) == ["alpha_checks.py"], \
             "a checks module with no truth check and no exemption passed"
 
@@ -258,7 +260,7 @@ def test_the_truth_gate_has_teeth():
                 continue
             raise AssertionError(f"{unargued.strip()} passed as a reason")
     print("  [PASS] the truth gate fails a bare checks module, passes an "
-          "argued exemption, and is n/a with no truth package")
+          "argued exemption, and is n/a with no mechanism description")
 
 
 if __name__ == "__main__":

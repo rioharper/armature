@@ -1,21 +1,26 @@
 """
 sweep/bodies.py — the envelopes the sweep moves, where they sit at a
 posture, and how each adjacent pair's design overlap is excused. Replace
-the bodies and pose() with your mechanism. Self-tests in bodies_checks.py.
+the bodies and CARRIERS with your mechanism. Self-tests in bodies_checks.py.
+
+Every envelope is written where it sits at the home posture, in the base
+frame, as the mechanism description writes everything (ADR 0003), and rides
+on a site of the description: at a posture, the engine says where that site
+is and how its body has turned, and the envelope moves with it. There is no
+forward kinematics here to drift from the derivation's.
 """
 
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 
-from build123d import Box, Cylinder, Location, Rotation
+from build123d import Box, Cylinder, Location, Plane
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from check import interference, mm  # noqa: E402
 
-# --- link geometry, from the parameter table ---------------------------
+# --- where the mechanism comes from ------------------------------------
 # SI in, mm out. See check/__init__.py's unit contract.
 #
 # The lengths are IMPORTED, never typed: a number restated here drifts the
@@ -24,7 +29,9 @@ from check import interference, mm  # noqa: E402
 # and even that has no fallback. A part's mass target can fall back to a
 # budget row and stay useful; a link length can't - a guessed L1/L2 could
 # hide a real self-collision or invent one that isn't there, so a missing
-# or renamed source is fatal here, not advisory.
+# or renamed source is fatal here, not advisory. The postures are the same:
+# they come from the engine's truth model of analysis/model/mechanism.py,
+# or the sweep does not run.
 PARAMS_DIR = Path(__file__).resolve().parents[3] / "analysis" / "model"
 sys.path.insert(0, str(PARAMS_DIR))
 
@@ -51,18 +58,51 @@ def _resolve_lengths():
     return mm(params.PARAMS["l1"]), mm(params.PARAMS["l2"])
 
 
+def _resolve_truth():
+    """The truth model, compiled by the engine from analysis/model's
+    `mechanism(p)` and its PARAMS.
+
+    Only a missing `mechanism` MODULE is turned into a message, and it
+    carries no fallback: a pose computed any other way is a second forward
+    kinematics, which is the copy this file exists not to keep. Anything
+    else - the engine not installed, a description the engine refuses -
+    propagates as itself.
+    """
+    try:
+        import mechanism  # analysis/model/mechanism.py
+    except ModuleNotFoundError as exc:
+        if exc.name != "mechanism":
+            raise  # the engine, or something mechanism.py imports, is missing
+        raise RuntimeError(
+            f"sweep: no analysis/model/mechanism.py on sys.path ({PARAMS_DIR})"
+            " - nothing to pose the envelopes with. Write the description at "
+            "armature-derive's Milestone 0 first; the sweep keeps no forward "
+            "kinematics of its own."
+        ) from exc
+    import armature
+    import params
+    return armature.compile(mechanism.mechanism, params.PARAMS)
+
+
 # NOT resolved here. `L1, L2 = _resolve_lengths()` at module scope makes
-# importing the package raise whenever analysis/model/params.py isn't
-# already on sys.path, so its checks couldn't even be discovered without a
-# real project layout. Set by `ensure_geometry()`, called first thing by
-# main() and by every check - nothing touches L1/L2 before they do. Read
+# importing the package raise whenever analysis/model/ isn't already on
+# sys.path, so its checks couldn't even be discovered without a real project
+# layout. Set by `ensure_geometry()`, called first thing by main() and by
+# every check - nothing touches L1/L2, TRUTH or RANGES before they do. Read
 # them, and ADJACENT, as `bodies.L1`: a `from bodies import L1` binds the
 # None below, not the resolved length.
 L1 = L2 = None
+TRUTH = HOME = None   # the compiled description, and its home state
+RANGES = None         # each swept coordinate's joint range, in TRUTH's order
 LINK_W = 40.0  # envelope guess, generous on purpose
 LINK_H = 30.0
 POST_R = 60.0  # base housing the arm must not fold into
 POST_H = 250.0
+
+# Which site of the description each moving envelope rides on: any site on
+# the envelope's body will do, since the whole body turns with it. A body
+# not listed here (the base post) is fixed to the world.
+CARRIERS = {"link1": "elbow_pin", "link2": "tip"}
 
 # JOINT_TRIM is how much link2's box is set back from the elbow, instead
 # of starting flush at it. See pose() for where it's used and ADJACENT
@@ -113,36 +153,42 @@ POST_H = 250.0
 JOINT_TRIM = LINK_W / 2
 
 
-def pose(q) -> dict:
-    """Position every body at posture q = (q1, q2) in radians.
+def at_home():
+    """Every envelope where it sits at the home posture, in the base frame.
 
-    Each link is drawn along +X from its own joint, then rotated into
-    place — the same convention as the DH table in params.py, so the
-    postures this reports are postures the derivation can act on.
+    The arm lies along +X at home, as the description writes it: link1 from
+    the shoulder at the origin out to the elbow, link2 from the elbow out to
+    the tool. link2's BOX is set back JOINT_TRIM from the elbow rather than
+    flush against it - see JOINT_TRIM's own comment for the measured basis.
     """
-    q1, q2 = q
-
-    base = Cylinder(POST_R, POST_H).locate(Location((0, 0, POST_H / 2)))
-
-    # link1: from joint 1 at the origin, out along +X, rotated by q1.
-    link1 = Box(L1, LINK_W, LINK_H).locate(Location((L1 / 2, 0, 0)))
-    link1 = Rotation(0, 0, math.degrees(q1)) * link1
-
-    # link2: from the elbow, out along +X, rotated by q1 + q2. The elbow is
-    # a pure translation — link2's own rotation already carries q1, and
-    # composing a rotated Location here would apply q1 to it twice.
-    #
-    # link2's BOX is set back JOINT_TRIM from the elbow (starts at local
-    # x=JOINT_TRIM instead of x=0) rather than flush against it - see
-    # JOINT_TRIM's own comment for the measured basis. This changes what
-    # shape sits in link2's frame, not the frame itself: `elbow` and the
-    # rotation angle below are the plain FK and must stay that way.
-    elbow = Location((L1 * math.cos(q1), L1 * math.sin(q1), 0))
     l2_len = L2 - JOINT_TRIM
-    link2 = Box(l2_len, LINK_W, LINK_H).locate(Location((JOINT_TRIM + l2_len / 2, 0, 0)))
-    link2 = elbow * (Rotation(0, 0, math.degrees(q1 + q2)) * link2)
+    return {
+        "base": Cylinder(POST_R, POST_H).locate(Location((0, 0, POST_H / 2))),
+        "link1": Box(L1, LINK_W, LINK_H).locate(Location((L1 / 2, 0, 0))),
+        "link2": Box(l2_len, LINK_W, LINK_H).locate(
+            Location((L1 + JOINT_TRIM + l2_len / 2, 0, 0))),
+    }
 
-    return {"base": base, "link1": link1, "link2": link2}
+
+def carried(shape, state, site):
+    """`shape`, written at home, moved as `site`'s body has moved from home
+    to `state`: x -> R (x - p0) + p, with p0 and p the site's position at
+    home and at the state and R its body's turn, all from the engine."""
+    here, home = state.pose(site), HOME.pose(site)
+    R = here.rotation
+    shift = [mm(v) for v in here.position - R @ home.position]
+    frame = Plane(origin=shift, x_dir=tuple(R[:, 0]), z_dir=tuple(R[:, 2]))
+    return Location(frame) * shape
+
+
+def pose(q) -> dict:
+    """Position every body at posture q, the swept coordinates' values in
+    radians in RANGES order: `TRUTH.at(q)` is the posture, and each envelope
+    rides on its carrier site."""
+    state = TRUTH.at(q=dict(zip(TRUTH.independent, q)))
+    return {name: (carried(shape, state, CARRIERS[name]) if name in CARRIERS
+                   else shape)
+            for name, shape in at_home().items()}
 
 
 # Adjacent bodies share a joint, and the envelope can overlap there even
@@ -161,7 +207,7 @@ def pose(q) -> dict:
 #                  or not. A threshold sampled at home therefore excuses
 #                  effectively nothing: measured, it flags 98.2% of the
 #                  swept grid. -> a GEOMETRIC excuse instead, JOINT_TRIM in
-#                  pose(), which gives link2 a real gap to bend through.
+#                  at_home(), which gives link2 a real gap to bend through.
 #
 # The distinction is "constant overlap gets a threshold", NOT "adjacent
 # pairs get a threshold".
@@ -185,14 +231,19 @@ def pose(q) -> dict:
 # with the missing 20 mm the same way an `ignore` threshold misses one
 # below its volume - check it explicitly if you add one.
 def ensure_geometry():
-    """Resolve L1/L2 from params.py and derive ADJACENT's threshold.
+    """Resolve L1/L2 from params.py, the truth model from mechanism.py, and
+    ADJACENT's threshold.
 
-    Deferred from module scope so the package imports without params.py
+    Deferred from module scope so the package imports without analysis/model
     (see L1 above). main() and every check call this first; idempotent.
     """
-    global L1, L2, ADJACENT
+    global L1, L2, TRUTH, HOME, RANGES, ADJACENT
     L1, L2 = _resolve_lengths()
-    home = pose((0.0, 0.0))
+    TRUTH = _resolve_truth()
+    HOME = TRUTH.at()
+    ranges = {j.name: j.range for j in TRUTH.description.joints}
+    RANGES = [tuple(float(v) for v in ranges[name]) for name in TRUTH.independent]
+    home = pose([TRUTH.home(name) for name in TRUTH.independent])
     ADJACENT = {
         frozenset(("base", "link1")): interference(home["base"], home["link1"]),
     }

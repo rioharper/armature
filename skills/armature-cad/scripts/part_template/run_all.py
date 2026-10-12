@@ -1,11 +1,12 @@
 """
 run_all.py — every self-test in cad/parts/, in order, end to end.
 
-    uv run --with 'build123d~=0.11' --with sympy python cad/parts/run_all.py
+    uv run --project analysis/model --with 'build123d~=0.11' python cad/parts/run_all.py
 
 Exits nonzero on the first failing check, which is what makes it a
-pre-commit hook or CI step. `--with sympy` is for analysis/model/params.py,
-which the part files and the sweep import.
+pre-commit hook or CI step. `--project analysis/model` runs it in the
+model's environment, which has the engine the sweep poses its envelopes
+with; the part files need only build123d and analysis/model/params.py.
 
 Discovery is by shape, not by name. A module in this directory, or one level
 down in a package, is collected when its sibling checks module

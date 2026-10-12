@@ -2,74 +2,66 @@
 kinematics.py — Milestone 1: forward kinematics and the geometric Jacobian.
 
 Mirrors 01_kinematics.md; its self-tests are in kinematics_checks.py. Imports
-only params.py, so a red-team pass on Milestone 1 reads this file, its checks,
-and the parameter block. Check it alone: `python run_all.py kinematics`.
+only mechanism.py, so a red-team pass on Milestone 1 reads this file, its
+checks, and the description. Check it alone: `python run_all.py kinematics`.
 
-Modified DH (Craig). Keep the structure if the note uses another convention:
-symbolic build -> numeric functions.
+The frames are the description's, read through the engine's symbolic view:
+each body's frame is its parent's turned about its joint's home axis by the
+coordinate's distance from home, the product of exponentials (Lynch and Park,
+ch. 4) written as a chain of SymPy frames. No transform is typed here, so the
+derivation and the truth model cannot disagree about where a joint is — and
+the truth checks one file over are about what is built on the frames.
+Keep the structure if the note uses another convention: symbolic build ->
+numeric functions.
 """
 
 import numpy as np
 import sympy as sp
-from sympy import cos, sin, Matrix
+from sympy.physics.mechanics import dynamicsymbols
 
-from params import DH, T_TOOL, q, QS, SUB_Q, SUB_P
+from mechanism import TOOL, numeric, view
 
 # Run order and heading for `run_all.py`, which discovers this module
 # by the `test_*` callables in kinematics_checks.py, not by name.
 MILESTONE = (1, "Milestone 1: kinematics")
 
-
-def dh_transform(alpha, a, d, theta):
-    """Modified DH single-link transform (Craig, eq. 3.6)."""
-    ca, sa, ct, st = cos(alpha), sin(alpha), cos(theta), sin(theta)
-    return Matrix([
-        [ct,      -st,      0,   a],
-        [st * ca,  ct * ca, -sa, -sa * d],
-        [st * sa,  ct * sa,  ca,  ca * d],
-        [0,        0,        0,   1],
-    ])
+VIEW = view()
+# The coordinates this milestone is written in, the variant's, in order.
+Q = list(VIEW.q.values())
+TOOL_BODY = {s.name: s.body for s in VIEW.description.sites}[TOOL]
 
 
 def forward_kinematics():
-    """Returns (list of T_0_i for each link frame, T_0_ee)."""
-    T = sp.eye(4)
-    frames = []
-    for row in DH:
-        T = T * dh_transform(*row)
-        frames.append(sp.trigsimp(T))
-    T_ee = sp.trigsimp(T * T_TOOL)
-    return frames, T_ee
+    """T_0_ee: the tool site's position and its body's orientation in the base
+    frame, as a 4x4 homogeneous transform in the coordinates."""
+    p = VIEW.sites[TOOL].pos_from(VIEW.origin).to_matrix(VIEW.world)
+    R = VIEW.world.dcm(VIEW.frames[TOOL_BODY])
+    return sp.trigsimp(R.row_join(p).col_join(sp.Matrix([[0, 0, 0, 1]])))
 
 
-def geometric_jacobian(frames, T_ee):
-    """6xN geometric Jacobian of the end-effector, base frame."""
-    p_ee = T_ee[:3, 3]
-    cols = []
-    for i, row in enumerate(DH):
-        # Modified DH (Craig): joint i acts about z of frame {i}, and the
-        # origin of frame {i} lies on that axis. (Standard DH would use
-        # frame {i-1} here — adjust if you change conventions.)
-        T_i = frames[i]
-        z = T_i[:3, 2]
-        p = T_i[:3, 3]
-        is_prismatic = not row[3].has(q[i])   # q in d_i => prismatic
-        if is_prismatic:
-            Jv, Jw = z, Matrix([0, 0, 0])
-        else:
-            Jv, Jw = z.cross(p_ee - p), z
-        cols.append(Jv.col_join(Jw))
-    return sp.trigsimp(Matrix.hstack(*cols))
+def geometric_jacobian():
+    """6xN geometric Jacobian of the tool site, base frame: the partial
+    velocities of the site's velocity and its body's angular velocity with
+    respect to each coordinate's rate.
+
+    Read off the velocities rather than assembled column by column from
+    z x (p - o), so a slide, a hinge whose axis does not pass through the
+    previous origin, or a joint out of order needs no branch to get wrong.
+    """
+    rates = [c.diff(dynamicsymbols._t) for c in Q]
+    v = VIEW.sites[TOOL].vel(VIEW.world).to_matrix(VIEW.world)
+    w = VIEW.frames[TOOL_BODY].ang_vel_in(VIEW.world).to_matrix(VIEW.world)
+    return sp.trigsimp(v.col_join(w).jacobian(rates))
 
 
 print("Building symbolic kinematics ...")
-FRAMES, T_EE = forward_kinematics()
-J = geometric_jacobian(FRAMES, T_EE)
+T_EE = forward_kinematics()
+J = geometric_jacobian()
 print("  FK and Jacobian built.")
 
 # --- numeric functions, lambdified, parameterized by params.PARAMS ---
-fk_num = sp.lambdify(QS, T_EE.subs(SUB_Q).subs(SUB_P), "numpy")
-J_num = sp.lambdify(QS, J.subs(SUB_Q).subs(SUB_P), "numpy")
+fk_num = numeric(T_EE)
+J_num = numeric(J)
 
 
 def singular_values(configs):
@@ -85,9 +77,9 @@ def singular_values(configs):
     σ_min is a *rate*, in m per rad of joint motion: its reciprocal is the
     joint speed and the joint force one unit of Cartesian motion or force costs
     at that posture, which is why a small one is an architecture problem rather
-    than a numerical one. For this arm it is exact — det J_v = l1 l2 sin q2 —
-    so σ_min σ_max = |l1 l2 sin q2| and the elbow singularity at q2 = 0 is
-    visible in the sweep rather than inferred.
+    than a numerical one. For this arm it is exact — det J_v = l1 l2 sin(elbow)
+    — so σ_min σ_max = |l1 l2 sin(elbow)| and the elbow singularity at
+    elbow = 0 is visible in the sweep rather than inferred.
     """
     return np.array([np.linalg.svd(np.asarray(J_num(*qv), dtype=float)[:3, :],
                                    compute_uv=False)

@@ -1,0 +1,34 @@
+# The model's environment. The truth model, the description's compiler, the
+# symbolic view and the sampler are the engine, a package this model pins rather
+# than copies (ADR 0004). Until the engine is distributed, it is an editable path
+# dependency on the plugin's `engine/`: the path below is right where this
+# template ships, and a copied project points it at its plugin checkout.
+#
+#     uv run python run_all.py      # every milestone's self-tests
+#     uv run pytest                 # the same checks, through test_derivation.py
+#     uv run python report_truth.py # the Milestone 0 review artifact
+
+[project]
+name = "analysis-model"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+    "armature-engine",
+    "numpy>=2.0",
+    "pillow>=12",       # report_truth.py's renders; the engine leaves PNG to us
+    "scipy>=1.14",
+    "sympy>=1.13",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+armature-engine = { path = "../../../../engine", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
