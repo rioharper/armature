@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 import armature
-from armature import DescriptionError, actuator, body, cable, joint, lock, site
+from armature import (DescriptionError, actuator, body, cable, couple, joint,
+                      lock, loop, site)
 
 I = np.eye(3) * 1e-3
 
@@ -209,3 +210,42 @@ def test_symbolic_view_of_a_free_joint_matches_the_dofs():
     floating = lambda p: arm(p, **_free())
     view = armature.symbolic(floating, {"m": 1.0})
     assert view.coordinates == armature.compile(floating, {"m": 1.0}).dofs
+
+
+@pytest.mark.parametrize("bad, why", [
+    (loop("closure", "tip", "nowhere"), "site b 'nowhere' is not declared"),
+    (loop("closure", "tip", "tip2"), "both sites are on 'lower'")])
+def test_loop_faults(mjspec_untouched, bad, why):
+    extra = site("tip2", body="lower", pos=(2, 0, 0))
+    _fails(lambda p: arm(p) + [extra, bad], "loop 'closure'", why)
+
+
+@pytest.mark.parametrize("reductions, why", [
+    ((couple("wrist", "shoulder", 1.0, assumption="A1"),),
+     "no coordinate named 'wrist'"),
+    ((couple("elbow", "elbow", 1.0, assumption="A1"),), "cannot follow itself"),
+    ((couple("elbow", "shoulder", 0.0, assumption="A1"),),
+     "ratio must be a nonzero number"),
+    ((couple("elbow", "shoulder", 1.0, assumption=None),),
+     "carries no assumption"),
+    ((couple("elbow", "shoulder", 1.0, assumption="A1"),
+      couple("elbow", "shoulder", 2.0, assumption="A2")),
+     "already follows"),
+    ((lock("shoulder", 0.0, assumption="A1"),
+      couple("elbow", "shoulder", 1.0, assumption="A2")), "'shoulder' is locked"),
+])
+def test_couple_faults(mjspec_untouched, reductions, why):
+    _fails(armature.reduce(arm, *reductions), why)
+
+
+def test_a_couple_ties_scalar_coordinates_only(mjspec_untouched):
+    def hung(p):
+        return [body("plate", mass=1.0, com=(0, 0, 0), inertia=I),
+                body("arm", mass=1.0, com=(1, 0, 0), inertia=I),
+                joint("hang", "free", parent="world", child="plate",
+                      point=(0, 0, 0)),
+                joint("swing", "hinge", parent="plate", child="arm",
+                      axis=(0, 0, 1), point=(0.5, 0, 0), range=(-1, 1))]
+    _fails(armature.reduce(hung, couple("swing", "hang:rz", 1.0,
+                                        assumption="A1")),
+           "'hang:rz' is a floating body's component")

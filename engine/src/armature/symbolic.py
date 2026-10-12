@@ -41,7 +41,10 @@ class Symbolic:
     COM. Per coordinate: `axes` (a Vector). Per joint: `anchors` (a Point on
     the axis; a floating body's point). `sites` includes
     each cable's ends as `<cable>:start` and `<cable>:end`. `gravity` is a
-    Vector. Every point's velocity in `world` is set.
+    Vector. Every point's velocity in `world` is set. `closures` holds what
+    each loop and couple keeps at zero: a loop's gap from its second site to
+    its first (a Vector), and a couple's q_a − home_a − ratio (q_b − home_b),
+    keyed by its follower.
     """
     description: object
     q: MappingProxyType
@@ -56,6 +59,7 @@ class Symbolic:
     anchors: MappingProxyType
     sites: MappingProxyType
     gravity: object
+    closures: MappingProxyType
 
     @property
     def coordinates(self):
@@ -120,6 +124,13 @@ def symbolic(mechanism, params):
         if point is not origin:
             point.set_vel(world, point.pos_from(origin).dt(world))
 
+    closures = {loop.name: sites[loop.a].pos_from(sites[loop.b])
+                for loop in d.loops}
+    homes = {j.name: sp.sympify(j.home) for j in d.joints}
+    for c in d.couples:
+        closures[c.a] = (q[c.a] - homes[c.a]
+                         - sp.sympify(c.ratio) * (q[c.b] - homes[c.b]))
+
     tensors = {}
     for b in d.bodies:
         i = [[sp.sympify(v) for v in row] for row in b.inertia]
@@ -129,7 +140,7 @@ def symbolic(mechanism, params):
     return Symbolic(d, _ro(q), _ro(symbols), world, origin, _ro(frames),
                     _ro(com), _ro({b.name: sp.sympify(b.mass) for b in d.bodies}),
                     _ro(tensors), _ro(axes), _ro(anchors), _ro(sites),
-                    _vector(d.gravity, world))
+                    _vector(d.gravity, world), _ro(closures))
 
 
 def _floating(j, b, q, locks, world, origin, axes):

@@ -13,10 +13,10 @@ import numpy as np
 import sympy as sp
 
 from .elements import (FREE_COMPONENTS, JOINT_KINDS, WORLD, Actuator, Body,
-                       Cable, DescriptionError, Gravity, Joint, Site)
-from .variants import Lock, Variant
+                       Cable, DescriptionError, Gravity, Joint, Loop, Site)
+from .variants import Couple, Lock, Variant
 
-ELEMENTS = (Body, Joint, Site, Cable, Actuator, Gravity)
+ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity)
 
 DEFAULT_GRAVITY = (0.0, 0.0, -9.81)
 UNIT_TOL = 1e-9        # |‖axis‖ − 1| allowed, so (0, √½, √½) written in floats passes
@@ -27,17 +27,19 @@ INERTIA_TOL = 1e-12    # relative to the trace, for symmetry and the triangle in
 class Description:
     """A validated mechanism description: its elements, by kind, in the order
     written. A variant's description also carries its name, its reductions,
-    and its locks keyed by coordinate."""
+    its locks keyed by coordinate, and its couples."""
     bodies: tuple
     joints: tuple
     sites: tuple
     cables: tuple
+    loops: tuple
     actuators: tuple
     gravity: tuple
     params_used: frozenset
     variant: str = None
     reductions: tuple = ()
     locks: MappingProxyType = MappingProxyType({})
+    couples: tuple = ()
 
 
 def coordinate_joints(description):
@@ -179,6 +181,9 @@ def describe(mechanism, params):
             problems.append(f"site {s.name!r}: body {s.body!r} is not declared")
     for c in by_kind[Cable]:
         problems += _check_cable(c, bodies)
+    sites = {s.name: s for s in by_kind[Site]}
+    for loop in by_kind[Loop]:
+        problems += _check_loop(loop, sites)
     joints = {j.name: j for j in by_kind[Joint]}
     for a in by_kind[Actuator]:
         problems += _check_actuator(a, joints)
@@ -188,16 +193,20 @@ def describe(mechanism, params):
     gravity = by_kind[Gravity][0].vector if by_kind[Gravity] else DEFAULT_GRAVITY
     return Description(bodies=by_kind[Body], joints=by_kind[Joint],
                        sites=by_kind[Site], cables=by_kind[Cable],
-                       actuators=by_kind[Actuator], gravity=gravity,
+                       loops=by_kind[Loop], actuators=by_kind[Actuator],
+                       gravity=gravity,
                        params_used=frozenset(p.used))
 
 
 def _reduce(description, variant):
     """`description` with the variant's reductions checked and recorded."""
-    problems, locks = [], {}
+    problems, locks, couples = [], {}, []
     held = coordinate_joints(description)
     for r in variant.reductions:
         owner = f"{r} in variant {variant.name!r}"
+        if isinstance(r, Couple):
+            problems += _check_couple(r, owner, held, couples)
+            couples.append(r)
         if isinstance(r, Lock):
             joint, _ = held.get(r.coordinate, (None, None))
             if joint is None:
@@ -218,11 +227,36 @@ def _reduce(description, variant):
             locks[r.coordinate] = r
         if r.assumption is None or r.assumption == "":
             problems.append(f"{owner}: carries no assumption number")
+    for c in couples:
+        for name in (c.a, c.b):
+            if name in locks:
+                problems.append(f"{c} in variant {variant.name!r}: {name!r} "
+                                f"is locked")
     if problems:
         raise DescriptionError(problems)
     return replace(description, variant=variant.name,
                    reductions=variant.reductions,
-                   locks=MappingProxyType(locks))
+                   locks=MappingProxyType(locks), couples=tuple(couples))
+
+
+def _check_couple(c, owner, held, earlier):
+    problems = []
+    for name in (c.a, c.b):
+        joint, component = held.get(name, (None, None))
+        if joint is None:
+            problems.append(f"{owner}: no coordinate named {name!r}")
+        elif component is not None:
+            problems.append(f"{owner}: {name!r} is a floating body's "
+                            f"component; a couple ties a hinge or a slide")
+    if c.a == c.b:
+        problems.append(f"{owner}: a coordinate cannot follow itself")
+    if any(e.a == c.a for e in earlier):
+        problems.append(f"{owner}: {c.a!r} already follows another "
+                        f"coordinate")
+    ratio = _num(c.ratio)
+    if ratio is None or ratio == 0:
+        problems.append(f"{owner}: the ratio must be a nonzero number")
+    return problems
 
 
 def _check_names(elements):
@@ -361,6 +395,20 @@ def _check_actuator(a, joints):
         if v is not None and not (v >= 0 if allow_zero else v > 0):
             problems.append(f"{owner}: {label} {v} must be "
                             f"{'non-negative' if allow_zero else 'positive'}")
+    return problems
+
+
+def _check_loop(loop, sites):
+    owner, problems = _label(loop), []
+    ends = []
+    for label, name in (("a", loop.a), ("b", loop.b)):
+        if name not in sites:
+            problems.append(f"{owner}: site {label} {name!r} is not declared")
+        else:
+            ends.append(sites[name].body)
+    if len(ends) == 2 and ends[0] == ends[1]:
+        problems.append(f"{owner}: both sites are on {ends[0]!r}; a loop "
+                        f"closes two different bodies")
     return problems
 
 

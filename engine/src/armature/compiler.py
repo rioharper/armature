@@ -3,7 +3,8 @@
 The compiler owns every MuJoCo setting a project might otherwise reach for:
 radians (MjSpec defaults to degrees), explicit inertia on every body (the
 default infers it from geoms), the timestep and the integrator, and each
-actuator's limits. A description never sets them.
+actuator's limits, and the solver parameters of every loop and couple. A
+description never sets them.
 
 Each body's MuJoCo frame sits at its COM with axes parallel to the base frame at
 home, so every local position is the description's base-frame position less
@@ -16,6 +17,11 @@ of its components rebuilds it as a chain of the scalar joints that remain:
 slides along the base axes, then hinges about the body's own axes through its
 point, with the locked turns applied first as the body's fixed orientation. A
 level platform is three slides.
+
+A loop compiles as a `connect` between its two sites, and a couple as a joint
+equality. Both are soft in MuJoCo, so the queries never lean on the solver's
+forces: `at()` closes them exactly, and `inverse` and `linearise` carry them
+as explicit constraint rows.
 """
 
 from types import MappingProxyType
@@ -23,12 +29,19 @@ from types import MappingProxyType
 import mujoco
 import numpy as np
 
+from .assembly import Closure, write_q
 from .description import coordinate_joints, describe, tree_order
 from .elements import FREE_COMPONENTS, WORLD
 from .rotations import AXES, floating_rotation, turn
 from .state import Placement, State, placement
 
 TIMESTEP = 1e-3
+CLOSURE_SOLREF = (2 * TIMESTEP, 1.0)  # the stiffest MuJoCo keeps stable, at
+                                      # critical damping
+CLOSURE_SOLIMP = (0.9999, 0.9999, 1e-3, 0.5, 2.0)  # MuJoCo's highest impedance
+    # at every violation: a loop's slack goes as (1 - d)/d, so a five-bar at
+    # rest holds 3e-9 m, where (0.99, 0.999) held 4e-7 m and left a
+    # parallelogram creeping for 20 s
 
 _KIND = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
@@ -57,6 +70,10 @@ class Compiled:
     compiled model leaves its locked coordinates out; `full` is the full
     description, compiled, which its release settles.
 
+    On a closed chain, `constraints` names each loop and couple, and the
+    coordinates split into `independent` ones, which `at()` takes, and
+    `dependent` ones, which it solves so every loop closes.
+
     `model` is the compiled `MjModel`, the escape hatch for code that needs raw
     arrays. Treat it as read-only: every query reads it, and none expects it to
     change. Its free joints' rates are MuJoCo's own (the COM's velocity, and
@@ -82,12 +99,18 @@ class Compiled:
                         for j in description.joints}
         self._source = source
         self._full = None
+        self.closure = (Closure(self) if description.loops
+                        or description.couples else None)
+        self.constraints = self.closure.names if self.closure else ()
+        self.dependent = self.closure.dependent if self.closure else ()
+        self.independent = tuple(n for n in self.coordinates
+                                 if n not in self.dependent)
 
     @property
     def full(self):
         """The full description, compiled; this model itself when it is not a
         variant."""
-        if not self.description.locks:
+        if not self.description.reductions:
             return self
         if self._full is None:
             mechanism, params = self._source
@@ -110,7 +133,13 @@ class Compiled:
         `qd`, keyed by dof. An omitted coordinate is at its home value, an
         omitted rate is zero. A floating body's value is a `Placement`, or a
         (position, rotation) pair. Raises on an unknown name or a coordinate
-        outside its joint's range."""
+        outside its joint's range.
+
+        On a closed chain, `q` and `qd` take the independent coordinates only.
+        The dependent ones are solved so that every loop and couple closes to
+        within 1e-10 m, on the branch reached from home, and their rates so
+        that the loops stay closed. A posture that cannot close raises,
+        naming the loop."""
         q, qd = dict(q or {}), dict(qd or {})
         for given, names, label in ((q, self.coordinates, "coordinate"),
                                     (qd, self.dofs, "dof")):
@@ -118,8 +147,15 @@ class Compiled:
             if unknown:
                 raise KeyError(f"no {label} named {unknown}; this mechanism "
                                f"has {list(names)}")
+            solved = sorted(set(given) & set(self.dependent))
+            if solved:
+                raise ValueError(
+                    f"{solved} closing the loops {list(self.constraints)} "
+                    f"{'is' if len(solved) == 1 else 'are'} solved, not given; "
+                    f"give the independent coordinates "
+                    f"{list(self.independent)}")
         values = {}
-        for name in self.coordinates:
+        for name in self.independent:
             joint, component = self._coordinate[name]
             if joint.kind == "free" and component is None:
                 values[name] = (placement(q[name], name) if name in q
@@ -133,7 +169,29 @@ class Compiled:
                                      f"its range ({lo}, {hi})")
             values[name] = value
         rates = {name: float(qd.get(name, 0.0)) for name in self.dofs}
+        if self.closure:
+            values, rates = self._close(values, rates)
         return State(self, MappingProxyType(values), MappingProxyType(rates))
+
+    def _close(self, values, rates):
+        """`values` and `rates` with the dependent coordinates and rates
+        solved."""
+        solved = self.closure.assemble(values)
+        for name, value in solved.items():
+            lo, hi = (float(v) for v in self._coordinate[name][0].range)
+            if not lo <= value <= hi:
+                raise ValueError(f"joint {name!r}: closing the loops puts it "
+                                 f"at {value}, outside its range ({lo}, {hi})")
+        values = {n: values[n] if n in values else solved[n]
+                  for n in self.coordinates}
+        data = mujoco.MjData(self.model)
+        write_q(self, data, values)
+        mujoco.mj_kinematics(self.model, data)
+        mujoco.mj_comPos(self.model, data)
+        _, jac = self.closure.rows(data)
+        given = np.array([rates[d] for d in self.dofs])
+        full = self.closure.complete(data, jac, given, 0.0)
+        return values, dict(zip(self.dofs, (float(v) for v in full)))
 
 
 def _spec(description):
@@ -199,6 +257,18 @@ def _spec(description):
         tendon.springlength = [0.0, rest]  # a deadband: no force while slack
         for name in ends:
             tendon.wrap_site(name)
+
+    for loop in description.loops:  # sites, so the sites themselves meet
+        eq = spec.add_equality(name=loop.name, type=mujoco.mjtEq.mjEQ_CONNECT,
+                               objtype=mujoco.mjtObj.mjOBJ_SITE,
+                               name1=loop.a, name2=loop.b)
+        eq.solref, eq.solimp = CLOSURE_SOLREF, CLOSURE_SOLIMP
+    for c in description.couples:  # q_a − home_a = ratio (q_b − home_b)
+        eq = spec.add_equality(type=mujoco.mjtEq.mjEQ_JOINT,
+                               objtype=mujoco.mjtObj.mjOBJ_JOINT,
+                               name1=c.a, name2=c.b)
+        eq.data[:5] = [0.0, float(c.ratio), 0.0, 0.0, 0.0]
+        eq.solref, eq.solimp = CLOSURE_SOLREF, CLOSURE_SOLIMP
 
     for a in description.actuators:
         if a.joint in locks:  # its joint is gone, and its rotor with it

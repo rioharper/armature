@@ -3,7 +3,7 @@
 Every number is written in the base frame at the home posture: a joint is an
 axis direction and a point on it (a free joint only the point), a COM, site or
 cable end is a position, and an inertia is a full tensor about the COM in base
-axes. The compiler derives the
+axes. A loop closes two sites that coincide at home. The compiler derives the
 body-local frames MuJoCo needs.
 
 Values are whatever the description's parameters were: floats when the truth
@@ -128,6 +128,13 @@ class Cable:
 
 
 @dataclass(frozen=True)
+class Loop:
+    name: str
+    a: str
+    b: str
+
+
+@dataclass(frozen=True)
 class Actuator:
     name: str
     joint: str
@@ -186,6 +193,19 @@ def cable(name, *, start, end, ea, rest_length):
     slack.
     """
     return Cable(name, start, end, ea, rest_length)
+
+
+def loop(name, a, b):
+    """Close the chain: sites `a` and `b`, on different bodies, coincide at
+    home and are held together at every posture, like a pin through both.
+
+    It compiles as a site-based `connect`, which enforces the two sites
+    themselves; a body-anchored one would take its second anchor from the
+    home posture and pass an assembly error silently. `Compiled.at` closes
+    every loop exactly, and the queries carry it as a constraint row whose
+    force, on `a`'s body, is reported under `name`.
+    """
+    return Loop(name, a, b)
 
 
 def actuator(name, *, joint, gear=1.0, rotor_inertia=0.0, torque_limit=None):

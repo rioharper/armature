@@ -22,6 +22,18 @@ class Lock:
 
 
 @dataclass(frozen=True)
+class Couple:
+    a: str
+    b: str
+    ratio: object
+    assumption: object
+
+    def __str__(self):
+        return (f"couple {self.a!r} to {self.b!r} at {self.ratio} "
+                f"(assumption {self.assumption})")
+
+
+@dataclass(frozen=True)
 class Variant:
     name: str
     mechanism: object
@@ -34,6 +46,15 @@ def lock(coordinate, at, *, assumption):
     return Lock(coordinate, at, assumption)
 
 
+def couple(a, b, ratio, *, assumption):
+    """Tie coordinate `a` to `b`: a moves `ratio` times as far from its home
+    as b does from its own, as through a belt or a gear pair. It compiles as
+    a joint equality, and the queries carry it as a constraint row: `a` is
+    then solved from `b`, and its force, the generalised force the coupling
+    applies on `a`, is reported under `a`'s name."""
+    return Couple(a, b, ratio, assumption)
+
+
 def reduce(mechanism, *reductions, name=None):
     """The variant of `mechanism` with `reductions` applied.
 
@@ -42,7 +63,7 @@ def reduce(mechanism, *reductions, name=None):
     reductions, written out.
     """
     for r in reductions:
-        if not isinstance(r, Lock):
+        if not isinstance(r, (Lock, Couple)):
             raise TypeError(f"{r!r} is not a reduction")
     if isinstance(mechanism, Variant):
         mechanism, reductions = (mechanism.mechanism,

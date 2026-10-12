@@ -12,6 +12,11 @@ seven positions and six rates. Its rates and the rows of every matrix are
 turned from MuJoCo's own (the COM's velocity, the angular velocity in body
 axes) to the dofs': the point's velocity and the angular velocity, both along
 base axes.
+
+On a closed chain, every query that solves for forces carries the loops and
+couples as explicit constraint rows, J_c, from MuJoCo's own Jacobians. None
+reads the solver's constraint forces, which answer for whatever slack its soft
+constraints hold: `mj_inverse` on a five-bar was off by 61 % and 78 %.
 """
 
 import math
@@ -24,7 +29,8 @@ import numpy as np
 from scipy.linalg import eigh
 from scipy.spatial.transform import Rotation
 
-from .rotations import floating_rotation
+from .assembly import RANK_TOL, tangent, write_q
+from .rotations import floating_rotation, turn
 
 EPS = 1e-6
 HOLD_STEPS = 500        # a settle runs at least this long, so "balanced here"
@@ -33,6 +39,9 @@ MAX_STEPS = 20000
 REST_SPEED = 1e-6       # rad/s or m/s
 REST_ACCEL = 1e-4       # rad/s² or m/s²
 ROTATION_TOL = 1e-9     # |RᵀR − I| allowed in a given rotation
+CLOSURE_BOUND = 1e-6    # m: the slack a settle's soft loops may hold
+DETERMINED_TOL = 1e-9   # an unknown's share of the null space below which it
+                        # is determined
 
 
 class Placement(NamedTuple):
@@ -67,7 +76,8 @@ class State:
     dof. Immutable; make one with `Compiled.at()`.
 
     A kinematic record's `residual` is the state's closure residual, how far
-    its loops are from closed (m); on an open chain it is zero.
+    its loops are from closed (m); on an open chain it is zero. On a closed
+    chain, `q` and `qd` include the dependent coordinates `at()` solved.
     """
     compiled: object
     q: MappingProxyType
@@ -77,19 +87,9 @@ class State:
         compiled = self.compiled
         model = compiled.model
         data = mujoco.MjData(model)
-        for name in compiled.coordinates:
-            adr = model.jnt_qposadr[model.joint(name).id]
-            value = self.q[name]
-            if isinstance(value, Placement):
-                data.qpos[adr:adr + 3] = (value.position + value.rotation
-                                          @ compiled._offset[name])
-                quat = np.zeros(4)
-                mujoco.mju_mat2Quat(quat, value.rotation.ravel())
-                data.qpos[adr + 3:adr + 7] = quat
-            else:
-                data.qpos[adr] = value
+        write_q(compiled, data, self.q)
         mujoco.mj_kinematics(model, data)
-        data.qvel[:] = _tangent(compiled, data)[0] @ self._rates()
+        data.qvel[:] = tangent(compiled, data)[0] @ self._rates()
         mujoco.mj_forward(model, data)
         return data
 
@@ -112,9 +112,9 @@ class State:
         sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
         linear, angular = np.zeros((3, model.nv)), np.zeros((3, model.nv))
         mujoco.mj_jacSite(model, data, linear, angular, sid)
-        tangent = _tangent(self.compiled, data)[0]
-        return Jacobian(site, self.compiled.dofs, _frozen(linear @ tangent),
-                        _frozen(angular @ tangent), _closure(model, data),
+        turned = tangent(self.compiled, data)[0]
+        return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
+                        _frozen(angular @ turned), _closure(model, data),
                         "mj_jacSite")
 
     def inverse(self, qdd=None, loads=None):
@@ -122,39 +122,61 @@ class State:
         (keyed by dof; omitted ones are zero) under `loads`.
 
         Solves [S J_cᵀ][τ; λ] = M q̈ + bias − passive − Σ J_siteᵀ f by least
-        squares, where S maps each actuator's torque to generalised forces. It
-        never calls `mj_inverse`, which answers for whatever constraint forces
-        its solver happens to hold. A nonzero residual is the generalised
-        force these actuators cannot supply: they cannot hold this state.
+        squares, where S maps each actuator's torque to generalised forces
+        and J_c carries each loop's and couple's rows. It never calls
+        `mj_inverse`, which answers for whatever constraint forces its solver
+        happens to hold. A nonzero residual is the generalised force these
+        actuators cannot supply: they cannot hold this state. Where the solve
+        has lost rank, as at a singularity, an unknown it cannot determine
+        reads NaN, never a least-norm number.
+
+        On a closed chain, `qdd` takes the independent dofs; the dependent
+        accelerations are solved so the loops stay closed.
         """
-        model, data = self.compiled.model, self._data()
+        return self._solve(self._data(), qdd, loads)[0]
+
+    def _solve(self, data, qdd, loads):
+        """The inverse record, and the unknowns [τ; λ], at `data`."""
+        compiled = self.compiled
+        model, closure = compiled.model, compiled.closure
         _refuse_constraints(model, data, "an inverse solve")
-        tangent, drift = _tangent(self.compiled, data, self._rates())
-        accel = tangent @ self._by_dof(qdd, "qdd") + drift
+        turned, drift = tangent(compiled, data, self._rates())
+        if closure:
+            wanted, jac = self._dependent_accel(data, qdd)
+        else:
+            wanted, jac = self._by_dof(qdd, "qdd"), np.zeros((0, model.nv))
+        accel = turned @ wanted + drift
         mass = np.zeros((model.nv, model.nv))
         mujoco.mj_fullM(model, data, mass)
-        need = tangent.T @ (mass @ accel + data.qfrc_bias - data.qfrc_passive
-                            - _load_force(model, data, loads))
-        moment = np.zeros((model.nu, model.nv))
-        if model.nu:
-            mujoco.mju_sparse2dense(moment, data.actuator_moment,
-                                    data.moment_rownnz, data.moment_rowadr,
-                                    data.moment_colind)
-        columns = tangent.T @ moment.T
-        if columns.shape[1]:
-            torque, _, rank, singular = np.linalg.lstsq(columns, need,
-                                                        rcond=None)
-            condition = (singular[0] / singular[-1]
-                         if rank == columns.shape[1] else math.inf)
-        else:
-            torque, rank, condition = np.zeros(0), 0, math.inf
-        residual = float(np.max(np.abs(columns @ torque - need), initial=0.0))
-        torques = dict(zip(self.compiled.actuators, (float(t) for t in torque)))
-        return Inverse(MappingProxyType(torques), MappingProxyType({}),
-                       MappingProxyType(dict(zip(self.compiled.dofs,
-                                                 (float(v) for v in need)))),
-                       int(rank), float(condition), residual,
-                       _over_limit(model, torques), INVERSE_METHOD)
+        need = turned.T @ (mass @ accel + data.qfrc_bias - data.qfrc_passive
+                           - _load_force(model, data, loads))
+        columns = turned.T @ np.hstack([_moment(model, data).T, jac.T])
+        unknowns, rank, condition, residual = _least_squares(columns, need)
+        torques = dict(zip(compiled.actuators,
+                           (float(t) for t in unknowns[:model.nu])))
+        forces = closure.forces(unknowns[model.nu:]) if closure else {}
+        record = Inverse(
+            MappingProxyType(torques), MappingProxyType(forces),
+            MappingProxyType(dict(zip(compiled.dofs,
+                                      (float(v) for v in need)))),
+            rank, columns.shape[1], condition, residual,
+            _over_limit(model, torques), INVERSE_METHOD)
+        return record, unknowns
+
+    def _dependent_accel(self, data, qdd):
+        """`qdd` over the dofs, the dependent accelerations solved so the
+        loops stay closed (J q̈ + J̇ q̇ = 0), and the rows' Jacobian."""
+        compiled = self.compiled
+        closure = compiled.closure
+        solved = sorted(set(dict(qdd or {})) & set(compiled.dependent))
+        if solved:
+            raise ValueError(f"qdd: {solved} {'is' if len(solved) == 1 else 'are'}"
+                             f" solved from the loops, not given")
+        drift = tangent(compiled, data, self._rates())[1]
+        _, jac = closure.rows(data)
+        wanted = closure.complete(data, jac, self._by_dof(qdd, "qdd"),
+                                  closure.drift(data) + jac @ drift)
+        return wanted, jac
 
     def settle(self, hold=None, loads=None, min_steps=HOLD_STEPS,
                max_steps=MAX_STEPS):
@@ -168,6 +190,10 @@ class State:
         beyond an actuator's limit is clamped there, as the motor would be, and
         named in `over_limit`. A settle that diverges or runs out of steps
         returns `stable = False` rather than raising.
+
+        On a closed chain the loops are MuJoCo's soft constraints, at the
+        solver parameters the compiler sets. `residual` is how far open they
+        are at rest, and a settle that leaves one open past 1e-6 m raises.
         """
         model, data = self.compiled.model, self._data()
         data.qvel[:] = 0.0
@@ -196,6 +222,15 @@ class State:
                 break
 
         mujoco.mj_forward(model, data)
+        closure = self.compiled.closure
+        if closure:
+            which, gap = closure.worst(closure.rows(data)[0])
+            if not gap <= CLOSURE_BOUND:
+                raise RuntimeError(
+                    f"the settle left {which} {gap:.3g} open, past the "
+                    f"{CLOSURE_BOUND:g} bound: the solver's soft constraint "
+                    f"is not holding it, so the rest pose is not the "
+                    f"mechanism's")
         rest = {name: self._read(data, name)
                 for name in self.compiled.coordinates}
         moved = {name: _moved(self.q[name], rest[name]) for name in rest}
@@ -216,19 +251,37 @@ class State:
         rotors; the rest is the reaction. A free joint carries nothing at
         equilibrium, and what a level platform's locked turns must carry
         shows up across its slides.
+
+        On a closed chain each loop's force comes from the explicit solve
+        `inverse` makes for the same `qdd` and `loads`, applied at its two
+        sites; the solver's own constraint forces are not read.
         """
         compiled = self.compiled
         model, data = compiled.model, self._data()
         _refuse_constraints(model, data, "a wrench")
+        loop_forces = []
+        if compiled.closure:
+            forces = self._solve(data, qdd, loads)[0].constraint
+            for loop in compiled.description.loops:
+                force = forces[loop.name]
+                if not np.all(np.isfinite(force)):
+                    raise ValueError(f"loop {loop.name!r}'s force is not "
+                                     f"determined here (the solve lost "
+                                     f"rank), so no wrench is")
+                loop_forces += [(loop.a, force), (loop.b, -force)]
+            data.efc_force[:] = 0.0  # the solver's, not the mechanism's
+            qdd = dict(zip(compiled.dofs, self._dependent_accel(data, qdd)[0]))
         bid = _named(model, mujoco.mjtObj.mjOBJ_BODY, body, model.nbody)
         if bid == 0 or model.body_jntnum[bid] == 0:
             raise ValueError(f"body {body!r} has no joint of its own to carry "
                              f"a wrench across (the world, or welded by a "
                              f"lock)")
         joint = compiled._joint_into[body]
-        tangent, drift = _tangent(compiled, data, self._rates())
-        data.qacc[:] = tangent @ self._by_dof(qdd, "qdd") + drift
-        for site, force in _loads(model, loads):
+        turned, drift = tangent(compiled, data, self._rates())
+        data.qacc[:] = turned @ self._by_dof(qdd, "qdd") + drift
+        named = [(_named(model, mujoco.mjtObj.mjOBJ_SITE, s, model.nsite), f)
+                 for s, f in loop_forces]
+        for site, force in _loads(model, loads) + named:
             on = model.site_bodyid[site]
             lever = data.site_xpos[site] - data.xipos[on]  # xfrc acts at the COM
             data.xfrc_applied[on, :3] += force
@@ -280,6 +333,7 @@ class State:
                 start[name] = float(locks[name].at)
             else:  # a floating body this variant rebuilt as a chain
                 start[name] = self._assembled(name)
+        start = {n: v for n, v in start.items() if n not in full.dependent}
         settled = full.at(q=start).settle(command, loads, min_steps, max_steps)
         moved = {}
         for name in locks:
@@ -304,12 +358,24 @@ class State:
         are turned to its dofs, which is exact at an equilibrium. The
         frequencies solve K v = ω² M v and are signed: a negative one is a
         divergent mode, the mechanism falling away from this state.
+
+        On a closed chain the modes are on the constraint manifold only. K is
+        the central difference of the reduced force Gᵀ(bias − passive − S τ)
+        in the independent dofs, the loops re-closed at each step, with each
+        actuator holding the torque `inverse` gives here; G is the dofs'
+        motion per unit independent motion, and M = Gᵀ M G. Projecting the
+        full K onto the manifold instead misses the geometric stiffness of
+        the closing loop, and the full eigenproblem adds the solver's
+        constraint stiffness as modes. Rows follow the independent dofs, and
+        the posture is taken at rest.
         """
         compiled = self.compiled
         model, data = compiled.model, self._data()
         _refuse_constraints(model, data, "a linearisation")
+        if compiled.closure:
+            return self._linearise_closed(eps)
         nv = model.nv
-        tangent = _tangent(compiled, data)[0]
+        turned = tangent(compiled, data)[0]
         mass = np.zeros((nv, nv))
         mujoco.mj_fullM(model, data, mass)  # before mjd_inverseFD, which
         sides = []                          # leaves qM at a perturbed posture
@@ -320,17 +386,65 @@ class State:
             mujoco.mjd_inverseFD(model, data, step, False, dfdq, None, None,
                                  None, None, None, None)
             sides.append(dfdq.T)  # MuJoCo returns it transposed
-        stiffness = tangent.T @ ((sides[0] + sides[1]) / 2) @ tangent
-        mass = tangent.T @ mass @ tangent
-        if nv:
-            lam = eigh((stiffness + stiffness.T) / 2, (mass + mass.T) / 2,
-                       eigvals_only=True)
-        else:
-            lam = np.zeros(0)
-        freq = np.sign(lam) * np.sqrt(np.abs(lam)) / (2 * np.pi)
+        stiffness = turned.T @ ((sides[0] + sides[1]) / 2) @ turned
+        mass = turned.T @ mass @ turned
         return Linearised(compiled.dofs, _frozen(stiffness), _frozen(mass),
-                          _frozen(freq), _closure(model, data),
-                          LINEARISE_METHOD, eps)
+                          _frozen(_frequencies(stiffness, mass)),
+                          _closure(model, data), LINEARISE_METHOD, eps)
+
+    def _linearise_closed(self, eps):
+        compiled = self.compiled
+        model, closure = compiled.model, compiled.closure
+        at_rest = State(compiled, self.q,
+                        MappingProxyType({d: 0.0 for d in compiled.dofs}))
+        data = at_rest._data()
+        hold = np.nan_to_num(at_rest._solve(data, None, None)[1][:model.nu])
+        independent = [compiled.dofs[i] for i in closure.independent_dofs]
+
+        def reduced(data):
+            turned = tangent(compiled, data)[0]
+            _, jac = closure.rows(data)
+            basis = closure.basis(jac @ turned)
+            force = turned.T @ (data.qfrc_bias - data.qfrc_passive
+                                - _moment(model, data).T @ hold)
+            return basis.T @ force, basis, turned
+
+        _, basis, turned = reduced(data)
+        mass = np.zeros((model.nv, model.nv))
+        mujoco.mj_fullM(model, data, mass)
+        mass = basis.T @ turned.T @ mass @ turned @ basis
+        stiffness = np.zeros((len(independent),) * 2)
+        worst = 0.0
+        for i, dof in enumerate(independent):
+            sides = []
+            for step in (eps, -eps):
+                moved = at_rest._data()
+                write_q(compiled, moved, self._nudged(dof, step))
+                gap = closure.close(moved)
+                worst = max(worst, float(np.max(np.abs(gap), initial=0.0)))
+                mujoco.mj_forward(model, moved)
+                sides.append(reduced(moved)[0])
+            stiffness[:, i] = (sides[0] - sides[1]) / (2 * eps)
+        return Linearised(tuple(independent), _frozen(stiffness),
+                          _frozen(mass),
+                          _frozen(_frequencies(stiffness, mass)),
+                          max(_closure(model, data), worst),
+                          LINEARISE_CLOSED_METHOD, eps)
+
+    def _nudged(self, dof, step):
+        """The coordinate independent `dof` belongs to, moved `step` along
+        it: a hinge or slide by `step`, a floating body's point along a base
+        axis, or its orientation turned about one."""
+        if dof in self.compiled.coordinates:
+            return {dof: self.q[dof] + step}
+        name, component = dof.rsplit(":", 1)
+        value = self.q[name]
+        i = ("x", "y", "z", "rx", "ry", "rz").index(component)
+        if i < 3:
+            return {name: Placement(value.position + step * np.eye(3)[i],
+                                    value.rotation)}
+        return {name: Placement(value.position,
+                                turn(np.eye(3)[i - 3], step) @ value.rotation)}
 
     def _by_dof(self, values, label):
         """`values`, keyed by dof, as a vector over the dofs."""
@@ -376,6 +490,10 @@ RELEASE_METHOD = ("the full description settled from the locked values, "
                   "locked coordinates uncommanded")
 LINEARISE_METHOD = ("K: mjd_inverseFD at qacc = 0, central (mean of +eps and "
                     "-eps); M: mj_fullM; free joints turned to their dofs")
+LINEARISE_CLOSED_METHOD = (
+    "on the constraint manifold: K by central differences of the reduced "
+    "force G^T (bias - passive - S tau) in the independent dofs, loops "
+    "re-closed by Newton at each step; M = G^T M G from mj_fullM")
 
 
 @dataclass(frozen=True, eq=False)
@@ -406,17 +524,23 @@ class Inverse:
     """The inverse-dynamics record.
 
     `torque` is each actuator's motor torque (N·m; N on a slide), and
-    `constraint` each constraint's force. `generalised` is the generalised
-    force the solve had to supply, keyed by dof. `rank` and `condition`
-    are the solve's; `condition` is infinite when the actuators are
-    rank-deficient or there are none. `residual` is the largest generalised
-    force left unsupplied, and `over_limit` names the actuators whose torque
-    exceeds their limit.
+    `constraint` each loop's and couple's force: a loop's is the force on
+    its first site's body, a 3-vector in the base frame (a planar loop's
+    has no component along its plane's normal); a couple's, keyed by its
+    follower, the generalised force it applies there. `generalised` is the
+    generalised force the solve had to supply, keyed by dof.
+
+    `rank` is the solve's, out of `unknowns` (the torques and the rows'
+    multipliers); a rank below `unknowns` leaves some of them undetermined,
+    and those read NaN. `condition` is infinite then, or when there are no
+    unknowns. `residual` is the largest generalised force left unsupplied,
+    and `over_limit` names the actuators whose torque exceeds their limit.
     """
     torque: MappingProxyType
     constraint: MappingProxyType
     generalised: MappingProxyType
     rank: int
+    unknowns: int
     condition: float
     residual: float
     over_limit: tuple
@@ -482,7 +606,8 @@ class Released:
 @dataclass(frozen=True, eq=False)
 class Linearised:
     """The linearisation record. Rows and columns of `stiffness` (N/m, N·m/rad)
-    and `mass` follow `dofs`; `frequencies` are in Hz, signed and ascending.
+    and `mass` follow `dofs`, which on a closed chain are its independent
+    dofs only; `frequencies` are in Hz, signed and ascending.
     `method` and `eps`, the finite-difference step, say how it was computed,
     since a finite-difference stiffness is only as good as its step."""
     dofs: tuple
@@ -499,30 +624,40 @@ class Linearised:
                 f"{self.method}, eps = {self.eps:g}")
 
 
-def _tangent(compiled, data, rates=None):
-    """T, with MuJoCo's rates q̇ = T ẋ for dof rates ẋ, and the drift Ṫẋ at
-    `rates` (zero when None), so q̈ = T ẍ + Ṫẋ. Both are trivial except at a
-    free joint, whose MuJoCo rates are the COM's velocity and the angular
-    velocity in body axes, where the dofs' are the point's velocity and the
-    angular velocity in base axes. Reads the kinematics already in `data`."""
-    model = compiled.model
-    tangent, drift = np.eye(model.nv), np.zeros(model.nv)
-    for jid in range(model.njnt):
-        if model.jnt_type[jid] != mujoco.mjtJoint.mjJNT_FREE:
-            continue
-        d = model.jnt_dofadr[jid]
-        rotation = data.xmat[model.jnt_bodyid[jid]].reshape(3, 3)
-        lever = rotation @ compiled._offset[model.joint(jid).name]  # point→COM
-        tangent[d:d + 3, d + 3:d + 6] = -_skew(lever)  # v_COM = v + ω × lever
-        tangent[d + 3:d + 6, d + 3:d + 6] = rotation.T
-        if rates is not None:
-            omega = rates[d + 3:d + 6]
-            drift[d:d + 3] = np.cross(omega, np.cross(omega, lever))
-    return tangent, drift
+def _least_squares(columns, need):
+    """Solve columns · x = need by least squares through the SVD: x, the
+    rank at `RANK_TOL`, the condition, and the residual. An unknown with a
+    share in the null space is not determined and reads NaN."""
+    n = columns.shape[1]
+    if not n:
+        return (np.zeros(0), 0, math.inf,
+                float(np.max(np.abs(need), initial=0.0)))
+    u, s, vt = np.linalg.svd(columns)
+    rank = int(np.sum(s > RANK_TOL * s[0])) if s[0] > 0 else 0
+    x = vt[:rank].T @ ((u[:, :rank].T @ need) / s[:rank])
+    residual = float(np.max(np.abs(columns @ x - need), initial=0.0))
+    x[np.linalg.norm(vt[rank:], axis=0) > DETERMINED_TOL] = np.nan
+    condition = s[0] / s[n - 1] if rank == n else math.inf
+    return x, rank, float(condition), residual
 
 
-def _skew(v):
-    return np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+def _moment(model, data):
+    """The actuators' moment arms, actuators × MuJoCo's rates."""
+    moment = np.zeros((model.nu, model.nv))
+    if model.nu:
+        mujoco.mju_sparse2dense(moment, data.actuator_moment,
+                                data.moment_rownnz, data.moment_rowadr,
+                                data.moment_colind)
+    return moment
+
+
+def _frequencies(stiffness, mass):
+    """The signed mode frequencies (Hz) of K v = ω² M v, ascending."""
+    if not len(stiffness):
+        return np.zeros(0)
+    lam = eigh((stiffness + stiffness.T) / 2, (mass + mass.T) / 2,
+               eigvals_only=True)
+    return np.sign(lam) * np.sqrt(np.abs(lam)) / (2 * np.pi)
 
 
 def _moved(start, rest):
@@ -591,7 +726,8 @@ def _over_limit(model, torques):
     out = []
     for name, torque in torques.items():
         a = model.actuator(name)
-        if a.forcelimited[0] and not (a.forcerange[0] <= torque <= a.forcerange[1]):
+        if (a.forcelimited[0] and math.isfinite(torque)
+                and not a.forcerange[0] <= torque <= a.forcerange[1]):
             out.append(name)
     return tuple(out)
 
@@ -604,10 +740,14 @@ def _closure(model, data):
 
 
 def _refuse_constraints(model, data, what):
-    if data.nefc:
-        rows = sorted({_constraint(model, data, i) for i in range(data.nefc)})
+    """Raise on any active row but a loop's or a couple's, which the queries
+    carry explicitly."""
+    other = np.flatnonzero(data.efc_type[:data.nefc]
+                           != mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+    if len(other):
+        rows = sorted({_constraint(model, data, i) for i in other})
         raise RuntimeError(
-            f"{data.nefc} constraint row(s) active at this state "
+            f"{len(other)} constraint row(s) active at this state "
             f"({', '.join(rows)}); {what} here would read the solver's "
             f"constraint forces, not the mechanism's")
 
