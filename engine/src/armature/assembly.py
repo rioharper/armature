@@ -14,6 +14,12 @@ A closed chain's coordinates split into independent ones, which `at()` takes,
 and dependent ones, solved from them. The dependent ones are chosen once, at
 home: hinges and slides in a loop or a couple, unactuated before actuated, a
 couple's follower first, until their columns carry the rows' rank.
+
+Only the joints around a constraint can open or close it: a joint both of a
+loop's sites hang from moves the loop rigidly, and a joint off its path does
+not move it at all. So assembly walks from home only along the independent
+coordinates around a constraint, and sets the rest at their targets from the
+first step, as it does a floating body: a wheel turned 90 rad adds no steps.
 """
 
 import math
@@ -33,6 +39,16 @@ NEWTON_STEPS = 60
 CONTINUATION_STEP = 0.05  # rad or m of an independent coordinate per step,
                           # so a posture is reached along the branch from home
 PARALLEL_TOL = 1e-9
+
+
+class ClosureError(ValueError):
+    """A posture `at()` cannot close. `constraint` names what refused it:
+    the loop, couple or rigid cable that stays open (`"loop 'pin'"`), or the
+    joint that closing would put outside its range (`"joint 'B'"`)."""
+
+    def __init__(self, message, constraint):
+        super().__init__(message)
+        self.constraint = constraint
 
 
 def write_q(compiled, data, values):
@@ -97,7 +113,10 @@ class Closure:
         self.model = model
         sites = {s.name: s for s in description.sites}
         self.blocks = []  # (name, kind, size, detail)
+        around = set()  # the joints that can open or close a constraint
         for loop in description.loops:
+            around.update(j.name for j in _around(
+                description, sites[loop.a].body, sites[loop.b].body))
             a, b = (mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, n)
                     for n in (loop.a, loop.b))
             directions = _directions(compiled, sites[loop.a].body,
@@ -105,6 +124,7 @@ class Closure:
             self.blocks.append((loop.name, "loop", len(directions),
                                 (a, b, directions)))
         for c in description.couples:
+            around.update((c.a, c.b))
             ja, jb = model.joint(c.a).id, model.joint(c.b).id
             self.blocks.append((c.a, "couple", 1, (
                 model.jnt_qposadr[ja], model.jnt_qposadr[jb],
@@ -112,11 +132,14 @@ class Closure:
                 float(model.qpos0[model.jnt_qposadr[ja]]),
                 float(model.qpos0[model.jnt_qposadr[jb]]), float(c.ratio))))
         for c in rigid_cables(description):
+            around.update(j.name for j in _around(description, c.start[0],
+                                                  c.end[0]))
             ends = (mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE,
                                       f"{c.name}:{label}")
                     for label in ("start", "end"))
             self.blocks.append((c.name, "cable", 1,
                                 (*ends, float(c.rest_length))))
+        self.around = frozenset(around)
         self.names = tuple(name for name, *_ in self.blocks)
         self.size = sum(size for _, _, size, _ in self.blocks)
         self._choose_dependent()
@@ -234,7 +257,8 @@ class Closure:
         compiled, model = self.compiled, self.model
         data = mujoco.MjData(model)  # qpos0 is home
         start = {n: compiled.home(n) for n in values}
-        scalar = [n for n in values if not isinstance(values[n], tuple)]
+        scalar = [n for n in values if not isinstance(values[n], tuple)
+                  and compiled._coordinate[n][0].name in self.around]
         span = max((abs(values[n] - start[n]) for n in scalar), default=0.0)
         steps = max(1, math.ceil(span / CONTINUATION_STEP))
         adr = [model.jnt_qposadr[model.joint(n).id] for n in scalar]
@@ -255,11 +279,11 @@ class Closure:
             gap = self.close(data)
             if not np.max(np.abs(gap), initial=0.0) <= CLOSE_TOL:
                 which, size = self.worst(gap)
-                raise ValueError(
+                raise ClosureError(
                     f"{which} cannot close at this posture: it is still "
                     f"{size:.3g} {'' if which.startswith('couple') else 'm'} "
                     f"apart after the solve (from home, "
-                    f"{k - 1} of {steps} steps along the way closed)")
+                    f"{k - 1} of {steps} steps along the way closed)", which)
         return {n: float(data.qpos[a])
                 for n, a in zip(self.dependent, self._dep_adr)}
 
@@ -331,6 +355,23 @@ def _directions(compiled, body_a, body_b):
     directions when every moving joint around it turns about one direction
     and slides across it, all three base axes otherwise."""
     description = compiled.description
+    moving = [j for j in _around(description, body_a, body_b)
+              if j.name not in description.locks]
+    hinges = [np.array(j.axis, dtype=float) for j in moving
+              if j.kind == "hinge"]
+    if any(j.kind == "free" for j in moving) or not hinges:
+        return np.eye(3)
+    normal = hinges[0] / np.linalg.norm(hinges[0])
+    planar = all(np.linalg.norm(np.cross(h, normal)) < PARALLEL_TOL
+                 for h in hinges) and all(
+        abs(np.dot(np.array(j.axis, dtype=float), normal)) < PARALLEL_TOL
+        for j in moving if j.kind == "slide")
+    return null_space(normal[None, :]).T if planar else np.eye(3)
+
+
+def _around(description, body_a, body_b):
+    """The joints on the path from `body_a` to `body_b` (either may be the
+    world): those on one's way to the world and not on the other's."""
     joint_into = {j.child: j for j in description.joints}
 
     def path(body):
@@ -342,15 +383,4 @@ def _directions(compiled, body_a, body_b):
         return out
 
     a, b = path(body_a), path(body_b)
-    around = [j for j in a if j not in b] + [j for j in b if j not in a]
-    moving = [j for j in around if j.name not in description.locks]
-    hinges = [np.array(j.axis, dtype=float) for j in moving
-              if j.kind == "hinge"]
-    if any(j.kind == "free" for j in moving) or not hinges:
-        return np.eye(3)
-    normal = hinges[0] / np.linalg.norm(hinges[0])
-    planar = all(np.linalg.norm(np.cross(h, normal)) < PARALLEL_TOL
-                 for h in hinges) and all(
-        abs(np.dot(np.array(j.axis, dtype=float), normal)) < PARALLEL_TOL
-        for j in moving if j.kind == "slide")
-    return null_space(normal[None, :]).T if planar else np.eye(3)
+    return [j for j in a if j not in b] + [j for j in b if j not in a]

@@ -40,6 +40,8 @@ MOVE_TOL = 1e-2   # a root that moves more than this, relative, between the
 RESOLVED = 0.5    # |s|·dt: a root faster than this is beyond what the
                   # timestep resolves, and is the integrator's or the noslip
                   # solver's
+CLEARANCE_RANGE = 100.0  # m: the farthest apart a clearance is measured;
+    # MuJoCo reads anything beyond its search distance as that distance
 
 
 class ContactForce(NamedTuple):
@@ -180,6 +182,16 @@ def _reach(compiled, body):
         return np.zeros((0, 3))
     _, s, vt = np.linalg.svd(np.array(slides))
     return vt[:int(np.sum(s > 1e-9 * s[0]))]
+
+
+def clearance(model, data, name):
+    """How far apart contact `name`'s two shapes are (m), negative where
+    they interpenetrate, from MuJoCo's own geometry (`mj_geomDistance`).
+    `data`'s kinematics must be current. A gap beyond `CLEARANCE_RANGE`
+    reads as that range."""
+    return float(mujoco.mj_geomDistance(
+        model, data, model.geom(f"{name}:against").id, model.geom(name).id,
+        CLEARANCE_RANGE, None))
 
 
 def _into(model, data, i, name):

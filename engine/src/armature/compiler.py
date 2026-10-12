@@ -41,7 +41,7 @@ from types import MappingProxyType
 import mujoco
 import numpy as np
 
-from .assembly import Closure, write_q
+from .assembly import Closure, ClosureError, write_q
 from .contact import TOUCH
 from .description import (compliant_contacts, coordinate_joints, describe,
                           rigid_cables, tree_order)
@@ -206,8 +206,9 @@ class Compiled:
         On a closed chain, `q` and `qd` take the independent coordinates only.
         The dependent ones are solved so that every loop and couple closes to
         within 1e-10 m, on the branch reached from home, and their rates so
-        that the loops stay closed. A posture that cannot close raises,
-        naming the loop."""
+        that the loops stay closed. A posture that cannot close raises a
+        `ClosureError` naming the loop, or the joint closing would put
+        outside its range."""
         q, qd = dict(q or {}), dict(qd or {})
         for given, names, label in ((q, self.coordinates, "coordinate"),
                                     (qd, self.dofs, "dof")):
@@ -248,8 +249,9 @@ class Compiled:
         for name, value in solved.items():
             lo, hi = (float(v) for v in self._coordinate[name][0].range)
             if not lo <= value <= hi:
-                raise ValueError(f"joint {name!r}: closing the loops puts it "
-                                 f"at {value}, outside its range ({lo}, {hi})")
+                raise ClosureError(f"joint {name!r}: closing the loops puts "
+                                   f"it at {value}, outside its range ({lo}, "
+                                   f"{hi})", f"joint {name!r}")
         values = {n: values[n] if n in values else solved[n]
                   for n in self.coordinates}
         data = mujoco.MjData(self.model)

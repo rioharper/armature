@@ -15,7 +15,8 @@ import pytest
 from scipy.optimize import brentq
 
 import armature
-from armature import actuator, body, cable, gravity, joint, lock, rigid, site
+from armature import (actuator, body, cable, couple, gravity, joint, lock, rigid,
+                      site)
 
 PARAMS = {"m": 0.5, "k": 1000.0, "drop": 1.0, "rest": 0.99}
 G = 9.81
@@ -199,6 +200,54 @@ def test_a_rigid_cable_four_bar_matches_minimal_coordinates(q1, qd1, qdd1):
     inv = s.inverse(qdd={"shoulder": qdd1})
     assert inv.constraint["tie"] == pytest.approx(tension, rel=1e-8)
     assert inv.torque["motor"] == pytest.approx(torque, rel=1e-8)
+
+
+def open_branch(q1, steps=40):
+    """The tied elbow at shoulder angle `q1` on home's branch, walked out
+    from home in 40-digit mpmath, each root seeding the next."""
+    from mpmath import mp
+    mp.dps = 40
+    l1, l2 = mp.mpf(ARM["l1"]), mp.mpf(ARM["l2"])
+    q2 = mp.mpf(0)
+    for k in range(1, steps + 1):
+        x1 = mp.mpf(q1) * k / steps
+        q2 = mp.findroot(lambda x2: mp.hypot(
+            l1 * mp.cos(x1) + l2 * mp.cos(x1 + x2) - ANCHOR[0],
+            l1 * mp.sin(x1) + l2 * mp.sin(x1 + x2) - ANCHOR[1]) - TIE, q2)
+    return float(q2)
+
+
+def test_the_tie_is_walked_from_home_on_its_branch():
+    """At a shoulder of −1 rad, a solve that jumps there in one step lands
+    the elbow on the crossed branch, at 2.91 rad; walked from home along the
+    joints around the tie, it stays on the open one."""
+    m = armature.compile(armature.reduce(tied_arm, rigid("tie", assumption="A1")),
+                         {})
+    assert m.at(q={"shoulder": -1.0}).q["elbow"] == pytest.approx(
+        open_branch(-1.0), abs=1e-10)
+
+
+def pulled_arm(p):
+    """The tied arm driven through a belt from a pulley on the world: the
+    pulley's turn is the coordinate, and the shoulder follows it."""
+    return [e for e in tied_arm(p) if getattr(e, "name", None) != "motor"] + [
+        body("pulley", mass=0.1, com=(0, -0.2, 0), inertia=np.diag([1e-4] * 3)),
+        joint("P", "hinge", parent="world", child="pulley", axis=(0, 0, 1),
+              point=(0, -0.2, 0), range=(-3, 3)),
+        actuator("motor", joint="P")]
+
+
+def test_a_couple_walks_its_leader_from_home():
+    """The pulley is outside the tie, but it drives the shoulder through the
+    couple, so it is walked from home too, and the elbow stays on the open
+    branch."""
+    belted = armature.reduce(pulled_arm, rigid("tie", assumption="A1"),
+                             couple("shoulder", "P", 1.0, assumption="A2"))
+    m = armature.compile(belted, {})
+    assert m.independent == ("P",)
+    s = m.at(q={"P": -1.2})
+    assert s.q["shoulder"] == pytest.approx(-1.2, abs=1e-12)
+    assert s.q["elbow"] == pytest.approx(open_branch(-1.2), abs=1e-10)
 
 
 # --- a compliant joint, held rigid ---------------------------------------------------

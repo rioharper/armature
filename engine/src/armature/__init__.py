@@ -24,12 +24,18 @@ not its variant's.
 
 `m.model` is the compiled `MjModel`, for code that needs raw arrays.
 
+`armature.sample(m, n, seed)` draws states uniformly over the independent
+coordinates, loops closed and floating bodies inside a `pose_envelope`;
+`sample_states` adds rates and accelerations within given limits. Each
+result prints n and the seed.
+
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
 PARAMS, directory, states)` writes the Milestone 0 review artifact: the
 frames table and skeleton renders.
 """
 
+from .assembly import ClosureError
 from .coarse import box, compose, cylinder, point, rod, sphere
 from .compiler import Compiled, compile
 from .contact import ContactForce
@@ -37,6 +43,8 @@ from .description import Description, describe
 from .elements import (DescriptionError, actuator, body, cable, contact,
                        gravity, joint, loop, shape, site)
 from .review import Frames, Review, frames, render, review
+from .sampler import (PoseEnvelope, Rejected, Samples, clearance,
+                      pose_envelope, sample, sample_states)
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
@@ -53,3 +61,5 @@ __all__ += ["Frames", "Review", "box", "compose", "cylinder", "frames", "point",
 __all__ += ["AccountingError", "account", "lump", "massless", "planar",
             "rigid"]
 __all__ += ["ContactForce", "contact", "shape"]
+__all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
+            "pose_envelope", "sample", "sample_states"]
