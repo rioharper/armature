@@ -2,20 +2,30 @@
 queried on explicit, named states.
 
     def mechanism(p):
-        return [body(...), joint(...), site(...), cable(...)]
+        return [body(...), joint(...), site(...), actuator(...)]
 
     m = armature.compile(mechanism, PARAMS)
-    s = m.at(q={"z": 0.01})
-    s.linearise()
+    s = m.at(q={"elbow": 0.4})
+    s.inverse(), s.settle(hold), s.linearise()
+
+    rigid = armature.reduce(mechanism, lock("elbow", 0.0, assumption="A3"))
+    armature.compile(rigid, PARAMS).at().release(hold)
+    armature.symbolic(rigid, PARAMS)
 
 `m.model` is the compiled `MjModel`, for code that needs raw arrays.
 """
 
 from .compiler import Compiled, compile
 from .description import Description, describe
-from .elements import (DescriptionError, body, cable, gravity, joint, site)
-from .state import Linearised, State
+from .elements import (DescriptionError, actuator, body, cable, gravity, joint,
+                       site)
+from .state import (Inverse, Jacobian, Linearised, Pose, Released, Settled,
+                    State, Wrench)
+from .symbolic import Symbolic, symbolic
+from .variants import Variant, lock, reduce
 
-__all__ = ["Compiled", "Description", "DescriptionError", "Linearised",
-           "State", "body", "cable", "compile", "describe", "gravity",
-           "joint", "site"]
+__all__ = ["Compiled", "Description", "DescriptionError", "Inverse",
+           "Jacobian", "Linearised", "Pose", "Released", "Settled", "State",
+           "Symbolic", "Variant", "Wrench", "actuator", "body", "cable",
+           "compile", "describe", "gravity", "joint", "lock", "reduce",
+           "site", "symbolic"]

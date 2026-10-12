@@ -6,13 +6,17 @@ names an MJCF element rather than the description's. Every problem found is
 reported at once, each naming the element at fault.
 """
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, replace
+from types import MappingProxyType
 
 import numpy as np
 import sympy as sp
 
-from .elements import (JOINT_KINDS, WORLD, Body, Cable, DescriptionError,
-                       Gravity, Joint, Site)
+from .elements import (JOINT_KINDS, WORLD, Actuator, Body, Cable,
+                       DescriptionError, Gravity, Joint, Site)
+from .variants import Lock, Variant
+
+ELEMENTS = (Body, Joint, Site, Cable, Actuator, Gravity)
 
 DEFAULT_GRAVITY = (0.0, 0.0, -9.81)
 UNIT_TOL = 1e-9        # |‖axis‖ − 1| allowed, so (0, √½, √½) written in floats passes
@@ -22,13 +26,34 @@ INERTIA_TOL = 1e-12    # relative to the trace, for symmetry and the triangle in
 @dataclass(frozen=True)
 class Description:
     """A validated mechanism description: its elements, by kind, in the order
-    written."""
+    written. A variant's description also carries its name, its reductions,
+    and its locks keyed by coordinate."""
     bodies: tuple
     joints: tuple
     sites: tuple
     cables: tuple
+    actuators: tuple
     gravity: tuple
     params_used: frozenset
+    variant: str = None
+    reductions: tuple = ()
+    locks: MappingProxyType = MappingProxyType({})
+
+
+def tree_order(description):
+    """The bodies parent before child, depth first, siblings in the order
+    written: the order MuJoCo numbers them, and so the order of the
+    coordinates."""
+    parent = {j.child: j.parent for j in description.joints}
+    children = {}
+    for b in description.bodies:
+        children.setdefault(parent[b.name], []).append(b)
+    order, stack = [], list(reversed(children.get(WORLD, [])))
+    while stack:
+        b = stack.pop()
+        order.append(b)
+        stack.extend(reversed(children.get(b.name, [])))
+    return order
 
 
 class _Params:
@@ -92,8 +117,12 @@ def _array(values):
 def describe(mechanism, params):
     """Call `mechanism(p)` on `params` and validate what it returns.
 
-    Raises `DescriptionError` listing every problem, each naming its element.
+    `mechanism` may be a variant, whose reductions are then checked and
+    recorded. Raises `DescriptionError` listing every problem, each naming its
+    element.
     """
+    if isinstance(mechanism, Variant):
+        return _reduce(describe(mechanism.mechanism, params), mechanism)
     p = _Params(params)
     try:
         elements = list(mechanism(p))
@@ -111,7 +140,7 @@ def describe(mechanism, params):
 
     problems = []
     for element in elements:
-        if not isinstance(element, (Body, Joint, Site, Cable, Gravity)):
+        if not isinstance(element, ELEMENTS):
             problems.append(f"{element!r} is not a mechanism element")
             continue
         for f in fields(element):
@@ -119,11 +148,10 @@ def describe(mechanism, params):
                                & p.undefined):
                 problems.append(f"{_label(element)}: {f.name} uses parameter "
                                 f"{name!r}, which is not defined")
-    elements = [e for e in elements
-                if isinstance(e, (Body, Joint, Site, Cable, Gravity))]
+    elements = [e for e in elements if isinstance(e, ELEMENTS)]
 
     by_kind = {kind: tuple(e for e in elements if isinstance(e, kind))
-               for kind in (Body, Joint, Site, Cable, Gravity)}
+               for kind in ELEMENTS}
     problems += _check_names(elements)
     if len(by_kind[Gravity]) > 1:
         problems.append(f"gravity is declared {len(by_kind[Gravity])} times")
@@ -138,12 +166,48 @@ def describe(mechanism, params):
             problems.append(f"site {s.name!r}: body {s.body!r} is not declared")
     for c in by_kind[Cable]:
         problems += _check_cable(c, bodies)
+    joints = {j.name for j in by_kind[Joint]}
+    for a in by_kind[Actuator]:
+        problems += _check_actuator(a, joints)
     if problems:
         raise DescriptionError(problems)
 
     gravity = by_kind[Gravity][0].vector if by_kind[Gravity] else DEFAULT_GRAVITY
-    return Description(by_kind[Body], by_kind[Joint], by_kind[Site],
-                       by_kind[Cable], gravity, frozenset(p.used))
+    return Description(bodies=by_kind[Body], joints=by_kind[Joint],
+                       sites=by_kind[Site], cables=by_kind[Cable],
+                       actuators=by_kind[Actuator], gravity=gravity,
+                       params_used=frozenset(p.used))
+
+
+def _reduce(description, variant):
+    """`description` with the variant's reductions checked and recorded."""
+    problems, locks = [], {}
+    joints = {j.name: j for j in description.joints}
+    for r in variant.reductions:
+        owner = f"{r} in variant {variant.name!r}"
+        if isinstance(r, Lock):
+            joint = joints.get(r.coordinate)
+            if joint is None:
+                problems.append(f"{owner}: no coordinate named "
+                                f"{r.coordinate!r}; the description has "
+                                f"{sorted(joints)}")
+                continue
+            if r.coordinate in locks:
+                problems.append(f"{owner}: {r.coordinate!r} is already locked")
+            lo, hi, at = (_num(v) for v in (*joint.range, r.at))
+            if at is None:
+                problems.append(f"{owner}: the locked value must be a number")
+            elif None not in (lo, hi, at) and not lo <= at <= hi:
+                problems.append(f"{owner}: {at} lies outside the joint's "
+                                f"range ({lo}, {hi})")
+            locks[r.coordinate] = r
+        if r.assumption is None or r.assumption == "":
+            problems.append(f"{owner}: carries no assumption number")
+    if problems:
+        raise DescriptionError(problems)
+    return replace(description, variant=variant.name,
+                   reductions=variant.reductions,
+                   locks=MappingProxyType(locks))
 
 
 def _check_names(elements):
@@ -239,6 +303,20 @@ def _check_tree(bodies, joints):
         if at != WORLD:
             problems.append(f"body {name!r}: unreachable from the world (its "
                             f"chain of parents ends at {at!r})")
+    return problems
+
+
+def _check_actuator(a, joints):
+    owner, problems = _label(a), []
+    if a.joint not in joints:
+        problems.append(f"{owner}: joint {a.joint!r} is not declared")
+    for label, value, allow_zero in (("gear", a.gear, False),
+                                     ("rotor_inertia", a.rotor_inertia, True),
+                                     ("torque_limit", a.torque_limit, False)):
+        v = _num(value) if value is not None else None
+        if v is not None and not (v >= 0 if allow_zero else v > 0):
+            problems.append(f"{owner}: {label} {v} must be "
+                            f"{'non-negative' if allow_zero else 'positive'}")
     return problems
 
 

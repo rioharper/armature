@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import armature
-from armature import DescriptionError, body, cable, joint, site
+from armature import DescriptionError, actuator, body, cable, joint, site
 
 I = np.eye(3) * 1e-3
 
@@ -140,6 +140,12 @@ def test_every_problem_is_reported_at_once(mjspec_untouched):
                     ea=1.0, rest_length=1.0)}, "cable 'rope'"),
     ({"rope": cable("rope", start=("world", (0, 0, 1)), end=("lower", (2, 0, 0)),
                     ea=1.0, rest_length=0.0)}, "cable 'rope'"),
+    ({"motor": actuator("motor", joint="wrist")}, "actuator 'motor'"),
+    ({"motor": actuator("motor", joint="elbow", gear=0.0)}, "actuator 'motor'"),
+    ({"motor": actuator("motor", joint="elbow", rotor_inertia=-1e-5)},
+     "actuator 'motor'"),
+    ({"motor": actuator("motor", joint="elbow", torque_limit=0.0)},
+     "actuator 'motor'"),
 ])
 def test_other_faults_name_their_element(mjspec_untouched, change, name):
     _fails(lambda p: arm(p, **change), name)

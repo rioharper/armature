@@ -9,6 +9,16 @@ Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inhe
 [#64](https://github.com/rioharper/armature/issues/64) tracks the effort; ADRs 0003 and 0004 record why.
 
 - **`engine/` is a new package, imported as `armature`**, pinned to `mujoco ~= 3.15.0` and tested by `uv run pytest` in its own environment. A description is `mechanism(p)`, built from `body`, `joint`, `site` and `cable` (plus an optional `gravity`), with every number in the base frame at home. `armature.compile(mechanism, params)` validates it before MjSpec is touched (duplicate names, unreachable bodies, non-unit axes, unphysical inertia and undefined parameters, each naming its element), compiles it in radians with explicit inertia, and `m.at(q=..., qd=...)` gives an immutable state keyed by coordinate name. `s.linearise()` reads joint springs and cables, which `truth/modes.py` reads as 0 N/m: on fixture 5, a 0.5 kg mass on a 1000 N/m spring or cable reads 1000 N/m and 7.1176 Hz, and the slack cable reads 0. `m.model` is the raw `MjModel`, kept reachable for code that needs its arrays.
+- **Fixture 1, the 2R arm, runs end to end through the description** ([#66](https://github.com/rioharper/armature/issues/66)).
+  - **Actuators.** `actuator` puts a motor on a joint, with a gear ratio, a rotor inertia compiled as N²J armature, and a motor-side torque limit.
+  - **Queries.** A state answers `pose`, `jacobian`, `inverse`, `settle` and `wrench`, each as a named record carrying its residual and method. Loads are forces at named sites, applied where they act.
+    - `inverse` is an explicit least-squares solve for the actuator torques. It returns the rank, the conditioning and the residual, and the residual is what the actuators cannot supply.
+    - `settle` quenches for at least 500 steps.
+    - `wrench(body)` is the wrench across the body's joint, about its anchor.
+  - **The symbolic view.** `armature.symbolic(mechanism, params)` gives a SymPy frame and points per body, plus axes, masses, inertia dyadics and gravity.
+  - **Variants.** `reduce(mechanism, lock(...))` names one. A lock compiles as a weld with no joint equality, and `s.release(hold)` reports each locked coordinate's displacement by name.
+  - **Fixture 1 checks.** FK, the Jacobian, M, g, the inverse dynamics and the elbow's reaction wrench match the closed forms at sampled states, and the inverse agrees with `mj_inverse`. The locked-elbow trap fails its release, as it must.
+  - **Bug fixed.** `linearise` read M after `mjd_inverseFD` had left it at a perturbed posture, so M was evaluated at q − eps. On the 2R arm that is off by 4e-7.
 
 ### A writing pass over the plugin's own documents
 

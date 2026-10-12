@@ -151,3 +151,24 @@ def test_linearise_refuses_an_active_limit():
                    MappingProxyType({"swing": 0.0}))
     with pytest.raises(RuntimeError, match="limit on joint 'swing'"):
         beyond.linearise()
+
+
+def branching(p):
+    """world → a → c, and world → b, written so the order they appear in
+    differs from the order the tree is walked."""
+    i = np.eye(3) * 1e-3
+    return [body("a", mass=1.0, com=(1, 0, 0), inertia=i),
+            body("b", mass=1.0, com=(-1, 0, 0), inertia=i),
+            body("c", mass=1.0, com=(2, 0, 0), inertia=i),
+            joint("ja", "hinge", parent="world", child="a", axis=(0, 0, 1),
+                  point=(0, 0, 0), range=(-1, 1)),
+            joint("jb", "hinge", parent="world", child="b", axis=(0, 0, 1),
+                  point=(0, 0, 0), range=(-1, 1)),
+            joint("jc", "hinge", parent="a", child="c", axis=(0, 0, 1),
+                  point=(1.5, 0, 0), range=(-1, 1))]
+
+
+def test_coordinates_follow_the_tree_on_both_sides():
+    m = armature.compile(branching, {})
+    assert m.coordinates == ("ja", "jc", "jb")
+    assert armature.symbolic(branching, {}).coordinates == m.coordinates

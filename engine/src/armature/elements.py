@@ -121,6 +121,15 @@ class Cable:
 
 
 @dataclass(frozen=True)
+class Actuator:
+    name: str
+    joint: str
+    gear: object = 1.0
+    rotor_inertia: object = 0.0
+    torque_limit: object = None
+
+
+@dataclass(frozen=True)
 class Gravity:
     vector: tuple
 
@@ -161,6 +170,17 @@ def cable(name, *, start, end, ea, rest_length):
     slack.
     """
     return Cable(name, start, end, ea, rest_length)
+
+
+def actuator(name, *, joint, gear=1.0, rotor_inertia=0.0, torque_limit=None):
+    """A motor driving `joint` through a reduction of ratio `gear`.
+
+    Its torque is the motor's: the joint feels `gear` times it. The rotor's
+    inertia `rotor_inertia` (kg·m²) reaches the joint reflected, as gear²·J.
+    `torque_limit` bounds the motor's torque (N·m; N on a slide); None leaves
+    it unbounded.
+    """
+    return Actuator(name, joint, gear, rotor_inertia, torque_limit)
 
 
 def gravity(vector):
