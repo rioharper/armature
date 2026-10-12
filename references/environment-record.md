@@ -5,7 +5,7 @@ machines this project is built on actually have installed, dated, one section
 per machine. `init` writes it; `armature-plan` refreshes it. Every other stage
 reads it.
 
-It exists because a tool's absence changes a plan. A missing SciPy is hours in
+It exists because a tool's absence changes a plan. A missing `uv` is hours in
 Phase 0 and a blocked derivation milestone; a machine with no CUDA cannot train
 what the spec asked for, whatever the schedule says.
 
@@ -22,9 +22,11 @@ bash "<plugin>/scripts/env-probe.sh" ros2 gazebo cuda   # core plus a tier
 **Core**, always: the working python invocation and whether SymPy, SciPy,
 NumPy and MuJoCo import under it; `uv`, `git`, `gh`; host, OS, bash, WSL.
 
-MuJoCo is core rather than a tier because **armature-derive**'s truth model is
-built on it — a machine that cannot import MuJoCo cannot run a derivation
-checkpoint at all, whatever the spec names.
+`uv` is the one core tool **armature-derive** cannot run without: the model in
+`analysis/model/` has its own uv environment, which pins the engine and with it
+MuJoCo, SymPy and SciPy. The machine-wide imports say only what an ad hoc script
+outside that environment can reach, so an absent MuJoCo there is not a gap for
+derive.
 
 **The tier** is whatever the project's own spec names — a ROS 2 distro, a
 simulator, CUDA, a target board's toolchain. Each argument adds a check;
@@ -64,9 +66,9 @@ absences matter for *this* project.
 | WSL | Ubuntu-24.04 |
 | ROS 2 / Gazebo | absent / absent |
 
-**Gaps that matter here:** MuJoCo is absent, so every **armature-derive**
-milestone checkpoint fails at its truth check until it is installed — `pip
-install mujoco` is Phase 0's first task. ROS 2 and Gazebo are absent and Phase 1
+**Gaps that matter here:** none for **armature-derive** — `uv` is present, and
+the model's own environment brings MuJoCo, so the machine-wide `absent` costs
+nothing. ROS 2 and Gazebo are absent and Phase 1
 is entirely simulation, so installing them is Phase 0 work, not a footnote.
 ```
 

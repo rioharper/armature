@@ -3,7 +3,7 @@ kinematics.py — Milestone 1: forward kinematics and the geometric Jacobian.
 
 Mirrors 01_kinematics.md; its self-tests are in kinematics_checks.py. Imports
 only mechanism.py, so a red-team pass on Milestone 1 reads this file, its
-checks, and the description. Check it alone: `python run_all.py kinematics`.
+checks, and the description. Check it alone: `uv run python run_all.py kinematics`.
 
 The frames are the description's, read through the engine's symbolic view:
 each body's frame is its parent's turned about its joint's home axis by the

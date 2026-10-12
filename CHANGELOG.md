@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inheriting the main session's model. Both are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+Three changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, and the derivation's machinery becomes one engine compiled from a single mechanism description. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
 
 ### The engine: one mechanism description, compiled through MuJoCo
 

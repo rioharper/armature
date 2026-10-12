@@ -95,7 +95,7 @@ Seed these files:
 - `docs/environment.md` from step 2's output, in the shape
   `references/environment-record.md` gives: one section for this machine,
   headed by hostname, OS, and today's date, closing with the gaps this project
-  will actually feel — a missing SciPy or MuJoCo blocks **armature-derive**, a
+  will actually feel — a missing `uv` blocks **armature-derive**, a
   missing CUDA makes a render host somebody else's machine. No gap left at this
   point stops the scaffold; the one that would have, `gh`, was settled in step 2.
 - `docs/agents/issue-tracker.md`, copied verbatim from

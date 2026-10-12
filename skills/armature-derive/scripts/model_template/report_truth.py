@@ -2,7 +2,7 @@
 report_truth.py — the Milestone 0 review artifact: what the red team checks the
 description against the spec's sketch with.
 
-    python analysis/model/report_truth.py [directory]
+    uv run python report_truth.py [directory]
 
 An error in mechanism.py is common-mode — the derivation and the truth model
 both read it, so no truth check can see it (ADR 0003). This puts it in front of

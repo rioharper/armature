@@ -11,3 +11,5 @@ engine/.venv/
 skills/armature-derive/scripts/model_template/.venv/
 skills/armature-derive/scripts/model_template/uv.lock
 skills/armature-derive/scripts/model_template/review/
+# the teaching workspace (lessons about the plugin, never shipped)
+.learning/

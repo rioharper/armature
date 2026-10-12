@@ -2,7 +2,7 @@
 report_results.py — prints what the milestone notes cite instead of pasting:
 the long symbolic results, the named configurations, and 03_results.md's tables.
 
-    python analysis/model/report_results.py
+    uv run python report_results.py
 
 A report renderer is never a milestone module — discovery skips `report.py`
 and `report_*.py` — so table formatting never inflates the files a red-team

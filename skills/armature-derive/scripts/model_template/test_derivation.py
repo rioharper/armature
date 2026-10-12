@@ -8,7 +8,7 @@ file only makes pytest run them: pytest collects `test_*.py`, and neither
 `kinematics.py` nor `kinematics_checks.py` matches.
 
 *Which* checks those are is `run_all.py`'s discovery, imported rather than
-repeated. So `pytest` and `python run_all.py` cannot disagree about what the
+repeated. So `pytest` and `run_all.py` cannot disagree about what the
 model's self-tests are, and a module added later is collected by both without
 either file being edited.
 """

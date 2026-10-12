@@ -85,7 +85,7 @@ Write the model into `00_setup.md` (system description, numbered assumptions, ho
 
 **Fill the template's boxes**, whose comments say what each is for: **`WORKSPACE`, the region the requirements name**, keyed by coordinate, a second box inside the joint ranges because a singularity is allowed to live in the gap between the two; `QD_LIMITS` and `QDD_LIMITS`, the rate envelope, keyed by dof. A floating body has no joint range, so its claims are checked over a pose envelope: decide it here, write it into `00_setup.md` beside the joint envelope, and pass it to every sample as `poses={joint: armature.pose_envelope(box=..., tilt=..., yaw=...)}`.
 
-The model has its own environment, `analysis/model/pyproject.toml`, which takes the engine as an editable path dependency and with it the engine's pinned MuJoCo. When you copy the template, point `[tool.uv.sources]`'s path at `${CLAUDE_PLUGIN_ROOT}/engine`. `UV=absent` in the project's environment record is a blocker for this milestone, not a footnote; install it before deriving, and say so in the plan if the machine cannot.
+The model has its own environment, `analysis/model/pyproject.toml`, which takes the engine as an editable path dependency and with it the engine's pinned MuJoCo. When you copy the template, point `[tool.uv.sources]`'s path at the plugin's `engine/`, written as the absolute path `${CLAUDE_PLUGIN_ROOT}/engine` resolves to: uv does not expand environment variables in a source path, so the literal `${CLAUDE_PLUGIN_ROOT}` fails to lock. `UV=absent` in the project's environment record is a blocker for this milestone, not a footnote; install it before deriving, and say so in the plan if the machine cannot.
 
 ## Milestone 1: Kinematics
 

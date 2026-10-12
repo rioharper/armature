@@ -7,7 +7,7 @@
 #   bash scripts/env-probe.sh ros2 gazebo cuda     # core plus a named tier
 #
 # Core is always checked: the working python invocation and whether SymPy,
-# SciPy, NumPy and MuJoCo import under it; uv, git, gh; host, OS, bash, WSL.
+# SciPy, NumPy and MuJoCo import under it (informational; derive needs uv); uv, git, gh; host, OS, bash, WSL.
 #
 # Each argument adds a check. ros2, colcon, gazebo, cuda, wsl, pinocchio and
 # solidworks have real checks; any other name falls back to `command -v` plus
@@ -92,8 +92,9 @@ MODCHECK
   for m in "$@"; do emit "$(key_of "$m")" unknown; done
 }
 
-# MuJoCo is core, not a tier: armature-derive's truth model is built on it, so
-# a machine that cannot import it cannot run a derivation checkpoint at all.
+# These say only what an ad hoc script outside a project's model can import.
+# armature-derive runs in analysis/model's own uv environment, which pins the
+# engine and its MuJoCo, so UV below is what a derivation checkpoint needs.
 py_modules sympy scipy numpy mujoco
 
 tool UV  uv  --version

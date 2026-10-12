@@ -3,8 +3,8 @@ run_all.py — every milestone's self-tests, in order, end to end.
 
 Two commands run this model's checks, and both find their work here:
 
-    python analysis/model/run_all.py    # the milestone checkpoint command
-    pytest                              # through test_derivation.py
+    uv run python run_all.py    # the milestone checkpoint command
+    uv run pytest               # through test_derivation.py
 
 Discovery is by shape, not by name. A module in this directory, or one level
 down in a package, is a milestone module when it or its sibling checks module
@@ -19,7 +19,7 @@ self-tests you forget are exactly the ones that then never run.
 
 During development run one milestone by name — a module or a package:
 
-    python analysis/model/run_all.py kinematics
+    uv run python run_all.py kinematics
 
 It runs that milestone's checks without rebuilding the symbolic models of the
 milestones it isn't checking, and without the code-line budget in `layout.py`,
