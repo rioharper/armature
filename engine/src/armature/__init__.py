@@ -29,6 +29,13 @@ coordinates, loops closed and floating bodies inside a `pose_envelope`;
 `sample_states` adds rates and accelerations within given limits. Each
 result prints n and the seed.
 
+A margin is slack, available minus required, over a named space:
+`Margin(name, fn, unit, over=Space(q1=Interval(lo, hi), load=Direction("xy"),
+case=Choice(CASES)))`, where `fn(point)` reads each axis by name and raises
+`Infeasible(reason)` at a point outside the space. `armature.search(margin)`
+returns its `Worst`: the least slack over a seeded Sobol set, every corner and
+a Powell polish, with where, n, the seed, the pre-polish best and the coverage.
+
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
 PARAMS, directory, states)` writes the Milestone 0 review artifact: the
@@ -45,6 +52,8 @@ from .elements import (DescriptionError, actuator, body, cable, contact,
 from .review import Frames, Review, frames, render, review
 from .sampler import (PoseEnvelope, Rejected, Samples, clearance,
                       pose_envelope, sample, sample_states)
+from .search import (Budget, Case, Choice, Direction, Infeasible, Interval,
+                     Margin, Point, Space, Worst, search)
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
@@ -63,3 +72,5 @@ __all__ += ["AccountingError", "account", "lump", "massless", "planar",
 __all__ += ["ContactForce", "contact", "shape"]
 __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
             "pose_envelope", "sample", "sample_states"]
+__all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
+            "Margin", "Point", "Space", "Worst", "search"]
