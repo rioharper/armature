@@ -32,10 +32,9 @@ simulator, CUDA, a target board's toolchain. Each argument adds a check;
 real checks, and any other name falls back to `command -v` plus `--version`, so
 a spec can name a tool the script has never heard of.
 
-`pinocchio` is the tier a derivation asks for when it wants a third independent
-implementation of chain dynamics beside MuJoCo. It is never core: there is no
-Windows pip wheel, so it arrives by conda or WSL or not at all, and a project
-that does not have it loses nothing mandatory.
+No skill uses `pinocchio`: the truth model is the engine's, and the engine is
+MuJoCo only. The check stays for a spec that names Pinocchio for work of its
+own; there is no Windows pip wheel, so it arrives by conda or WSL or not at all.
 
 Read `PYTHON` as the invocation that works, not as a yes/no: a machine whose
 python answers to `py` and not `python` is the case this whole record exists to
@@ -64,13 +63,11 @@ absences matter for *this* project.
 | uv / git / gh | 0.12.12 / 2.55.0 / 2.100.0 |
 | WSL | Ubuntu-24.04 |
 | ROS 2 / Gazebo | absent / absent |
-| Pinocchio | absent |
 
 **Gaps that matter here:** MuJoCo is absent, so every **armature-derive**
 milestone checkpoint fails at its truth check until it is installed — `pip
 install mujoco` is Phase 0's first task. ROS 2 and Gazebo are absent and Phase 1
 is entirely simulation, so installing them is Phase 0 work, not a footnote.
-Pinocchio's absence costs nothing; it is an optional second backend.
 ```
 
 Three rules hold it together:

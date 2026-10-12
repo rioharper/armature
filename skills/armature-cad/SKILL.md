@@ -15,7 +15,7 @@ Read in this order; during ideation read what exists and carry the rest as TBDs 
 
 - **`CONTEXT.md`** (written by **armature-plan**): coordinate frames, symbol table, part-numbering scheme, CAD-file naming, revision scheme, units policy. Reuse verbatim — part IDs, datum names, and filenames all come from here.
 - **`docs/01-spec/spec.md` and `docs/01-spec/bom.md`**: the chosen actuators, bearings, materials, and their datasheet numbers.
-- **`analysis/derivation/03_results.md` and `analysis/model/params.py`**: the worst-case joint torques and reaction forces each part carries, and the mass, COM, and inertia the dynamics *assumed* per body — the target the loop closes against. Where the project emits an `analysis/model/params.toml`, read values there; open `params.py` only for a value's provenance.
+- **`analysis/derivation/03_results.md`, `analysis/model/mechanism.py` and `analysis/model/params.py`**: the worst-case joint torques and reaction forces each part carries, and the mass, COM, and inertia the dynamics *assumed* per body — the target the loop closes against. The mechanism description's bodies hold them, and the frames table `report_truth.py` writes prints each one. Where the project emits an `analysis/model/params.toml`, read values there; open `params.py` only for a value's provenance.
 
 Without `CONTEXT.md`, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6, establish a minimal glossary inline (part-numbering, file naming, rev scheme), and note that the definitions rest on it; for a substantial project, suggest **armature-plan** write one first. If the design itself is still open — more undecided architecture than one session settles — call the Skill tool with "armature-wayfind" to chart the way first; a sketch-grade definition can serve one of its prototype tickets.
 
@@ -112,9 +112,9 @@ part with the numbers to measure.
 
 A build recipe is a numbered feature sequence with concrete dimensions, so it can also be written in **build123d** as `cad/parts/<PART-ID>.py` from `scripts/part_template/` (its README holds what it buys, the unit contract, and where it stops). Offer it when a part has an inertia target to hit, its driven dimensions are still moving, or no CAD seat is open yet: it closes the inertia loop and validates the recipe at sketch grade, before the modeling hours. A one-off typed-dimension bracket doesn't need it, and build123d is not an armature dependency.
 
-Everything under `cad/parts/` is laid out per `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`: a part file's self-tests go one file over, in `<PART-ID>_checks.py`; no module passes 250 code lines; and `python cad/parts/run_all.py` runs every self-test and the budget, exiting nonzero on a failure. The template demonstrates all of it.
+Everything under `cad/parts/` is laid out per `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`: a part file's self-tests go one file over, in `<PART-ID>_checks.py`; no module passes 250 code lines; and `cad/parts/run_all.py` runs every self-test and the budget, exiting nonzero on a failure; the template's README gives the commands. The template demonstrates all of it.
 
-`scripts/part_template/sweep/` is the planning-stage cousin: crude link envelopes swept over the joint range, before parts exist. A self-collision it finds is a joint limit or a link length — an **armature-derive** finding; hand it back with the printed rows.
+`scripts/part_template/sweep/` is the planning-stage cousin: crude link envelopes swept over the description's joint ranges, before parts exist. Each envelope rides on a site of the mechanism description and is posed by the engine's truth model, so the sweep runs in the model's environment and keeps no forward kinematics of its own. A self-collision it finds is a joint limit or a link length — an **armature-derive** finding; hand it back with the printed rows.
 
 ## The assembly definition
 
@@ -122,9 +122,9 @@ Once a subassembly's parts are defined, write `cad/assemblies/<ASM-ID>.md` per `
 
 ## Close the loop — realized against assumed
 
-Close at the granularity the dynamics modeled: where it assumed per-body values, the part realizes them; where it lumped several parts into one body, the target is each part's budget row plus one re-check of the lump at batch end — say so in a line. Once the geometry exists, extract its mass properties **about the same point and axes the dynamics used** (COM vs. joint origin, and frame orientation — state which). Three sources, earliest first: the executable recipe (`check`'s `mass_properties` does the parallel-axis shift), the SolidWorks MCP server against the live model, or the CAD package's own mass-properties dialog. Compare to the `params.py` block:
+Close at the granularity the dynamics modeled: where it assumed per-body values, the part realizes them; where it lumped several parts into one body, the target is each part's budget row plus one re-check of the lump at batch end — say so in a line. Once the geometry exists, extract its mass properties **about the same point and axes the description uses**: the COM as a position and the inertia about it in base axes, both at the home posture. Three sources, earliest first: the executable recipe (`check`'s `mass_properties` does the parallel-axis shift), the SolidWorks MCP server against the live model, or the CAD package's own mass-properties dialog. Compare to the body in the description:
 
-- Within tolerance → update `analysis/model/params.py` with the realized mass, COM, and inertia (mark the source) and run `python analysis/model/run_all.py` via Bash: the self-tests must pass with the realized values in place.
+- Within tolerance → update the body in `analysis/model/mechanism.py` and its values in `params.py` with the realized mass, COM, and inertia (mark the source) and run `uv run python run_all.py` in `analysis/model/` via Bash: the self-tests must pass with the realized values in place.
 - Beyond it → call the Skill tool with "armature-derive", handing off the measured mass, COM, and inertia, so the dynamics and any actuator sizing that rode on them re-run against reality.
 
 Either way, update the part's mass rows in `docs/01-spec/budgets.md` (Source: model or measured). Done when every part definition's inertia claim matches the model.

@@ -35,83 +35,62 @@ the re-exported names callers import.
 That triple — a document section, its submodule, its checks — is the red-team's review
 unit: one coherent argument, held in view at a time.
 
-## The truth package
+## The engine and the project's half
 
-An **armature-derive** model carries one package that is not a note's counterpart:
-`truth/`, the **truth model** — an independent simulator model of the mechanism,
-generated from `params.py`, that every milestone's claims are checked against. It is both
-a milestone package and a library package, and takes the shape of each: `MILESTONE = (0,
-"Milestone 0: truth model")` in its `__init__.py` sorts it **first** in the run, and that
-same `__init__.py` is the backend-neutral public surface — `build`, `sample`, and the
-query each milestone needs — so a second backend, or a floating-body builder beside the
-chain builder, changes nothing above it.
+An **armature-derive** model checks every milestone's claims against the **truth model**:
+the project's mechanism description, compiled in full by the **engine**. The engine is the
+plugin's `engine/` package, imported as `armature`, which a project pins rather than
+copies. It holds the description's elements and their validation, the compiler, the
+queries on a state (`pose`, `jacobian`, `inverse`, `settle`, `wrench`, `linearise`,
+`release`), the reductions and `account`, the symbolic view, the sampler and the review
+artifact. It is a standard Python package with its own tests, outside this file's rules, so
+a fix reaches a project as a version bump, never a re-copy. Its docstrings are its
+reference, and `armature/__init__.py` is the map.
+
+The project keeps its half beside its milestone modules:
 
 ```
-truth/
-  __init__.py            MILESTONE = (0, ...), and the public surface callers import
-  chain.py               a serial chain from the DH or PoE table -> a simulator model
-  chain_checks.py        the builder round-tripped against the parameter block
-  envelope.py            the seeded sampler every other milestone's checks draw from,
-                         over the envelope and over the intended workspace
-  envelope_checks.py
-  equilibrium.py         settling to rest under held commands and applied loads
-  equilibrium_checks.py
-  floating.py            a floating base plus joints, on unilateral cables
-  floating_checks.py     the builder round-tripped, on a minimal hanging fixture
-  inverse.py             inverse dynamics — one submodule per query the milestones need
-  inverse_checks.py
-  modes.py               linearisation: mass, stiffness and the modes they give
-  modes_checks.py
-  release.py             an assumption let go: the displacement of what it fixed
-  release_checks.py      that, and the degenerate fixture proving the check fails
+pyproject.toml           the model's environment: the engine as an editable path dependency
+params.py                the values, keyed by name; standard library only
+mechanism.py             MILESTONE = (0, ...); mechanism(p), DERIVED, and the truth model
+mechanism_checks.py      compiles exactly, boxes inside the ranges, a release that fails
+report_truth.py          writes the review artifact: frames table and skeleton renders
 ```
 
-**One builder per convention family, and a project keeps one.** `chain.py`
-serves a serial chain on a fixed base — modified DH, standard DH, or PoE —
-and `floating.py` a floating base plus joints, where the body's own pose is six
-coordinates and cables, legs or wheels hold it up. Which one a model uses
-follows the topology the plan glossary settled; the other builder, its checks
-module and its line in `__init__.py` are deleted, so no module in the package
-reads a parameter block it was never given. Each builder names its own entry
-point `build`, and the `__init__.py` that ships both surfaces the second one
-under a second name, so whichever builder a project keeps, `truth.build` is its
-model and nothing above the package is rewritten. Every *query* — the settle,
-the inverse dynamics, the linearisation — takes the `(model, data)` pair either
-builder returns, which is what makes the surface above them one surface. The
-sampler is not a query: it reads the parameter block's envelope directly, so a
-mechanism whose coordinates are not a box in `qpos` samples its own poses.
+`mechanism.py` holds the description, `mechanism(p)`, and `DERIVED`, the variant the
+derivation reads. It gives every other module the cached `truth()`, `derived()` and
+`view()`, and the conversions between the engine's named states and the derivation's numeric
+functions: `COORDINATES`, `numeric`, `vector`, `named` and `commands`. It sorts first, beside
+`params.py`, so the run reports the description compiling exactly before any milestone
+makes a claim against it.
 
 Three rules keep it honest, all of them layout rules rather than physics:
 
-- **It imports the parameter block and nothing else from the model.** No `kinematics.py`,
-  no `dynamics/`. A truth model that borrows the derivation's frames or its mass matrix
-  has the derivation's assumptions on both sides of every comparison, which is the exact
-  blindness it exists to remove.
-- **Every other checks module draws its configurations from it.** One sampler, seeded, so
-  "over the envelope" is the same set in the kinematics check, the dynamics check and the
-  worst-case search, and a reviewer re-running a file gets the configurations the note was
-  written from. A checks module with a generator of its own is a check nobody can reproduce
-  from the note; the rule and the reason are in **armature-derive**'s
+- **`mechanism.py` imports `params.py` and the engine, and nothing else from the model.**
+  No `kinematics.py`, no `dynamics/`. A truth model that borrows the derivation's frames or
+  its mass matrix has the derivation's assumptions on both sides of every comparison, which
+  is the exact blindness it exists to remove. The derivation reads its frames from the same
+  description, so an error in the description is common-mode; validation when it compiles
+  and the review artifact are its checks. Every simplification stays on the derivation's
+  side, as a reduction the truth model does not make.
+- **Every checks module draws its configurations from the engine's sampler**,
+  `armature.sample` and `armature.sample_states`. One sampler, seeded, so "over the
+  envelope" is the same set in the kinematics check, the dynamics check and the worst-case
+  search, and a reviewer re-running a file gets the configurations the note was written
+  from. A checks module with a generator of its own is a check nobody can reproduce from the
+  note; the rule and the reason are in **armature-derive**'s
   `references/derivation-standards.md`, under *Evidence over an envelope*.
-- **It shares `params.py` rather than copying it.** Two models built from two copies of
-  the constants drift the first time one is edited, and a check between drifted models
-  proves nothing about either.
-
-Sorting first is not cosmetic, and the rule is its reason: a truth check is only as good as
-the model it checks against, so **the truth package runs before every module that makes a
-truth claim**, and its builder's round-trip against the parameter block is the first truth
-result the run reports. The parameter block itself may precede it — `params.py` is data, it
-makes no truth claim, and a block that has lost a load-case sign should fail before the
-builder ever reads it. A module that both precedes the truth package *and* carries a
-`test_truth_*` is the mistake this ordering exists to prevent: its check can pass vacuously
-against a builder nothing has validated yet.
+- **Values live once, in `params.py`; geometry lives once, in `mechanism.py`.** The engine
+  refuses a parameter the description reads and `params.py` never defines, or one defined
+  and never read, naming it. `params.py` stays standard library only, so a CAD part file
+  reads a mass target from it without the model's environment.
 
 ## Checks one file over
 
 A module's self-tests live in a sibling checks module named for it: `kinematics.py` →
 `kinematics_checks.py`. That includes the parameter block: `params.py` is data, and
-`params_checks.py` holds the checks on the shape of that data — the symbol table mirroring
-the numbers, the envelope one row per coordinate, both signs of every signed load case —
+`params_checks.py` holds the checks on the shape of that data — both signs of every signed
+load case, every load direction a set —
 each of which is a whole class of downstream result quietly sized against the wrong thing. Locality is kept — the checks sit beside what they check — and
 neither file carries the other's lines. Discovery pairs the two by name, so moving a check
 costs no registration; pytest never collects a `*_checks.py` directly, so the one pytest
@@ -135,19 +114,19 @@ them, so a milestone whose only evidence is self-consistency has shown its equat
 consistent and nothing about the machine. The gate is what stops the truth model being
 skipped in silence, which is the only way it ever gets skipped:
 
-**Every checks module outside the truth package defines a `test_truth_*` callable, or says
-why it does not.** `layout.py` reports one truth column per module — the count, `n/a`, or
+**Every checks module in a model with a `mechanism.py`, its packages included, defines a
+`test_truth_*` callable, or says why it does not.** That includes `mechanism_checks.py`, whose release checks are truth
+checks. `layout.py` reports one truth column per module — the count, `n/a`, or
 the exemption — and the full run fails on a gated module with neither. The prefix is a
 naming convention rather than a registry because `layout.py` imports nothing but the
 standard library: it reads the source's function names with `ast`, so it works on a machine
 where MuJoCo will not import, which is exactly the machine most likely to have skipped the
 truth model.
 
-Three things sit outside the gate by nature, and the check knows it. The truth package's own
-modules — asking the truth model to check its claims against the truth model is circular;
-`layout.py` itself; and **any directory with no truth package at all**, where the gate
-reports `n/a` and passes, which is what lets the same file ship in the CAD part template
-unchanged.
+Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, and
+**any directory with no `mechanism.py`**, where the gate reports `n/a` and passes, which is
+what lets the same file ship in the CAD part template unchanged. The engine is outside it
+too: it is not the project's code, and its own tests check it.
 
 A module that genuinely makes no claim a truth model can reach says so, at module level,
 with the same argued-exemption mechanism the budget uses and the same reader parsing it:
@@ -168,7 +147,7 @@ are held against the truth model where they are used. No module in either templa
 A **code line** is any line not blank, not comment-only, and not part of a docstring.
 Documentation is free; the only way under the budget is to split. `layout.py` counts —
 `ast` for docstrings, `tokenize` for comments — and ships inside each template, stdlib only,
-because a copied project cannot import the plugin:
+because it has to run where the model's environment does not:
 
 - `python layout.py` (in the template's directory) prints every module's count and its
   truth column, and the line counts of the documents beside them — milestone notes, part

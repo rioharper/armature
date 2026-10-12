@@ -142,10 +142,9 @@ check_cuda() {
 # Installed, which is durable and worth recording. Whether SOLIDWORKS is
 # *running* is true only while the CAD checks run, so init asks that live
 # rather than reading it here.
-# Optional second backend for chain inverse dynamics, and optional it stays:
-# there is no Windows pip wheel, so it arrives by conda or WSL or not at all.
-# A project may never require it; a machine that has it can run a third
-# independent implementation beside MuJoCo.
+# No skill uses Pinocchio: the truth model is the engine's, MuJoCo only. The
+# check stays for a spec that names it for work of its own. There is no
+# Windows pip wheel, so it arrives by conda or WSL or not at all.
 check_pinocchio() { py_modules pinocchio; }
 
 check_solidworks() {

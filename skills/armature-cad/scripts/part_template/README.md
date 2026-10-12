@@ -34,7 +34,7 @@ What that buys, in order of value:
 |---|---|
 | `check/` | Library package. Mass properties in SI, target comparison, parameter-rebuild sweeps, interference, SVG views, one submodule each. **Holds the unit contract — read `check/__init__.py`'s docstring first.** |
 | `part.py` | Template for `cad/parts/<PART-ID>.py`. Worked example: the plate-with-a-boss from SKILL.md. Copy and edit. |
-| `sweep/` | Template for a planning-stage interference sweep. Worked example: planar 2R arm folding into its base housing. Replace the bodies and `pose()` in `sweep/bodies.py`. |
+| `sweep/` | Template for a planning-stage interference sweep. Worked example: planar 2R arm folding into its base housing. Replace the envelopes and `CARRIERS` in `sweep/bodies.py`. |
 | `stubs.py` | COTS placeholders for when armature-librarian can't find a vendor STEP. Enforces datasheet provenance; its release gate `still_placeholder()` only sees stubs *this process built* — read its docstring before gating on it. |
 | `run_all.py`, `layout.py` | The runner and the code-line budget, the same files armature-derive's model template ships. |
 
@@ -46,12 +46,16 @@ runs every self-test and the budget; the other two run the things
 themselves:
 
 ```bash
-uv run --with 'build123d~=0.11' --with sympy python run_all.py        # every self-test, then the budget
-uv run --with 'build123d~=0.11' --with sympy python run_all.py check  # one module or package's self-tests
-uv run --with 'build123d~=0.11' --with sympy python part.py           # mass props vs target + SVG views
-uv run --with 'build123d~=0.11' --with sympy python -m sweep          # the sweep
-python layout.py                                                      # the size table, stdlib only
+uv run --project ../../analysis/model --with 'build123d~=0.11' python run_all.py  # every self-test, then the budget
+uv run --project ../../analysis/model --with 'build123d~=0.11' python -m sweep    # the sweep
+uv run --with 'build123d~=0.11' python run_all.py check   # one module or package's self-tests
+uv run --with 'build123d~=0.11' python part.py            # mass props vs target + SVG views
+python layout.py                                          # the size table, stdlib only
 ```
+
+Run them from `cad/parts/`. The full run and the sweep need the model's environment,
+`analysis/model/pyproject.toml`, because the sweep's postures come from the engine;
+a part file and `check/` need only build123d.
 
 **The exit code is the contract: nonzero means a check failed**, which is
 what makes these usable in a pre-commit hook or CI. `sweep/`'s worked 2R
@@ -59,16 +63,19 @@ arm genuinely folds into its own base post, so `python -m sweep` prints the
 colliding pairs and **exits 1 by design** until the swept range excludes the
 collision. `run_all.py`, `part.py`, and `layout.py` exit 0.
 
-`part.py` and `sweep/` both need `--with sympy`, since both import
-`analysis/model/params.py`, which imports it. Both locate that file
-*relative to their own path* — `../../analysis/model/` from `cad/parts/` —
-so keep them two directories below the project root. `part.py`'s mass
+`part.py` and `sweep/` both import `analysis/model/params.py`, which is
+standard library only. The sweep also imports `mechanism.py` and compiles
+it with the engine: each envelope rides on a site of the description, posed
+by the truth model, over the description's joint ranges. Both locate those
+files *relative to their own path* — `../../analysis/model/` from
+`cad/parts/` — so keep them two directories below the project root. `part.py`'s mass
 target falls back to a budget row when there is no derivation yet, and says
 so in its printed provenance line; the sweep's link lengths have no fallback
-(a guessed link length hides a real self-collision or invents one), so
-running it — its self-tests included — needs `params.py` present: copy it
-in, or run the armature-derive milestone that produces it, first. Importing
-the package alone never needs it.
+(a guessed link length hides a real self-collision or invents one), and
+nor do its postures (a hand-written pose is a second forward kinematics),
+so running it — its self-tests included — needs `params.py` and
+`mechanism.py` present: run the armature-derive milestone that produces
+them first. Importing the package alone never needs them.
 
 ## Prerequisite
 

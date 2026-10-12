@@ -6,7 +6,7 @@ AI has changed software engineering but barely touched robot design. Armature wo
 
 ## Quick start
 
-1. **Install.** You need [`gh`](https://cli.github.com/) on PATH and `gh auth login` done.
+1. **Install.** You need [`gh`](https://cli.github.com/) on PATH and `gh auth login` done, and [uv](https://docs.astral.sh/uv/) for the derivation's model.
 
    ```
    /plugin marketplace add rioharper/armature
@@ -79,10 +79,10 @@ Windows and SolidWorks only. Requires [uv](https://docs.astral.sh/uv/) on PATH. 
 `armature-cad` can write each part's build recipe as a [build123d](https://github.com/gumyr/build123d) script. That lets you check mass and inertia against the model, catch broken features, render real views, and sweep for interference before opening CAD. It doesn't replace CAD: no assemblies, drawings, GD&T, or FEA. Tested with build123d 0.11.1.
 
 ```
-uv run --with 'build123d~=0.11' --with sympy python cad/parts/<PART-ID>.py
+uv run --with 'build123d~=0.11' python cad/parts/<PART-ID>.py
 ```
 
-Use `cad/parts/run_all.py` the same way to run every part. A nonzero exit means a check failed.
+`cad/parts/run_all.py` runs every part and the interference sweep, so it also needs the model's environment: `uv run --project analysis/model --with 'build123d~=0.11' python cad/parts/run_all.py`. A nonzero exit means a check failed.
 
 ## Project layout
 
@@ -104,8 +104,8 @@ Use `cad/parts/run_all.py` the same way to run every part. A nonzero exit means 
     environment.md           what each machine has installed
   analysis/
     derivation/              derive milestone notes
-    model/                   re-runnable Python model
-      truth/                 independent MuJoCo model used to check each milestone
+    model/                   re-runnable Python model, in its own uv environment
+      mechanism.py           the mechanism description the truth model is compiled from
   cad/
     parts/                   part definitions and optional build recipes
     assemblies/              assembly definitions
@@ -114,6 +114,8 @@ Use `cad/parts/run_all.py` the same way to run every part. A nonzero exit means 
 ```
 
 ## Install details
+
+`armature-derive`'s model depends on the **engine**, the Python package in [`engine/`](engine/) (imported as `armature`, pinned to MuJoCo 3.15). It compiles the project's mechanism description into the MuJoCo truth model every milestone is checked against. The model runs in its own environment through [uv](https://docs.astral.sh/uv/), so uv must be on PATH. Until the engine is published, the model's `pyproject.toml` takes it as an editable path dependency on the plugin's `engine/` folder.
 
 Armature keeps the plan on GitHub Issues, so it needs `gh`, `gh auth login`, and a GitHub remote. `/armature:init` checks all three and offers to create the repo (private by default). There is no non-GitHub option. To run from a local copy instead of the marketplace, point `--plugin-dir` at this repo.
 
