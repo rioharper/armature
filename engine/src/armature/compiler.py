@@ -36,6 +36,7 @@ stiffness and damping, scaled so its rest sag is the physical force over k;
 `rigid(contact)` drops that compliance for the rigid parameters.
 """
 
+from contextlib import contextmanager
 from types import MappingProxyType
 
 import mujoco
@@ -121,6 +122,11 @@ class Compiled:
     arrays. Treat it as read-only: every query reads it, and none expects it to
     change. Its free joints' rates are MuJoCo's own (the COM's velocity, and
     the angular velocity in body axes), not the dofs'.
+
+    Each compiled model owns one scratch `MjData`, which every query, and
+    `at()` on a closed chain, resets and fills from its state. A model and
+    its states are for one thread at a time: give each thread its own
+    compile.
     """
 
     def __init__(self, description, model, source=None):
@@ -133,6 +139,8 @@ class Compiled:
             label for i in range(model.njnt) for label in (
                 [f"{model.joint(i).name}:{c}" for c in FREE_COMPONENTS]
                 if model.jnt_type[i] == free else [model.joint(i).name]))
+        self._free = tuple(i for i in range(model.njnt)
+                           if model.jnt_type[i] == free)
         self._joint_into = {j.child: j for j in description.joints}
         self._coordinate = coordinate_joints(description)
         self._coordinate.update({j.name: (j, None) for j in description.joints
@@ -142,6 +150,8 @@ class Compiled:
                         for j in description.joints}
         self._source = source
         self._full, self._without = None, {}
+        # the scratch `MjData`, made on first use, and whether a query holds it
+        self._scratch_data, self._scratch_held = None, False
         self.closure = (Closure(self) if description.loops
                         or description.couples or rigid_cables(description)
                         else None)
@@ -173,6 +183,26 @@ class Compiled:
                        name=f"{self.description.variant} without {reduction}")
                 if rest else mechanism.mechanism, params)
         return self._without[reduction]
+
+    @contextmanager
+    def _scratch(self, state=None):
+        """The scratch `MjData`, reset to home, or filled at `state` when
+        given, for one query to hold. A query run while another holds it,
+        because one query called another, gets a new `MjData` of its own."""
+        if self._scratch_held:
+            data = mujoco.MjData(self.model)
+            yield data if state is None else state._fill(data)
+            return
+        data = self._scratch_data
+        if data is None:
+            data = self._scratch_data = mujoco.MjData(self.model)
+        else:
+            mujoco.mj_resetData(self.model, data)
+        self._scratch_held = True
+        try:
+            yield data if state is None else state._fill(data)
+        finally:
+            self._scratch_held = False
 
     @property
     def approximate(self):
@@ -254,13 +284,13 @@ class Compiled:
                                    f"{hi})", f"joint {name!r}")
         values = {n: values[n] if n in values else solved[n]
                   for n in self.coordinates}
-        data = mujoco.MjData(self.model)
-        write_q(self, data, values)
-        mujoco.mj_kinematics(self.model, data)
-        mujoco.mj_comPos(self.model, data)
-        _, jac = self.closure.rows(data)
-        given = np.array([rates[d] for d in self.dofs])
-        full = self.closure.complete(data, jac, given, 0.0)
+        with self._scratch() as data:
+            write_q(self, data, values)
+            mujoco.mj_kinematics(self.model, data)
+            mujoco.mj_comPos(self.model, data)
+            _, jac = self.closure.rows(data)
+            given = np.array([rates[d] for d in self.dofs])
+            full = self.closure.complete(data, jac, given, 0.0)
         return values, dict(zip(self.dofs, (float(v) for v in full)))
 
 

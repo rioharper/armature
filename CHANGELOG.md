@@ -77,6 +77,7 @@ This replaces the DH table, the `FLOATING_*` dicts and the `truth/` package that
   - **CAD.** `armature-cad` and the part template's README point the sweep at the engine, run from `cad/parts/` as `uv run --project ../../analysis/model --with 'build123d~=0.11' python -m sweep`. A part file needs only build123d, since `params.py` is standard library only. A realised body is written back into the description.
   - **Glossary.** `CONTEXT.md` gains **Mechanism description**, **Home posture**, **Reduction**, **Variant** and **Engine**, and **Truth model** is compiled from the description.
   - **Elsewhere.** The README names the engine and uv as dependencies. `armature-plan`'s frames name a home posture rather than a DH convention, and its truth-model leaf compiles the description. The environment record and the probe's comment mark Pinocchio unused; the probe still checks it.
+- **A query no longer allocates its own `MjData`** ([#76](https://github.com/rioharper/armature/issues/76)). Each compiled model keeps one scratch `MjData`, which every query, and `at()` on a closed chain, resets and fills from its state. A query run while another holds it, because one called the other, gets its own. Every answer matches a fresh compile's to the bit. On the 2R arm, `jacobian` falls from about 1 ms to 30 µs and `inverse` from 1.2 ms to 100 µs; what is left of `inverse` is the NumPy of its solve, not the physics. A compiled model and its states are for one thread at a time.
 
 ### A writing pass over the plugin's own documents
 

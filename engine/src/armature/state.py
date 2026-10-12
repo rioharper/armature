@@ -1,10 +1,11 @@
 """A named state of a compiled mechanism, and the queries asked of it.
 
-Every query builds its own `MjData` from the state, so no query reads what
-another call left behind, and every one returns a named record carrying its
-residual and its method. Loads are forces at named sites, `{site: (fx, fy, fz)}`
-in the base frame; the engine applies each at its site, so none picks up the
-moment error of a force moved to a body's origin or COM.
+Every query resets its compiled model's scratch `MjData` and fills it from the
+state, so no query reads what another call left behind, and every one returns
+a named record carrying its residual and its method. Loads are forces at named
+sites, `{site: (fx, fy, fz)}` in the base frame; the engine applies each at its
+site, so none picks up the moment error of a force moved to a body's origin or
+COM.
 
 A floating body's position is written through `jnt_qposadr` and its rates
 through `jnt_dofadr`; they differ for every joint after a free one, which has
@@ -101,9 +102,18 @@ class State:
     qd: MappingProxyType
 
     def _data(self):
+        """A new `MjData` at this state, for a caller that keeps it."""
+        return self._fill(mujoco.MjData(self.compiled.model))
+
+    def _scratch(self):
+        """The compiled model's scratch `MjData` at this state, for one query
+        to hold: `with state._scratch() as data:`."""
+        return self.compiled._scratch(self)
+
+    def _fill(self, data):
+        """`data`, at reset, filled at this state."""
         compiled = self.compiled
         model = compiled.model
-        data = mujoco.MjData(model)
         write_q(compiled, data, self.q)
         mujoco.mj_kinematics(model, data)
         data.qvel[:] = tangent(compiled, data)[0] @ self._rates()
@@ -116,23 +126,25 @@ class State:
     def pose(self, site):
         """Where `site` is: its position and its orientation, in the base
         frame. A site's axes are parallel to the base frame's at home."""
-        model, data = self.compiled.model, self._data()
+        model = self.compiled.model
         sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
-        return Pose(site, _frozen(data.site_xpos[sid]),
-                    _frozen(data.site_xmat[sid].reshape(3, 3)),
-                    _closure(model, data), "mj_kinematics")
+        with self._scratch() as data:
+            return Pose(site, _frozen(data.site_xpos[sid]),
+                        _frozen(data.site_xmat[sid].reshape(3, 3)),
+                        _closure(model, data), "mj_kinematics")
 
     def jacobian(self, site):
         """∂(site velocity)/∂(dof rates), linear and angular, in the base
         frame. Columns follow `dofs`."""
-        model, data = self.compiled.model, self._data()
+        model = self.compiled.model
         sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
         linear, angular = np.zeros((3, model.nv)), np.zeros((3, model.nv))
-        mujoco.mj_jacSite(model, data, linear, angular, sid)
-        turned = tangent(self.compiled, data)[0]
-        return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
-                        _frozen(angular @ turned), _closure(model, data),
-                        "mj_jacSite")
+        with self._scratch() as data:
+            mujoco.mj_jacSite(model, data, linear, angular, sid)
+            turned = tangent(self.compiled, data)[0]
+            return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
+                            _frozen(angular @ turned), _closure(model, data),
+                            "mj_jacSite")
 
     def inverse(self, qdd=None, loads=None):
         """The actuator torques that move this state at accelerations `qdd`
@@ -156,7 +168,8 @@ class State:
         accelerations are taken as given: a contact's rows carry force, not
         motion, so at rest `qdd` is zero.
         """
-        return self._solve(self._data(), qdd, loads)[0]
+        with self._scratch() as data:
+            return self._solve(data, qdd, loads)[0]
 
     def _solve(self, data, qdd, loads):
         """The inverse record, the unknowns [τ; λ_loops; λ_contacts] (NaN
@@ -236,7 +249,11 @@ class State:
         from the solver. A rigid contact sunk in past 1e-6 m raises; a
         compliant one sinks by its normal force over its stiffness.
         """
-        model, data = self.compiled.model, self._data()
+        with self._scratch() as data:
+            return self._settle(data, hold, loads, min_steps, max_steps)
+
+    def _settle(self, data, hold, loads, min_steps, max_steps):
+        model = self.compiled.model
         data.qvel[:] = 0.0
         command = dict(hold or {})
         unknown = sorted(set(command) - set(self.compiled.actuators))
@@ -294,8 +311,12 @@ class State:
         sites, and each touching contact's likewise, at its points; the
         solver's own constraint forces are not read.
         """
+        with self._scratch() as data:
+            return self._wrench(data, body, qdd, loads)
+
+    def _wrench(self, data, body, qdd, loads):
         compiled = self.compiled
-        model, data = compiled.model, self._data()
+        model = compiled.model
         _refuse_constraints(model, data, "a wrench")
         loop_forces, contact_forces = [], []
         if compiled.closure or compiled.description.contacts:
@@ -429,7 +450,8 @@ class State:
                 there = other.at(q=self._counterpart(other), qd={
                     d: v for d, v in self.qd.items()
                     if d in other.dofs and d not in other.dependent})
-                residual = max(residual, _closure(other.model, there._data()))
+                with there._scratch() as data:
+                    residual = max(residual, _closure(other.model, data))
                 sized[r] = _change(quantity(there), here)
         return Released(
             description.variant, description.reductions,
@@ -488,37 +510,36 @@ class State:
         modes; there is no stiffness matrix, and `mass` is M over the dofs.
         """
         compiled = self.compiled
-        model, data = compiled.model, self._data()
-        _refuse_constraints(model, data, "a linearisation")
+        model, nv = compiled.model, compiled.model.nv
+        with self._scratch() as data:
+            _refuse_constraints(model, data, "a linearisation")
+            turned = tangent(compiled, data)[0]
+            mass = np.zeros((nv, nv))  # before mjd_inverseFD, which leaves
+            mujoco.mj_fullM(model, data, mass)  # qM at a perturbed posture
         if compiled.description.contacts:
             return self._linearise_contact()
         if compiled.closure:
             return self._linearise_closed(eps)
-        nv = model.nv
-        turned = tangent(compiled, data)[0]
-        mass = np.zeros((nv, nv))
-        mujoco.mj_fullM(model, data, mass)  # before mjd_inverseFD, which
-        sides = []                          # leaves qM at a perturbed posture
+        sides = []
         for step in (eps, -eps):
-            data = self._data()
-            data.qacc[:] = 0.0  # mj_forward wrote the free acceleration here
-            dfdq = np.zeros((nv, nv))
-            mujoco.mjd_inverseFD(model, data, step, False, dfdq, None, None,
-                                 None, None, None, None)
-            sides.append(dfdq.T)  # MuJoCo returns it transposed
+            with self._scratch() as data:
+                data.qacc[:] = 0.0  # mj_forward wrote the free acceleration
+                dfdq = np.zeros((nv, nv))
+                mujoco.mjd_inverseFD(model, data, step, False, dfdq, None,
+                                     None, None, None, None, None)
+                sides.append(dfdq.T)  # MuJoCo returns it transposed
+                residual = _closure(model, data)
         stiffness = turned.T @ ((sides[0] + sides[1]) / 2) @ turned
         mass = turned.T @ mass @ turned
         return Linearised(compiled.dofs, _frozen(stiffness), _frozen(mass),
                           _frozen(_frequencies(stiffness, mass)),
-                          _closure(model, data), LINEARISE_METHOD, eps)
+                          residual, LINEARISE_METHOD, eps)
 
     def _linearise_closed(self, eps):
         compiled = self.compiled
         model, closure = compiled.model, compiled.closure
         at_rest = State(compiled, self.q,
                         MappingProxyType({d: 0.0 for d in compiled.dofs}))
-        data = at_rest._data()
-        hold = np.nan_to_num(at_rest._solve(data, None, None)[1][:model.nu])
         independent = [compiled.dofs[i] for i in closure.independent_dofs]
 
         def reduced(data):
@@ -529,27 +550,30 @@ class State:
                                 - _moment(model, data).T @ hold)
             return basis.T @ force, basis, turned
 
-        _, basis, turned = reduced(data)
-        mass = np.zeros((model.nv, model.nv))
-        mujoco.mj_fullM(model, data, mass)
+        with at_rest._scratch() as data:
+            hold = np.nan_to_num(
+                at_rest._solve(data, None, None)[1][:model.nu])
+            _, basis, turned = reduced(data)
+            mass = np.zeros((model.nv, model.nv))
+            mujoco.mj_fullM(model, data, mass)
+            residual = _closure(model, data)
         mass = basis.T @ turned.T @ mass @ turned @ basis
         stiffness = np.zeros((len(independent),) * 2)
         worst = 0.0
         for i, dof in enumerate(independent):
             sides = []
             for step in (eps, -eps):
-                moved = at_rest._data()
-                write_q(compiled, moved, self._nudged(dof, step))
-                gap = closure.close(moved)
-                worst = max(worst, float(np.max(np.abs(gap), initial=0.0)))
-                mujoco.mj_forward(model, moved)
-                sides.append(reduced(moved)[0])
+                with at_rest._scratch() as moved:
+                    write_q(compiled, moved, self._nudged(dof, step))
+                    gap = closure.close(moved)
+                    worst = max(worst, float(np.max(np.abs(gap), initial=0.0)))
+                    mujoco.mj_forward(model, moved)
+                    sides.append(reduced(moved)[0])
             stiffness[:, i] = (sides[0] - sides[1]) / (2 * eps)
         return Linearised(tuple(independent), _frozen(stiffness),
                           _frozen(mass),
                           _frozen(_frequencies(stiffness, mass)),
-                          max(_closure(model, data), worst),
-                          LINEARISE_CLOSED_METHOD, eps)
+                          max(residual, worst), LINEARISE_CLOSED_METHOD, eps)
 
     def _linearise_contact(self):
         compiled = self.compiled
@@ -586,8 +610,9 @@ class State:
         zero = MappingProxyType({d: 0.0 for d in compiled.dofs})
         state = State(compiled, self.q, zero)
         for k in range(ROUNDS):
-            hold = np.nan_to_num(
-                state._solve(state._data(), None, None)[1][:soft.nu])
+            with state._scratch() as data:
+                hold = np.nan_to_num(
+                    state._solve(data, None, None)[1][:soft.nu])
             data = mujoco.MjData(soft)
             write_q(compiled, data, state.q)
             data.ctrl[:] = hold
@@ -1006,6 +1031,8 @@ def _over_limit(model, torques):
 def _closure(model, data):
     """How far the state's loops are from closed: the largest equality-row
     violation, zero where there are none."""
+    if not data.nefc:
+        return 0.0
     rows = data.efc_type == mujoco.mjtConstraint.mjCNSTR_EQUALITY
     return float(np.max(np.abs(data.efc_pos[rows]), initial=0.0))
 
@@ -1013,6 +1040,8 @@ def _closure(model, data):
 def _refuse_constraints(model, data, what):
     """Raise on any active row but a loop's, a couple's or a contact's,
     which the queries carry explicitly."""
+    if not data.nefc:
+        return
     other = np.flatnonzero(~np.isin(data.efc_type[:data.nefc], _CARRIED))
     if len(other):
         rows = sorted({_constraint(model, data, i) for i in other})
