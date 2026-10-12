@@ -20,6 +20,7 @@ constraints hold: `mj_inverse` on a five-bar was off by 61 % and 78 %.
 """
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import NamedTuple
@@ -31,6 +32,7 @@ from scipy.spatial.transform import Rotation
 
 from .assembly import RANK_TOL, tangent, write_q
 from .rotations import floating_rotation, turn
+from .variants import DISPLACED, QUANTIFIED, Couple, Lock
 
 EPS = 1e-6
 HOLD_STEPS = 500        # a settle runs at least this long, so "balanced here"
@@ -298,53 +300,105 @@ class State:
                       "joint's point")
 
     def release(self, hold=None, loads=None, min_steps=HOLD_STEPS,
-                max_steps=MAX_STEPS):
-        """Size a variant's assumptions: settle the full description from this
-        state, each locked coordinate at its locked value, under the
-        derivation's `hold` and `loads`, and report how far each locked
-        coordinate moves.
+                max_steps=MAX_STEPS, *, quantity=None):
+        """Size a variant's assumptions, keyed by reduction in `sized`.
 
-        A locked component of a floating body reports the same way: a
+        A lock, a couple or `planar` is sized by displacement: the full
+        description is settled from this state, each locked coordinate at its
+        locked value, under the derivation's `hold` and `loads`, and each
+        reports how far what it held moves. A lock or planar reports each
+        locked coordinate; a locked component of a floating body reports a
         position as the point's displacement along that base axis, and a turn
         as that angle of the intrinsic x-y-z turn from the start orientation
-        to the rest one.
+        to the rest one. A couple reports its follower's departure from the
+        coupled value, q_a − home_a − ratio (q_b − home_b), at rest.
+
+        A lump or a rigid is sized by `quantity`, a function of a state
+        returning a number, an array or a mapping of them: its change,
+        quantity(the variant without that one reduction, at this state's
+        posture and rates) − quantity(this state). Releasing one assumption
+        compiles the variant with and without it. Call release at each state
+        the assumption must hold at.
 
         `hold` names this variant's actuators only. A locked coordinate carries
         no command, because the assumption claims nothing needs to hold it.
         """
         compiled = self.compiled
-        locks = compiled.description.locks
-        if not locks:
+        description = compiled.description
+        if not description.reductions:
             raise ValueError("this model is not a variant; there is nothing to "
                              "release")
         command = dict(hold or {})
         unknown = sorted(set(command) - set(compiled.actuators))
         if unknown:
-            raise KeyError(f"variant {compiled.description.variant!r} has no "
+            raise KeyError(f"variant {description.variant!r} has no "
                            f"actuator named {unknown}; it has "
                            f"{list(compiled.actuators)}, and a locked "
                            f"coordinate carries no command")
-        full = compiled.full
-        start = {}
-        for name in full.coordinates:
+        displaced = [r for r in description.reductions
+                     if isinstance(r, DISPLACED)]
+        quantified = [r for r in description.reductions
+                      if isinstance(r, QUANTIFIED)]
+        if quantified and quantity is None:
+            raise ValueError(
+                f"{', '.join(str(r) for r in quantified)} "
+                f"{'is' if len(quantified) == 1 else 'are'} sized by how much "
+                f"a quantity changes without it; pass quantity=, a function "
+                f"of a state")
+        sized, moved, assumed, settled, residual = {}, {}, {}, None, 0.0
+        if displaced:
+            full = compiled.full
+            start = self._counterpart(full)
+            settled = full.at(q=start).settle(command, loads, min_steps,
+                                              max_steps)
+            residual = settled.residual
+            for name, lock in description.locks.items():
+                if not isinstance(description.locked_by[name], DISPLACED):
+                    continue  # a rigid joint, sized by quantity
+                joint, component = compiled._coordinate[name]
+                assumed[name] = float(lock.at)
+                moved[name] = (settled.moved[name] if component is None else
+                               _component_moved(component, start[joint.name],
+                                                settled.q[joint.name]))
+            for c in description.couples:
+                rest = settled.q
+                moved[c.a] = ((rest[c.a] - full.home(c.a)) - float(c.ratio)
+                              * (rest[c.b] - full.home(c.b)))
+            for r in displaced:
+                sized[r] = (moved[r.coordinate] if isinstance(r, Lock)
+                            else moved[r.a] if isinstance(r, Couple)
+                            else MappingProxyType({
+                                n: moved[n] for n, by in
+                                description.locked_by.items() if by is r}))
+        if quantified:
+            here = quantity(self)
+            for r in quantified:
+                other = compiled.without(r)
+                there = other.at(q=self._counterpart(other), qd={
+                    d: v for d, v in self.qd.items()
+                    if d in other.dofs and d not in other.dependent})
+                residual = max(residual, _closure(other.model, there._data()))
+                sized[r] = _change(quantity(there), here)
+        return Released(
+            description.variant, description.reductions,
+            MappingProxyType(assumed), MappingProxyType(moved),
+            MappingProxyType({r: sized[r] for r in description.reductions}),
+            settled, residual, RELEASE_METHOD)
+
+    def _counterpart(self, other):
+        """This state's posture in `other`, a model of the same description
+        with fewer reductions, by independent coordinate: locked coordinates
+        at their locked values, and a floating body this variant rebuilt as
+        a chain assembled whole."""
+        locks, start = self.compiled.description.locks, {}
+        for name in other.coordinates:
             if name in self.q:
                 start[name] = self.q[name]
             elif name in locks:
                 start[name] = float(locks[name].at)
-            else:  # a floating body this variant rebuilt as a chain
+            else:
                 start[name] = self._assembled(name)
-        start = {n: v for n, v in start.items() if n not in full.dependent}
-        settled = full.at(q=start).settle(command, loads, min_steps, max_steps)
-        moved = {}
-        for name in locks:
-            joint, component = compiled._coordinate[name]
-            moved[name] = (settled.moved[name] if component is None else
-                           _component_moved(component, start[joint.name],
-                                            settled.q[joint.name]))
-        return Released(
-            compiled.description.variant, compiled.description.reductions,
-            MappingProxyType({n: float(r.at) for n, r in locks.items()}),
-            MappingProxyType(moved), settled, settled.residual, RELEASE_METHOD)
+        return {n: v for n, v in start.items() if n not in other.dependent}
 
     def linearise(self, eps=EPS):
         """Stiffness K, mass M and the mode frequencies about this state.
@@ -486,8 +540,10 @@ INVERSE_METHOD = ("least squares on [S J_c^T][tau; lambda] = M qdd + bias - "
 SETTLE_METHOD = (f"quench from rest, Euler steps split around the loads, at "
                  f"least {HOLD_STEPS} steps by default; rest at |qd| < "
                  f"{REST_SPEED:g} and |qdd| < {REST_ACCEL:g}")
-RELEASE_METHOD = ("the full description settled from the locked values, "
-                  "locked coordinates uncommanded")
+RELEASE_METHOD = ("lock, couple, planar: the full description settled from "
+                  "the locked values, locked coordinates uncommanded; lump, "
+                  "rigid: quantity(the variant without it) - quantity(the "
+                  "variant), at this state")
 LINEARISE_METHOD = ("K: mjd_inverseFD at qacc = 0, central (mean of +eps and "
                     "-eps); M: mj_fullM; free joints turned to their dofs")
 LINEARISE_CLOSED_METHOD = (
@@ -584,23 +640,57 @@ class Wrench:
 
 @dataclass(frozen=True, eq=False)
 class Released:
-    """A variant's release. For each locked coordinate, `assumed` is the value
-    the lock held it at and `moved` its signed displacement when the full
-    description settled; `settled` is that settle. A few microradians is an
-    assumption sized and kept; degrees is an assumption that was wrong."""
+    """A variant's release, keyed by reduction in `sized`: a lock's or a
+    couple's signed displacement, planar's displacement of each coordinate it
+    locked, and a lump's or a rigid's change in the quantity named.
+
+    For each coordinate a lock or planar held, `assumed` is the value it was
+    held at and `moved` its signed displacement when the full description
+    settled; `moved` also holds each couple's departure, under its follower.
+    `settled` is that settle, or None when nothing is sized by displacement.
+    A few microradians is an assumption sized and kept; degrees is an
+    assumption that was wrong."""
     variant: str
     reductions: tuple
     assumed: MappingProxyType
     moved: MappingProxyType
+    sized: MappingProxyType
     settled: Settled
     residual: float
     method: str
 
     def __str__(self):
-        by_name = {getattr(r, "coordinate", None): r for r in self.reductions}
-        parts = [f"{by_name[n]} moved {self.moved[n]:+.4g}" for n in self.moved]
-        tail = "" if self.settled.stable else "; the full model never came to rest"
+        parts = []
+        for r, value in self.sized.items():
+            if isinstance(r, QUANTIFIED):
+                parts.append(f"{r} changed it by {_written(value)}")
+            elif isinstance(value, MappingProxyType):
+                parts.append(f"{r} moved " + ", ".join(
+                    f"{n!r} {v:+.4g}" for n, v in value.items()))
+            else:
+                parts.append(f"{r} moved {value:+.4g}")
+        tail = ("" if self.settled is None or self.settled.stable
+                else "; the full model never came to rest")
         return f"variant {self.variant!r}: {', '.join(parts)}{tail}"
+
+
+def _written(value):
+    if isinstance(value, float):
+        return f"{value:+.4g}"
+    if isinstance(value, MappingProxyType):
+        return "{" + ", ".join(f"{k!r}: {_written(v)}"
+                               for k, v in value.items()) + "}"
+    return np.array2string(value, precision=4)
+
+
+def _change(there, here):
+    """`there` less `here`: numbers, arrays, or mappings of them, key by key
+    over `here`'s keys."""
+    if isinstance(here, Mapping):
+        return MappingProxyType({k: _change(there[k], v)
+                                 for k, v in here.items() if k in there})
+    change = np.asarray(there, dtype=float) - np.asarray(here, dtype=float)
+    return float(change) if change.ndim == 0 else _frozen(change)
 
 
 @dataclass(frozen=True, eq=False)
@@ -679,9 +769,12 @@ def _component_moved(component, start, rest):
 
 def _tensions(model, data):
     """Each cable's tension: EA/rest × stretch, and exactly zero when slack,
-    as MuJoCo's deadband spring applies it."""
+    as MuJoCo's deadband spring applies it. A rigid cable has no spring and
+    is left out; its tension is `inverse`'s constraint force."""
     out = {}
     for i in range(model.ntendon):
+        if model.tendon_stiffness[i] == 0.0:
+            continue
         stretch = data.ten_length[i] - model.tendon_lengthspring[i, 1]
         out[model.tendon(i).name] = (float(model.tendon_stiffness[i] * stretch)
                                      if stretch > 0 else 0.0)

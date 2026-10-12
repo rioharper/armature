@@ -18,10 +18,15 @@ slides along the base axes, then hinges about the body's own axes through its
 point, with the locked turns applied first as the body's fixed orientation. A
 level platform is three slides.
 
-A loop compiles as a `connect` between its two sites, and a couple as a joint
-equality. Both are soft in MuJoCo, so the queries never lean on the solver's
-forces: `at()` closes them exactly, and `inverse` and `linearise` carry them
-as explicit constraint rows.
+A loop compiles as a `connect` between its two sites, a couple as a joint
+equality, and a rigid cable as a tendon equality at its rest length. All are
+soft in MuJoCo, so the queries never lean on the solver's forces: `at()`
+closes them exactly, and `inverse` and `linearise` carry them as explicit
+constraint rows.
+
+MuJoCo refuses a moving body without mass or inertia, so a body a lump left
+without them compiles with `MASS_FLOOR` of its own mass and inertia, and the
+variant is flagged `approximate`.
 """
 
 from types import MappingProxyType
@@ -30,10 +35,12 @@ import mujoco
 import numpy as np
 
 from .assembly import Closure, write_q
-from .description import coordinate_joints, describe, tree_order
+from .description import (coordinate_joints, describe, rigid_cables,
+                          tree_order)
 from .elements import FREE_COMPONENTS, WORLD
 from .rotations import AXES, floating_rotation, turn
 from .state import Placement, State, placement
+from .variants import reduce
 
 TIMESTEP = 1e-3
 CLOSURE_SOLREF = (2 * TIMESTEP, 1.0)  # the stiffest MuJoCo keeps stable, at
@@ -42,6 +49,8 @@ CLOSURE_SOLIMP = (0.9999, 0.9999, 1e-3, 0.5, 2.0)  # MuJoCo's highest impedance
     # at every violation: a loop's slack goes as (1 - d)/d, so a five-bar at
     # rest holds 3e-9 m, where (0.99, 0.999) held 4e-7 m and left a
     # parallelogram creeping for 20 s
+MASS_FLOOR = 1e-6  # of a body's own mass and inertia, where a lump left none:
+                   # MuJoCo refuses a moving body without either (mjMINVAL)
 
 _KIND = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
@@ -54,8 +63,19 @@ def compile(mechanism, params):
     MuJoCo is touched. Returns a `Compiled`.
     """
     description = describe(mechanism, params)
-    return Compiled(description, _spec(description).compile(),
-                    source=(mechanism, params))
+    model = _spec(description).compile()
+    _hold_rigid(model, description)
+    return Compiled(description, model, source=(mechanism, params))
+
+
+def _hold_rigid(model, description):
+    """Set each rigid cable's tendon equality to its rest length. MuJoCo holds
+    L − L₀ = data[0], with L₀ the length at the compiled home posture, which
+    a lock away from home moves, so it is read once compiled."""
+    for c in rigid_cables(description):
+        tendon = model.tendon(c.name).id
+        model.eq_data[model.equality(c.name).id, 0] = (
+            float(c.rest_length) - model.tendon_length0[tendon])
 
 
 class Compiled:
@@ -70,9 +90,12 @@ class Compiled:
     compiled model leaves its locked coordinates out; `full` is the full
     description, compiled, which its release settles.
 
-    On a closed chain, `constraints` names each loop and couple, and the
-    coordinates split into `independent` ones, which `at()` takes, and
-    `dependent` ones, which it solves so every loop closes.
+    On a closed chain, `constraints` names each loop, couple and rigid
+    cable, and the coordinates split into `independent` ones, which `at()`
+    takes, and `dependent` ones, which it solves so every loop closes.
+
+    `approximate` says why this model is not exactly its description, one
+    reason per floored body; it is empty when it is exact.
 
     `model` is the compiled `MjModel`, the escape hatch for code that needs raw
     arrays. Treat it as read-only: every query reads it, and none expects it to
@@ -98,9 +121,10 @@ class Compiled:
         self._offset = {j.name: com[j.child] - _floats(j.point)  # point to COM
                         for j in description.joints}
         self._source = source
-        self._full = None
+        self._full, self._without = None, {}
         self.closure = (Closure(self) if description.loops
-                        or description.couples else None)
+                        or description.couples or rigid_cables(description)
+                        else None)
         self.constraints = self.closure.names if self.closure else ()
         self.dependent = self.closure.dependent if self.closure else ()
         self.independent = tuple(n for n in self.coordinates
@@ -116,6 +140,30 @@ class Compiled:
             mechanism, params = self._source
             self._full = compile(mechanism.mechanism, params)
         return self._full
+
+    def without(self, reduction):
+        """This variant without `reduction`, compiled: what releasing that
+        one reduction compares against."""
+        if reduction not in self._without:
+            mechanism, params = self._source
+            rest = tuple(r for r in self.description.reductions
+                         if r is not reduction)
+            self._without[reduction] = compile(
+                reduce(mechanism.mechanism, *rest,
+                       name=f"{self.description.variant} without {reduction}")
+                if rest else mechanism.mechanism, params)
+        return self._without[reduction]
+
+    @property
+    def approximate(self):
+        mass = {b.name: float(b.mass) for b in self.description.bodies}
+        return tuple(
+            f"{r} leaves {r.body!r} without "
+            f"{'mass' if mass[r.body] == 0 else 'inertia'}; it compiles with "
+            f"{MASS_FLOOR:g} of its own mass and inertia, since MuJoCo "
+            f"refuses a moving body without either"
+            for r in self.description.reductions
+            if getattr(r, "body", None) in self.description.floored)
 
     def home(self, coordinate):
         """`coordinate`'s value at the home posture."""
@@ -227,6 +275,10 @@ def _spec(description):
         mj.mass = float(b.mass)
         mj.ipos = [0.0, 0.0, 0.0]
         inertia = _floats(b.inertia)
+        if b.name in description.floored:  # a lump left it without either
+            was = description.floored[b.name]
+            mj.mass += MASS_FLOOR * float(was.mass)
+            inertia = inertia + MASS_FLOOR * _floats(was.inertia)
         mj.fullinertia = [inertia[0, 0], inertia[1, 1], inertia[2, 2],
                           inertia[0, 1], inertia[0, 2], inertia[1, 2]]
         mj.explicitinertial = True
@@ -245,6 +297,7 @@ def _spec(description):
     for s in description.sites:
         handle[s.body].add_site(name=s.name, pos=_floats(s.pos) - com[s.body])
 
+    rigid = {c.name for c in rigid_cables(description)}
     for c in description.cables:
         ends = []
         for label, (on, pos) in (("start", c.start), ("end", c.end)):
@@ -253,10 +306,16 @@ def _spec(description):
             ends.append(name)
         rest = float(c.rest_length)
         tendon = spec.add_tendon(name=c.name)
-        tendon.stiffness[0] = float(c.ea) / rest
-        tendon.springlength = [0.0, rest]  # a deadband: no force while slack
         for name in ends:
             tendon.wrap_site(name)
+        if c.name in rigid:  # no spring: held at its rest length, both ways
+            eq = spec.add_equality(name=c.name, type=mujoco.mjtEq.mjEQ_TENDON,
+                                   objtype=mujoco.mjtObj.mjOBJ_TENDON,
+                                   name1=c.name)
+            eq.solref, eq.solimp = CLOSURE_SOLREF, CLOSURE_SOLIMP
+            continue  # its length is set once compiled, by _hold_rigid
+        tendon.stiffness[0] = float(c.ea) / rest
+        tendon.springlength = [0.0, rest]  # a deadband: no force while slack
 
     for loop in description.loops:  # sites, so the sites themselves meet
         eq = spec.add_equality(name=loop.name, type=mujoco.mjtEq.mjEQ_CONNECT,

@@ -15,6 +15,11 @@ takes, and it solves the rest so every loop closes.
     armature.compile(rigid, PARAMS).at().release(hold)
     armature.symbolic(rigid, PARAMS)
 
+The reductions are `lock`, `couple`, `planar`, `lump` and `rigid`;
+`release(hold, quantity=...)` sizes each one by name, and
+`armature.account(m, coordinates)` fails a derivation whose coordinates are
+not its variant's.
+
 `m.model` is the compiled `MjModel`, for code that needs raw arrays.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
@@ -32,7 +37,8 @@ from .review import Frames, Review, frames, render, review
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
-from .variants import Variant, couple, lock, reduce
+from .variants import (AccountingError, Variant, account, couple, lock, lump,
+                       massless, planar, reduce, rigid)
 
 __all__ = ["Compiled", "Description", "DescriptionError", "Inverse",
            "Jacobian", "Linearised", "Placement", "Pose", "Released",
@@ -41,3 +47,5 @@ __all__ = ["Compiled", "Description", "DescriptionError", "Inverse",
            "lock", "loop", "reduce", "site", "symbolic"]
 __all__ += ["Frames", "Review", "box", "compose", "cylinder", "frames", "point",
             "render", "review", "rod", "sphere"]
+__all__ += ["AccountingError", "account", "lump", "massless", "planar",
+            "rigid"]

@@ -1,9 +1,11 @@
-"""Writing a posture into MuJoCo, and closing the loops and couples a closed
-chain adds.
+"""Writing a posture into MuJoCo, and closing the loops, couples and rigid
+cables a closed chain adds.
 
 A loop's rows are the gap between its two sites, p_a − p_b, with the Jacobian
 J_a − J_b, both from MuJoCo's own kinematics (`mj_jacSite`); a couple's row is
-q_a − home_a − ratio (q_b − home_b). A loop whose moving joints all turn about
+q_a − home_a − ratio (q_b − home_b); a rigid cable's is its length less its
+rest length, |p_end − p_start| − L, with the Jacobian u·(J_end − J_start)
+along the unit span u. A loop whose moving joints all turn about
 one direction n (and slide across it) is planar: its row along n is zero at
 every posture, so only its two in-plane rows are kept, and a rank lost reads
 the same on a planar loop as on a spatial one.
@@ -20,6 +22,7 @@ import mujoco
 import numpy as np
 from scipy.linalg import null_space
 
+from .description import rigid_cables
 from .elements import WORLD
 
 RANK_TOL = 1e-9          # a singular value below this times the largest is
@@ -108,6 +111,12 @@ class Closure:
                 model.jnt_dofadr[ja], model.jnt_dofadr[jb],
                 float(model.qpos0[model.jnt_qposadr[ja]]),
                 float(model.qpos0[model.jnt_qposadr[jb]]), float(c.ratio))))
+        for c in rigid_cables(description):
+            ends = (mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE,
+                                      f"{c.name}:{label}")
+                    for label in ("start", "end"))
+            self.blocks.append((c.name, "cable", 1,
+                                (*ends, float(c.rest_length))))
         self.names = tuple(name for name, *_ in self.blocks)
         self.size = sum(size for _, _, size, _ in self.blocks)
         self._choose_dependent()
@@ -127,6 +136,12 @@ class Closure:
                 gap[row:row + size] = directions @ (data.site_xpos[a]
                                                     - data.site_xpos[b])
                 jac[row:row + size] = directions @ (ja - jb)
+            elif kind == "cable":
+                start, end, rest = detail
+                span, js, je = self._span(data, start, end)
+                length = np.linalg.norm(span)
+                gap[row] = length - rest
+                jac[row] = span / length @ (je - js)
             else:
                 qa, qb, da, db, home_a, home_b, ratio = detail
                 gap[row] = (data.qpos[qa] - home_a
@@ -148,17 +163,39 @@ class Closure:
                                      data.site_xpos[site].copy(),
                                      int(model.site_bodyid[site]))
                     out[row:row + size] += sign * directions @ (jdot @ data.qvel)
+            if kind == "cable":  # d²L/dt² − J q̈ = u·(J̇_e − J̇_s) q̇ + |v⊥|²/L
+                start, end, _ = detail
+                span, js, je = self._span(data, start, end)
+                length = np.linalg.norm(span)
+                u, v = span / length, (je - js) @ data.qvel
+                for site, sign in ((end, 1.0), (start, -1.0)):
+                    jdot = np.zeros((3, model.nv))
+                    mujoco.mj_jacDot(model, data, jdot, None,
+                                     data.site_xpos[site].copy(),
+                                     int(model.site_bodyid[site]))
+                    out[row] += sign * u @ (jdot @ data.qvel)
+                out[row] += (v @ v - (u @ v) ** 2) / length
             row += size
         return out
+
+    def _span(self, data, start, end):
+        """A cable's span, end less start, and its two ends' Jacobians."""
+        model = self.model
+        js, je = np.zeros((3, model.nv)), np.zeros((3, model.nv))
+        mujoco.mj_jacSite(model, data, js, None, start)
+        mujoco.mj_jacSite(model, data, je, None, end)
+        return data.site_xpos[end] - data.site_xpos[start], js, je
 
     def forces(self, multipliers):
         """Each constraint's force from its rows' multipliers: a loop's force
         on its first site's body (a 3-vector in the base frame), a couple's
-        generalised force on its follower."""
+        generalised force on its follower, a rigid cable's tension (it pulls
+        along −∂L/∂q, so the tension is the multiplier's negative)."""
         out, row = {}, 0
         for name, kind, size, detail in self.blocks:
             part = multipliers[row:row + size]
             out[name] = (detail[2].T @ part if kind == "loop"
+                         else -float(part[0]) if kind == "cable"
                          else float(part[0]))
             row += size
         return out
@@ -220,7 +257,7 @@ class Closure:
                 which, size = self.worst(gap)
                 raise ValueError(
                     f"{which} cannot close at this posture: it is still "
-                    f"{size:.3g} {'m' if which.startswith('loop') else ''} "
+                    f"{size:.3g} {'' if which.startswith('couple') else 'm'} "
                     f"apart after the solve (from home, "
                     f"{k - 1} of {steps} steps along the way closed)")
         return {n: float(data.qpos[a])

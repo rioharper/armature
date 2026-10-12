@@ -14,7 +14,7 @@ import sympy as sp
 
 from .elements import (FREE_COMPONENTS, JOINT_KINDS, WORLD, Actuator, Body,
                        Cable, DescriptionError, Gravity, Joint, Loop, Site)
-from .variants import Couple, Lock, Variant
+from .variants import Couple, Lock, Lump, Planar, Rigid, Variant, massless
 
 ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity)
 
@@ -24,13 +24,18 @@ INERTIA_TOL = 1e-12    # relative to the trace, for symmetry and the triangle in
 LOOP_HOME_BOUND = 1e-6  # m: how far apart a loop's sites may be written at home,
     # the slack a settle allows; a metre-scale drawing rounded to six digits
     # passes, a typo does not
+PLANES = {"xy": 2, "yx": 2, "xz": 1, "zx": 1, "yz": 0, "zy": 0}  # → the normal
+PLANE_TOL = 1e-9       # how far a unit axis may lean and still count as in-plane
 
 
 @dataclass(frozen=True)
 class Description:
     """A validated mechanism description: its elements, by kind, in the order
     written. A variant's description also carries its name, its reductions,
-    its locks keyed by coordinate, and its couples."""
+    its locks keyed by coordinate (planar's and a rigid joint's among them)
+    with the reduction that holds each in `locked_by`, and its couples. Its
+    bodies are the lumped ones, and `floored` keeps, by name, each body a
+    lump left without mass or inertia as it was before, for the floor."""
     bodies: tuple
     joints: tuple
     sites: tuple
@@ -43,6 +48,14 @@ class Description:
     reductions: tuple = ()
     locks: MappingProxyType = MappingProxyType({})
     couples: tuple = ()
+    locked_by: MappingProxyType = MappingProxyType({})
+    floored: MappingProxyType = MappingProxyType({})
+
+
+def rigid_cables(description):
+    """The cables a variant's `rigid` holds at their rest length."""
+    rigid = {r.element for r in description.reductions if isinstance(r, Rigid)}
+    return tuple(c for c in description.cables if c.name in rigid)
 
 
 def coordinate_joints(description):
@@ -205,34 +218,36 @@ def describe(mechanism, params):
 
 
 def _reduce(description, variant):
-    """`description` with the variant's reductions checked and recorded."""
-    problems, locks, couples = [], {}, []
+    """`description` with the variant's reductions checked and recorded.
+
+    Locks and rigid joints are held first, then `planar` locks what they left
+    out of the plane; lumps rewrite the bodies in the order written.
+    """
+    problems, locks, by, couples, planars, cables = [], {}, {}, [], [], set()
     held = coordinate_joints(description)
+    lumps = _Lumps(description)
     for r in variant.reductions:
         owner = f"{r} in variant {variant.name!r}"
         if isinstance(r, Couple):
             problems += _check_couple(r, owner, held, couples)
             couples.append(r)
         if isinstance(r, Lock):
-            joint, _ = held.get(r.coordinate, (None, None))
-            if joint is None:
-                problems.append(f"{owner}: no coordinate named "
-                                f"{r.coordinate!r}; the description has "
-                                f"{sorted(held)}")
-                continue
-            if r.coordinate in locks:
-                problems.append(f"{owner}: {r.coordinate!r} is already locked")
-            at = _num(r.at)
-            lo, hi = ((None, None) if joint.range is None
-                      else (_num(v) for v in joint.range))
-            if at is None:
-                problems.append(f"{owner}: the locked value must be a number")
-            elif None not in (lo, hi) and not lo <= at <= hi:
-                problems.append(f"{owner}: {at} lies outside the joint's "
-                                f"range ({lo}, {hi})")
-            locks[r.coordinate] = r
+            problems += _check_lock(r, owner, held, locks)
+            if r.coordinate in held:
+                locks[r.coordinate], by[r.coordinate] = r, r
+        if isinstance(r, Rigid):
+            problems += _rigid(r, owner, description, locks, by, cables)
+        if isinstance(r, Lump):
+            problems += lumps.apply(r, owner)
+        if isinstance(r, Planar):
+            planars.append((r, owner))
         if r.assumption is None or r.assumption == "":
             problems.append(f"{owner}: carries no assumption number")
+    for r, owner in planars:
+        if len(planars) > 1:
+            problems.append(f"{owner}: a variant keeps one plane")
+            break
+        problems += _planar(r, owner, description, locks, by)
     for c in couples:
         for name in (c.a, c.b):
             if name in locks:
@@ -241,8 +256,156 @@ def _reduce(description, variant):
     if problems:
         raise DescriptionError(problems)
     return replace(description, variant=variant.name,
-                   reductions=variant.reductions,
-                   locks=MappingProxyType(locks), couples=tuple(couples))
+                   reductions=variant.reductions, bodies=lumps.bodies(),
+                   locks=MappingProxyType(locks), couples=tuple(couples),
+                   locked_by=MappingProxyType(by),
+                   floored=MappingProxyType(lumps.floored))
+
+
+def _check_lock(r, owner, held, locks):
+    joint, _ = held.get(r.coordinate, (None, None))
+    if joint is None:
+        return [f"{owner}: no coordinate named {r.coordinate!r}; the "
+                f"description has {sorted(held)}"]
+    problems = []
+    if r.coordinate in locks:
+        problems.append(f"{owner}: {r.coordinate!r} is already locked")
+    at = _num(r.at)
+    lo, hi = ((None, None) if joint.range is None
+              else (_num(v) for v in joint.range))
+    if at is None:
+        problems.append(f"{owner}: the locked value must be a number")
+    elif None not in (lo, hi) and not lo <= at <= hi:
+        problems.append(f"{owner}: {at} lies outside the joint's range "
+                        f"({lo}, {hi})")
+    return problems
+
+
+def _rigid(r, owner, description, locks, by, cables):
+    """Check `rigid`, and lock a compliant joint where its spring rests;
+    `cables` collects the cables made rigid so far."""
+    joints = {j.name: j for j in description.joints}
+    if r.element in {c.name for c in description.cables}:
+        if r.element in cables:
+            return [f"{owner}: {r.element!r} is already rigid"]
+        cables.add(r.element)
+        return []
+    if r.element not in joints:
+        return [f"{owner}: no cable, compliant joint or contact named "
+                f"{r.element!r}"]
+    j = joints[r.element]
+    if j.stiffness is None:
+        return [f"{owner}: joint {j.name!r} has no spring; a joint with no "
+                f"spring is held by a lock"]
+    if j.name in locks:
+        return [f"{owner}: {j.name!r} is already locked"]
+    at = j.home if j.rest is None else j.rest
+    lo, hi, value = _num(j.range[0]), _num(j.range[1]), _num(at)
+    if None not in (lo, hi, value) and not lo <= value <= hi:
+        return [f"{owner}: the spring rests at {value}, outside the joint's "
+                f"range ({lo}, {hi})"]
+    locks[j.name], by[j.name] = Lock(j.name, at, r.assumption), r
+    return []
+
+
+def _planar(r, owner, description, locks, by):
+    """Lock, at home, every coordinate that would leave `r`'s plane and that
+    no other reduction holds."""
+    if r.plane not in PLANES:
+        return [f"{owner}: the plane must be 'xy', 'xz' or 'yz', got "
+                f"{r.plane!r}"]
+    n, problems, leaving = PLANES[r.plane], [], []
+    normal = "xyz"[n]
+    for j in description.joints:
+        if j.kind == "free":  # keep two slides and the turn about the normal
+            leaving.append((f"{j.name}:{normal}", j.point[n]))
+            leaving += [(f"{j.name}:r{a}", 0.0) for a in "xyz" if a != normal]
+            continue
+        axis = _array(j.axis)
+        if axis is None:
+            problems.append(f"{owner}: joint {j.name!r}'s axis is not a "
+                            f"number, so whether it lies in the plane cannot "
+                            f"be told")
+            continue
+        along = abs(axis[n])  # a unit axis: 1 along the normal, 0 across it
+        if (along < 1 - PLANE_TOL if j.kind == "hinge" else along > PLANE_TOL):
+            leaving.append((j.name, j.home))
+    for name, at in leaving:
+        if name not in locks:
+            locks[name], by[name] = Lock(name, at, r.assumption), r
+    return problems
+
+
+class _Lumps:
+    """The bodies as a variant's lumps leave them, applied in the order
+    written, and each body left without mass or inertia as it was."""
+
+    def __init__(self, description):
+        self._order = [b.name for b in description.bodies]
+        self._bodies = {b.name: b for b in description.bodies}
+        self._sites = {s.name: s for s in description.sites}
+        self._neighbours = {name: set() for name in self._bodies}
+        for j in description.joints:
+            if j.parent != WORLD and j.parent in self._bodies:
+                self._neighbours[j.parent].add(j.child)
+                self._neighbours[j.child].add(j.parent)
+        self.floored = {}
+
+    def bodies(self):
+        return tuple(self._bodies[name] for name in self._order)
+
+    def apply(self, r, owner):
+        if r.body not in self._bodies:
+            return [f"{owner}: no body named {r.body!r}"]
+        point = None
+        if r.into is massless:
+            target = None
+        elif isinstance(r.into, str) and r.into in self._bodies:
+            target = r.into
+        elif isinstance(r.into, str) and r.into in self._sites:
+            target, point = self._sites[r.into].body, self._sites[r.into].pos
+        else:
+            return [f"{owner}: no body or site named {r.into!r}"]
+        if r.body in self.floored:
+            return [f"{owner}: {r.body!r} is already lumped"]
+        if target == r.body and point is None:
+            return [f"{owner}: a body cannot be lumped into itself"]
+        if target not in (None, r.body) and target not in self._neighbours[
+                r.body]:
+            return [f"{owner}: {target!r} is not a neighbour of {r.body!r}; a "
+                    f"lump moves mass across one joint"]
+        if target in self.floored:
+            return [f"{owner}: {target!r}'s mass is already lumped away"]
+        b = self._bodies[r.body]
+        zero = ((0, 0, 0),) * 3
+        self.floored[r.body] = b
+        self._bodies[r.body] = Body(b.name, 0, b.com, zero)
+        if target is not None:  # a site's point mass has no inertia of its own
+            com, inertia = (b.com, b.inertia) if point is None else (point,
+                                                                      zero)
+            self._bodies[target] = _combine(self._bodies[target], b.mass, com,
+                                            inertia)
+        return []
+
+
+def _combine(body, mass, com, inertia):
+    """`body` with `mass` at `com`, of `inertia` about it, added rigidly: the
+    parallel-axis theorem about the combined COM."""
+    total = body.mass + mass
+    centre = tuple((body.mass * a + mass * b) / total
+                   for a, b in zip(body.com, com))
+    tensor = [[u + v for u, v in zip(*rows)] for rows in zip(
+        _shifted(body.inertia, body.mass, body.com, centre),
+        _shifted(inertia, mass, com, centre))]
+    return Body(body.name, total, centre, tensor)
+
+
+def _shifted(inertia, mass, com, centre):
+    """`inertia` about `com`, moved to `centre`: I + m (|d|² E − d dᵀ)."""
+    d = [a - c for a, c in zip(com, centre)]
+    dd = sum(x * x for x in d)
+    return [[inertia[i][k] + mass * ((dd if i == k else 0) - d[i] * d[k])
+             for k in range(3)] for i in range(3)]
 
 
 def _check_couple(c, owner, held, earlier):

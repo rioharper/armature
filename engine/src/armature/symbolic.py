@@ -26,7 +26,7 @@ import sympy as sp
 from sympy.physics.mechanics import (Point, ReferenceFrame, dynamicsymbols,
                                      inertia)
 
-from .description import describe, tree_order
+from .description import describe, rigid_cables, tree_order
 from .elements import FREE_COMPONENTS, WORLD
 
 
@@ -42,9 +42,11 @@ class Symbolic:
     the axis; a floating body's point). `sites` includes
     each cable's ends as `<cable>:start` and `<cable>:end`. `gravity` is a
     Vector. Every point's velocity in `world` is set. `closures` holds what
-    each loop and couple keeps at zero: a loop's gap from its second site to
-    its first (a Vector), and a couple's q_a − home_a − ratio (q_b − home_b),
-    keyed by its follower.
+    each loop, couple and rigid cable keeps at zero: a loop's gap from its
+    second site to its first (a Vector), a couple's q_a − home_a − ratio
+    (q_b − home_b), keyed by its follower, and a rigid cable's length less
+    its rest length. A variant's masses, COMs and dyadics are its lumped
+    ones, exactly: a body lumped away has mass 0.
     """
     description: object
     q: MappingProxyType
@@ -130,6 +132,9 @@ def symbolic(mechanism, params):
     for c in d.couples:
         closures[c.a] = (q[c.a] - homes[c.a]
                          - sp.sympify(c.ratio) * (q[c.b] - homes[c.b]))
+    for c in rigid_cables(d):
+        closures[c.name] = (sites[f"{c.name}:end"].pos_from(
+            sites[f"{c.name}:start"]).magnitude() - sp.sympify(c.rest_length))
 
     tensors = {}
     for b in d.bodies:
