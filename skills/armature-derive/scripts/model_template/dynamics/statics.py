@@ -9,10 +9,11 @@ import numpy as np
 from dynamics.lagrangian import g_num
 
 
-def static_torques(q_vals):
+def static_torques(q_vals, **band):
     """Joint torques to hold posture q against gravity, g(q) of eq. (2) [N m].
 
     Positive about each joint's axis as the description writes it; the
-    magnitude is what an actuator holds.
+    magnitude is what an actuator holds. `band` takes a banded parameter's
+    value by name, as every numeric function does (`mechanism.numeric`).
     """
-    return np.asarray(g_num(*q_vals), dtype=float).flatten()
+    return np.asarray(g_num(*q_vals, **band), dtype=float).flatten()

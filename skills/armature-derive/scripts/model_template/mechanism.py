@@ -28,7 +28,7 @@ from sympy.physics.mechanics import dynamicsymbols
 import armature
 from armature import actuator, body, gravity, joint, site
 
-from params import PARAMS
+from params import BANDS, PARAMS
 
 # Run order and heading for `run_all.py`. Milestone 0, beside the parameter
 # block it reads.
@@ -68,8 +68,9 @@ def mechanism(p):
         # Direct drive, so a motor's torque is its joint's. A geared motor
         # takes gear= and rotor_inertia=, and the derivation then adds the
         # reflected N^2 J to M itself: the symbolic view carries no rotors.
-        actuator("shoulder_motor", joint="shoulder"),
-        actuator("elbow_motor", joint="elbow"),
+        # torque_limit is the motor's derated rating; a settle clamps there.
+        actuator("shoulder_motor", joint="shoulder", torque_limit=p["tau1"]),
+        actuator("elbow_motor", joint="elbow", torque_limit=p["tau2"]),
         gravity((0, -p["g"], 0)),
     ]
 
@@ -119,7 +120,10 @@ COORDINATES = view().coordinates
 def numeric(expr, rates=False):
     """`expr`, written in the view's coordinates (and their rates), as a NumPy
     function of the coordinates' values in COORDINATES order — then the rates',
-    when `rates` — with PARAMS substituted for the parameters."""
+    when `rates` — with PARAMS substituted for the parameters. A parameter
+    with a tolerance band in BANDS stays a keyword, at its nominal unless
+    given, so a margin evaluates the derivation at the band value its truth
+    model was compiled with: `g_num(*q, m2=0.88)`."""
     v = view()
     t = dynamicsymbols._t
     qs = sp.symbols(f"x0:{len(COORDINATES)}")
@@ -128,9 +132,32 @@ def numeric(expr, rates=False):
     # the derivative of a plain symbol, which is zero.
     swap = ([(c.diff(t), s) for c, s in zip(v.q.values(), vs)]
             + [(c, s) for c, s in zip(v.q.values(), qs)])
-    values = [(v.params[k], value) for k, value in PARAMS.items()]
-    return sp.lambdify(qs + vs if rates else qs,
-                       sp.sympify(expr).subs(swap).subs(values), "numpy")
+    values = [(v.params[k], value) for k, value in PARAMS.items()
+              if k not in BANDS]
+    f = sp.lambdify(list(qs + vs if rates else qs)
+                    + [v.params[k] for k in BANDS],
+                    sp.sympify(expr).subs(swap).subs(values), "numpy")
+
+    def at(*x, **band):
+        unknown = sorted(set(band) - set(BANDS))
+        if unknown:
+            raise TypeError(f"{unknown} have no band; the banded parameters "
+                            f"are {sorted(BANDS)}")
+        return f(*x, *(band.get(k, PARAMS[k]) for k in BANDS))
+    return at
+
+
+def bands():
+    """A `Band` axis for every parameter in BANDS, named for it: spread into
+    a margin's space, `Space(**bands(), state=...)`, so every band is
+    searched, with both its ends among the corners."""
+    return {k: armature.Band(k, BANDS) for k in BANDS}
+
+
+def band_values(p):
+    """A search point's value of every banded parameter, by name: what the
+    numeric functions take as keywords."""
+    return {k: p[k] for k in BANDS}
 
 
 def vector(mapping):

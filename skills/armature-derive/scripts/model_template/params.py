@@ -39,6 +39,22 @@ PARAMS = {
     "Ix1": 0.00024,  # link 1 inertia about its own long axis [kg m^2]
     "Ix2": 0.00016,  # link 2 inertia about its own long axis [kg m^2]
     "g": 9.81,      # gravitational acceleration [m/s^2]
+    # Each motor's continuous torque, derated: the limit every holding margin
+    # is slack against, and what the truth model's settle clamps a command to
+    # [N m, motor side]. The derating, and its reason, is the spec's.
+    "tau1": 15.0,   # shoulder motor
+    "tau2": 6.0,    # elbow motor
+}
+
+# The **tolerance bands**: each parameter the design does not know to better
+# than a range, as (lo, hi) around its nominal, in the parameter's units. A
+# margin searches each one as an axis (`Band`) with both ends among its
+# corners, so a worst case is stated at its worst band value and never at
+# nominal alone. The forearm's mass is a budget until CAD measures the part,
+# and +-10 % is what the budget is held to. `params_checks.py` fails a band
+# that names no parameter or leaves its nominal outside.
+BANDS = {
+    "m2": (0.72, 0.88),
 }
 
 # The **intended workspace**: the subset of the envelope the machine is

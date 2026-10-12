@@ -90,7 +90,8 @@ Three rules keep it honest, all of them layout rules rather than physics:
 A module's self-tests live in a sibling checks module named for it: `kinematics.py` →
 `kinematics_checks.py`. That includes the parameter block: `params.py` is data, and
 `params_checks.py` holds the checks on the shape of that data — both signs of every signed
-load case, every load direction a set —
+load case, every load direction a set, every tolerance band a parameter's and around its
+nominal —
 each of which is a whole class of downstream result quietly sized against the wrong thing. Locality is kept — the checks sit beside what they check — and
 neither file carries the other's lines. Discovery pairs the two by name, so moving a check
 costs no registration; pytest never collects a `*_checks.py` directly, so the one pytest

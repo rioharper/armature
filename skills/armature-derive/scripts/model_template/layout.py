@@ -9,8 +9,9 @@ it runs where SymPy and SciPy do not:
     python analysis/model/layout.py     # the gate table; exit 1 on a violation
 
 `run_all.py` discovers the checks below like any other, so the full run and
-`pytest` fail on a module over budget, or on a milestone's checks module that
-carries no truth check and no argued exemption. Running one milestone
+`pytest` fail on a module over budget, on a milestone's checks module that
+carries no truth check and no argued exemption, or on a margin declared with
+no `truth=` in a module with no argued exemption. Running one milestone
 (`run_all.py kinematics`) leaves them out: a file still being written is not
 red-barred mid-work. The same file ships in armature-cad's part template,
 where there is no mechanism description and the truth gate stands down.
@@ -36,6 +37,11 @@ EXEMPT = "LAYOUT_EXEMPT"
 # source says it is called.
 TRUTH_EXEMPT = "TRUTH_EXEMPT"
 TRUTH_PREFIX = "test_truth_"
+# A margin is held to the same gate: every module-level `Margin(...)` call in a
+# gated directory, in any module, passes `truth=`, or its module says in
+# TRUTH_EXEMPT why its claims need none. Read from the source like the prefix:
+# an assignment whose value calls `Margin` or `armature.Margin`.
+MARGIN = "Margin"
 # What says a directory has a truth model: the mechanism description it is
 # compiled from. The truth model itself is the engine's, outside this tree.
 DESCRIPTION = "mechanism.py"
@@ -46,8 +52,9 @@ NOTES = HERE.parent / "derivation"
 
 # `truth` is the list of truth checks the gate found, or None where the gate
 # does not apply — a module that is not a checks module, or a directory with no
-# mechanism description at all.
-Row = namedtuple("Row", "where lines exempt truth truth_exempt")
+# mechanism description at all. `bare` is the margins the module declares with
+# no truth, by name, or None in a directory with no mechanism description.
+Row = namedtuple("Row", "where lines exempt truth truth_exempt bare")
 
 _NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
              tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER}
@@ -121,6 +128,28 @@ def truth_checks(source):
             and node.name.startswith(TRUTH_PREFIX)]
 
 
+def bare_margins(source):
+    """The module-level margins declared with no `truth=`, by the name each is
+    bound to: an assignment whose value calls `Margin` or `armature.Margin`
+    with no truth, by keyword or as the fifth argument, or with None."""
+    bare = []
+    for node in ast.parse(source).body:
+        targets = (node.targets if isinstance(node, ast.Assign)
+                   else [node.target] if isinstance(node, ast.AnnAssign)
+                   else [])
+        call = getattr(node, "value", None)
+        if not (targets and isinstance(call, ast.Call) and MARGIN == (
+                getattr(call.func, "id", None)
+                or getattr(call.func, "attr", None))):
+            continue
+        truth = [k.value for k in call.keywords if k.arg == "truth"] \
+            or call.args[4:5]
+        if not truth or (isinstance(truth[0], ast.Constant)
+                         and truth[0].value is None):
+            bare += [ast.unparse(t) for t in targets]
+    return bare
+
+
 def model_files(root=HERE):
     """Every .py in `root` and one level into its packages — discovery's reach."""
     files = sorted(root.glob("*.py"))
@@ -155,13 +184,22 @@ def size_table(root=HERE):
                         truth_checks(source) if gated(path, root) else None,
                         exemption(source, where, TRUTH_EXEMPT,
                                   "the reason this module's claims need no "
-                                  "truth check")))
+                                  "truth check"),
+                        bare_margins(source) if (root / DESCRIPTION).is_file()
+                        else None))
     return rows
 
 
 def unchecked_claims(rows):
     """The gated checks modules carrying neither a truth check nor a reason."""
     return [row.where for row in rows if row.truth == [] and not row.truth_exempt]
+
+
+def unconfirmed_margins(rows):
+    """The margins, `module: NAME`, declared with no truth in a gated
+    directory, in a module that gives no reason."""
+    return [f"{row.where}: {name}" for row in rows if not row.truth_exempt
+            for name in row.bare or []]
 
 
 def test_modules_within_budget():
@@ -213,11 +251,37 @@ def test_milestone_checks_carry_a_truth_check():
           + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
 
 
+def test_every_margin_carries_a_truth():
+    """
+    Every margin declared beside a mechanism description passes `truth=`, or
+    its module says why its claims need none.
+
+    A margin computed from the derivation is the derivation's claim at the
+    point the search found, and the worst point is the one place a wrong
+    assumption costs the most. `run_all.py` confirms it there in the truth
+    model, within the margin's `agree`; this gate is what stops a margin
+    being declared without one in silence.
+    """
+    rows = size_table()
+    if all(row.bare is None for row in rows):
+        print("  [PASS] no mechanism description here; the margin gate is n/a")
+        return
+    missing = unconfirmed_margins(rows)
+    assert not missing, (
+        f"margins with no truth=: {', '.join(missing)}; pass truth= and agree=, "
+        f"or declare {TRUTH_EXEMPT} in the module with the reason its claims "
+        f"need none")
+    excused = [f"{row.where}: {name}" for row in rows if row.truth_exempt
+               for name in row.bare or []]
+    print("  [PASS] every margin carries a truth"
+          + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
+
+
 def test_the_truth_gate_has_teeth():
     """
-    The gate against fixtures: it fails a bare checks module, passes an argued
-    one, refuses an unargued exemption, and stands down with no mechanism
-    description.
+    The gate against fixtures: it fails a bare checks module and a margin with
+    no truth, passes an argued exemption for each, refuses an unargued one,
+    and stands down with no mechanism description.
 
     Built in a temporary directory rather than asserted against this one,
     because a gate is only evidence once it has been seen to fail, and this
@@ -225,12 +289,15 @@ def test_the_truth_gate_has_teeth():
     """
     bare = "def test_something():\n    pass\n"
     argued = 'TRUTH_EXEMPT = "alpha fixes a naming convention, not a claim"\n'
+    margin = "A = armature.Margin('a', f, 'N', S{})\nB = 1\n"
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         checks = root / "alpha_checks.py"
-        (root / "alpha.py").write_text("X = 1\n", encoding="utf-8")
+        module = root / "alpha.py"
+        module.write_text(margin.format(""), encoding="utf-8")
         checks.write_text(bare, encoding="utf-8")
-        assert all(row.truth is None for row in size_table(root)) \
+        assert all(row.truth is None and row.bare is None
+                   for row in size_table(root)) \
             and not unchecked_claims(size_table(root)), \
             "the truth gate fired in a directory with no mechanism description"
 
@@ -238,6 +305,17 @@ def test_the_truth_gate_has_teeth():
                                         encoding="utf-8")
         assert unchecked_claims(size_table(root)) == ["alpha_checks.py"], \
             "a checks module with no truth check and no exemption passed"
+        for truthless in ("", ", truth=None", ", None, None"):
+            module.write_text(margin.format(truthless), encoding="utf-8")
+            assert unconfirmed_margins(size_table(root)) == ["alpha.py: A"], \
+                f"a margin declared with {truthless or 'no truth'} passed"
+        for confirmed in (", truth=t, agree=1e-9", ", t, 1e-9"):
+            module.write_text(margin.format(confirmed), encoding="utf-8")
+            assert not unconfirmed_margins(size_table(root)), \
+                f"a margin declared with {confirmed} did not clear the gate"
+        module.write_text(argued + margin.format(""), encoding="utf-8")
+        assert not unconfirmed_margins(size_table(root)), \
+            "an argued TRUTH_EXEMPT did not clear a margin"
 
         checks.write_text(argued + bare, encoding="utf-8")
         assert not unchecked_claims(size_table(root)), \
@@ -257,8 +335,9 @@ def test_the_truth_gate_has_teeth():
             except ValueError:
                 continue
             raise AssertionError(f"{unargued.strip()} passed as a reason")
-    print("  [PASS] the truth gate fails a bare checks module, passes an "
-          "argued exemption, and is n/a with no mechanism description")
+    print("  [PASS] the truth gate fails a bare checks module and a margin with "
+          "no truth, passes an argued exemption, and is n/a with no mechanism "
+          "description")
 
 
 if __name__ == "__main__":
@@ -270,6 +349,8 @@ if __name__ == "__main__":
                  else str(len(row.truth)) if row.truth
                  else f"exempt: {row.truth_exempt}" if row.truth_exempt
                  else "NONE")
+        if row.bare and not row.truth_exempt:
+            truth += f"; MARGINS WITH NO TRUTH: {', '.join(row.bare)}"
         print(f"{row.where:<34}{row.lines:>11}   {truth}{flag}")
     if NOTES.is_dir():
         print(f"\n{'note (information only)':<34}{'lines':>11}")
@@ -281,6 +362,7 @@ if __name__ == "__main__":
         test_modules_within_budget()
         test_checks_modules_are_paired()
         test_milestone_checks_carry_a_truth_check()
+        test_every_margin_carries_a_truth()
         test_the_truth_gate_has_teeth()
     except AssertionError as failure:
         sys.exit(f"FAIL: {failure}")

@@ -3,7 +3,9 @@ kinematics_checks.py — Milestone 1's self-tests, beside kinematics.py.
 
 Discovered through kinematics.py by `run_all.py`; pytest never collects this
 file directly (it doesn't match `test_*.py`), so `test_derivation.py` stays
-the one bridge and the two entry points cannot disagree.
+the one bridge and the two entry points cannot disagree. The bound on σ_min
+over the workspace is not a check here: it is kinematics.py's margin, SIGMA,
+which `run_all.py` searches and confirms in the truth model.
 """
 
 import numpy as np
@@ -11,13 +13,8 @@ import numpy as np
 import armature
 from armature.sampler import DEFAULT_SEED
 
-from kinematics import J_num, Q, fk_num, singular_values
+from kinematics import J_num, Q, fk_num
 from mechanism import COORDINATES, TOOL, derived, truth, vector
-from params import SIGMA_MIN, WORKSPACE
-
-# Large enough that the sweep's minimum is near the envelope's, cheap because
-# the Jacobian is lambdified: a sweep is not a settle and need not be frugal.
-SWEEP_SAMPLES = 400
 
 
 def test_coordinates_match_the_variant():
@@ -88,40 +85,3 @@ def test_truth_fk_and_jacobian(n=24, seed=DEFAULT_SEED, tol=1e-9):
     print(f"  [PASS] FK and Jacobian match the truth model over {samples}")
     print(f"         worst |dp|, |dR| {worst_p:.2e}, worst |dJ| {worst_J:.2e}, "
           f"at q = {np.round(worst_at, 4)}")
-
-
-def test_jacobian_singular_values_swept(n=SWEEP_SAMPLES, seed=DEFAULT_SEED):
-    """The mandatory Milestone 1 sweep: σ(J_v) over the envelope, and the bound
-    on σ_min inside the intended workspace.
-
-    A matrix the derivation inverts or pseudo-inverts is a matrix whose rank is
-    a claim, and a rank claimed at a handful of named postures is no claim at
-    all — the postures a derivation reaches for are its symmetry planes, and a
-    structure matrix that is rank-deficient *everywhere* is still full rank
-    nowhere more convincingly than there. So the singular values are swept over
-    the sampled envelope and the smallest is printed, whatever it is.
-
-    Then the bound, and the two are different assertions. The envelope contains
-    the elbow singularity at elbow = 0, so σ_min over the envelope goes to zero
-    and must: that is the machine. What has to hold is that σ_min stays above
-    `params.SIGMA_MIN` everywhere in `params.WORKSPACE`, the region the
-    requirements actually name — a singularity inside the intended workspace is
-    a Milestone 3 finding, and this is where it surfaces.
-    """
-    envelope = armature.sample(truth(), n, seed)
-    over_envelope = singular_values([vector(s.q) for s in envelope])
-    workspace = armature.sample(truth(), n, seed, within=WORKSPACE)
-    configs = [vector(s.q) for s in workspace]
-    over_workspace = singular_values(configs)
-    worst = float(np.min(over_workspace[:, -1]))
-    at = configs[int(np.argmin(over_workspace[:, -1]))]
-    assert worst > SIGMA_MIN, (
-        f"the position Jacobian's smallest singular value falls to {worst:.4f} "
-        f"m/rad at q={np.round(at, 4)}, inside WORKSPACE, below the "
-        f"{SIGMA_MIN} m/rad the derivation needs; the intended workspace "
-        f"contains a singularity")
-    print(f"  [PASS] sigma_min(J_v) >= {SIGMA_MIN} m/rad over the workspace, "
-          f"{workspace}")
-    print(f"         worst {worst:.4f} m/rad at q = {np.round(at, 4)}; over "
-          f"the full envelope it falls to "
-          f"{float(np.min(over_envelope[:, -1])):.4f} (the elbow singularity)")

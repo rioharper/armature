@@ -41,6 +41,12 @@ search and the sampler mean one set of states by "over the envelope". A
 point the map refuses is `Infeasible`, under the loop, joint or envelope
 that refused it.
 
+A margin with a `truth` is confirmed where the search ends: `truth` is
+evaluated at the worst point and at the pre-polish best, each the very
+`Point` `fn` read there, and `Worst.truth` records both values and whether
+they match `fn` within `agree`. A disagreement is recorded, never raised:
+the search reports, and the caller's check fails on it.
+
 Probed on 2026-10-11, pure sampling never landed on either golden worst
 case even at 10⁴ points; this method matched both closed forms in about
 650 evaluations.
@@ -429,8 +435,9 @@ class Margin:
     over the space `over`; slack ≥ 0 passes. The derating and its reason sit
     in `fn`'s docstring. `truth(point)`, when set, re-evaluates a point in
     the truth model, and `agree` is the absolute tolerance in `unit` it must
-    match `fn` within; it is required with `truth`. `budget` defaults to
-    `Budget()`."""
+    match `fn` within; it is required with `truth`. The search evaluates
+    `truth` at its worst point and its pre-polish best (`Worst.truth`).
+    `budget` defaults to `Budget()`."""
     name: str
     fn: object
     unit: str
@@ -461,6 +468,18 @@ class Margin:
                             f"{self.budget!r}")
 
 
+class Confirmed(NamedTuple):
+    """A margin's `truth` at the search's worst point (`value`) and at its
+    pre-polish best (`pre_polish`), in the margin's unit. `gap` is the
+    larger distance from `fn` at those points, nan where `truth` read nan,
+    and `agrees` is `gap ≤ agree`."""
+    value: float
+    pre_polish: float
+    gap: float
+    agree: float
+    agrees: bool
+
+
 class Case(NamedTuple):
     """The worst of one `Choice` combination: `choices` maps each choice
     axis to its value, and `value` is the worst slack, at `at`."""
@@ -478,8 +497,10 @@ class Worst:
     spent. `pre_polish` is the least slack before the polish, at
     `pre_polish_at`, so a reviewer sees whether the polish moved it.
     `rejected` counts the `Infeasible` points by reason, and `coverage` is
-    the fraction of the global set's feasible points that pass. Print it
-    for the one-line row a note cites."""
+    the fraction of the global set's feasible points that pass. `truth`
+    is the `Confirmed` record of the margin's truth at `at` and at
+    `pre_polish_at`, or None for a margin without one. Print it for the
+    one-line row a note cites."""
     margin: str
     unit: str
     value: float
@@ -493,6 +514,7 @@ class Worst:
     pre_polish_at: dict
     rejected: MappingProxyType
     coverage: float
+    truth: Confirmed = None
 
     def __str__(self):
         text = (f"{self.margin}: {self.value:.7g} {self.unit} at "
@@ -504,6 +526,12 @@ class Worst:
             text += (f"; {sum(self.rejected.values())} rejected ("
                      + ", ".join(f"{r}: {k}" for r, k in self.rejected.items())
                      + ")")
+        if self.truth is not None:
+            t = self.truth
+            text += (f"; truth {t.value:.7g} at the worst, {t.pre_polish:.7g} "
+                     f"at the pre-polish best, "
+                     + (f"agrees within {t.agree:g}" if t.agrees else
+                        f"DISAGREES by {t.gap:.3g} beyond {t.agree:g}"))
         return text
 
 
@@ -517,8 +545,13 @@ def search(margin, seed=DEFAULT_SEED):
     `budget.polish_evals`. Returns a `Worst`, the minimum over every point
     evaluated. A −∞ ends its combination's polish, since nothing is worse.
 
-    Raises when `fn` returns nan, naming the point, and when a combination
-    has no point `fn` could evaluate, giving the reasons.
+    Where the margin has a `truth`, evaluates it at the worst point and at
+    the pre-polish best, the `Point`s `fn` read there, and records the
+    result in `Worst.truth`; those evaluations are not counted in `n`.
+
+    Raises when `fn` returns nan, naming the point, when a combination has
+    no point `fn` could evaluate, giving the reasons, and when `truth`
+    raises `Infeasible` at a point `fn` evaluated.
     """
     if not isinstance(margin, Margin):
         raise TypeError(f"search takes a Margin; got {margin!r}")
@@ -536,14 +569,16 @@ def search(margin, seed=DEFAULT_SEED):
         cube, corners, cap, starts = np.zeros((1, 0)), np.zeros((0, 0)), 0, 0
     choices = {n: a.values for n, a in space.axes.items()
                if isinstance(a, Choice)}
-    cases, pre = [], None
+    cases, found, pre = [], [], None
     for combination in itertools.product(*choices.values()):
         fixed = dict(zip(choices, combination))
         best, before = run.combination(fixed, cube, corners, starts, cap)
         cases.append(Case(fixed, best[0], best[1]))
+        found.append(best)
         if pre is None or before[0] < pre[0]:
             pre = before
-    worst = min(cases, key=lambda c: c.value)
+    first = min(range(len(cases)), key=lambda i: cases[i].value)
+    worst, point = cases[first], found[first][2]
     method = (f"Sobol {len(cube)} (scrambled) + {len(corners)} corners + "
               f"Powell from {starts} (at most {cap} evaluations each)"
               if dims else "every combination evaluated once")
@@ -552,7 +587,31 @@ def search(margin, seed=DEFAULT_SEED):
     return Worst(margin.name, margin.unit, worst.value, worst.at,
                  worst.value >= 0, tuple(cases), method, run.n, seed, pre[0],
                  pre[1], MappingProxyType(dict(run.rejected)),
-                 run.covered / run.counted if run.counted else 0.0)
+                 run.covered / run.counted if run.counted else 0.0,
+                 _confirm(margin, (worst.value, worst.at, point), pre))
+
+
+def _confirm(margin, worst, pre):
+    """`margin.truth` at the worst and the pre-polish best, each a
+    (value, at, point) triple, as a `Confirmed`; None without a truth. The
+    same point is evaluated once."""
+    if margin.truth is None:
+        return None
+    read = {}
+    for value, at, point in (worst, pre):
+        if id(point) in read:
+            continue
+        try:
+            read[id(point)] = float(margin.truth(point))
+        except Infeasible as refused:
+            raise ValueError(f"margin {margin.name!r}: its truth cannot "
+                             f"evaluate {_written(at)}, where fn read "
+                             f"{value:.7g}: {refused.reason}") from None
+    truth = read[id(worst[2])], read[id(pre[2])]
+    gaps = [abs(t - v) for t, v in zip(truth, (worst[0], pre[0]))]
+    gap = math.nan if any(math.isnan(g) for g in gaps) else max(gaps)
+    agree = float(margin.agree)
+    return Confirmed(*truth, gap, agree, gap <= agree)
 
 
 class _Found(Exception):
@@ -596,24 +655,26 @@ class _Run:
 
     def evaluate(self, fixed, u):
         """`fn` at unit coordinates `u`: its slack, or None where it raised
-        `Infeasible`; with the point as a plain dict."""
+        `Infeasible`; with the point as a plain dict, and the `Point` `fn`
+        read."""
         self.n += 1
         try:
             values = self.point(fixed, u)
             at = {n: self.space.axes[n].plain(v) for n, v in values.items()}
-            slack = float(self.margin.fn(Point(values)))
+            point = Point(values)
+            slack = float(self.margin.fn(point))
         except Infeasible as refused:
             self.rejected[refused.reason] += 1
-            return None, None
+            return None, None, None
         if math.isnan(slack):
             raise ValueError(f"margin {self.margin.name!r} is nan at "
                              f"{_written(at)}: a point it cannot evaluate "
                              f"raises Infeasible(reason)")
-        return slack, at
+        return slack, at, point
 
     def combination(self, fixed, cube, corners, starts, cap):
         """The least slack of one combination, and the least before the
-        polish, each as (value, at)."""
+        polish, each as (value, at, point)."""
         best = None
         ranked = []   # (slack, order, u) of every feasible point so far
         seen = {}
@@ -623,7 +684,7 @@ class _Run:
             key = u.tobytes()
             if key in seen:
                 return seen[key]
-            slack, at = self.evaluate(fixed, u)
+            slack, at, point = self.evaluate(fixed, u)
             seen[key] = slack
             if glob and slack is not None:
                 self.counted += 1
@@ -631,7 +692,7 @@ class _Run:
             if slack is not None:
                 ranked.append((slack, len(ranked), u))
                 if best is None or slack < best[0]:
-                    best = (slack, at)
+                    best = (slack, at, point)
             return slack
 
         for u in cube:

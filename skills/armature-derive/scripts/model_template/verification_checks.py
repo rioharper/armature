@@ -1,35 +1,29 @@
 """
 verification_checks.py — Milestone 3's self-tests, beside verification.py.
+
+The holding margin itself is not a check here: `run_all.py` discovers
+verification.HOLDING, searches it, fails it where it does not pass, and
+confirms its worst point in the truth model. What is here is what holds the
+search to account: the exact answer over a plane of headings, the load-case
+table searched whole, and a truth that can disagree.
 """
+
+from dataclasses import replace
 
 import numpy as np
 
 import armature
+from armature import Budget
 from armature.sampler import DEFAULT_SEED
 
-from kinematics import fk_num
-from mechanism import TOOL, commands, named, truth, vector
-from params import WORKSPACE
-from verification import (N, holding_torque, inverse_kinematics,
-                          worst_tip_force, worst_over_load_cases)
-
-HOLD_STEPS = 500
-_WORST = []
-
-
-def worst():
-    """The worst-case search over every load case, run once per session.
-
-    Memoised behind a call rather than assigned at module level: `pytest`
-    reaches these checks through `test_derivation.py`, which calls
-    `run_all.discover_milestones()` at module scope, so a search at import time
-    would run during *collection* — where a failure is a collection error that
-    takes the whole file down, including the discovery guard that exists to stop
-    a silently green run.
-    """
-    if not _WORST:
-        _WORST.extend(worst_over_load_cases())
-    return _WORST
+from kinematics import J_num, fk_num
+from mechanism import COORDINATES, band_values, truth, vector
+from params import BANDS, LOAD_CASES, PLANE_XY, WORKSPACE
+from dynamics.statics import static_torques
+from run_all import searched
+from verification import (CASES, HOLDING, LIMITS, N, holding_torque,
+                          inverse_kinematics, joint_slack, tool_force,
+                          worst_tip_force)
 
 
 def test_ik_roundtrip(trials=8, seed=DEFAULT_SEED, tol=1e-4):
@@ -37,8 +31,8 @@ def test_ik_roundtrip(trials=8, seed=DEFAULT_SEED, tol=1e-4):
 
     Targets from the engine's sampler over the workspace, not from a generator
     of this file's own: the IK inverts J_v, so its conditioning is exactly the
-    singular-value sweep one milestone back, and the set it has to converge over
-    is `params.WORKSPACE` — the region the requirements name — rather than the
+    σ_min margin one milestone back, and the set it has to converge over is
+    `params.WORKSPACE` — the region the requirements name — rather than the
     envelope, which contains the elbow singularity the IK cannot pass through.
     The start perturbation is not evidence, so it keeps a generator of its own.
     """
@@ -55,92 +49,65 @@ def test_ik_roundtrip(trials=8, seed=DEFAULT_SEED, tol=1e-4):
           f"workspace targets (seed {seed})")
 
 
-def test_grid_and_optimiser_bracket_the_worst_case(rel=0.05):
-    """Two methods on every load case, and the answer is the worse of them.
+def test_the_holding_margin_searches_every_load_case():
+    """The margin's `case` axis is the whole load-case table, every row, so
+    both signs of a signed class are searched. A row filtered out of the
+    axis is a case read in one sign, however complete the table is."""
+    searched_cases = set(HOLDING.over.axes["case"].values)
+    table = {case.name for case in LOAD_CASES}
+    assert searched_cases == table, (
+        f"the holding margin searches {sorted(searched_cases)}; the load-case "
+        f"table has {sorted(table)}")
+    print(f"  [PASS] the holding margin searches all {len(table)} load-case "
+          f"rows")
 
-    A grid cannot see a peak narrower than its step; an optimiser cannot certify
-    that the basin it climbed is the tallest. Neither alone is an answer to
-    "worst", and a handful of samples is not a method at all. Run both and the
-    pair bracket it — so a gap between them wider than `rel` is the finding, not
-    a rounding: refine the grid or add starts until the two agree to the
-    precision the margin is quoted at.
+
+def test_the_search_agrees_with_the_exact_plane_answer(tol=1e-6):
+    """Over a plane of headings the worst is exact: per joint, |g_j| plus the
+    force times the Jacobian column's reach in the plane. At the posture and
+    band value the search found for each plane case, that exact worst over
+    every heading must equal the search's worst, within `tol` [N m].
+
+    The search's worst can only be above the exact one at its own posture if
+    the polish stopped short of the worst heading, and only below it if the
+    margin read a heading the plane does not hold.
     """
-    low = vector({c: lo for c, (lo, _hi) in WORKSPACE.items()})
-    high = vector({c: hi for c, (_lo, hi) in WORKSPACE.items()})
-    for w in worst():
-        assert np.all(w.tau >= w.grid - 1e-12) and np.all(w.tau >= w.opt - 1e-12), \
-            f"{w.case.name}: the reported worst case is below a method's own"
-        assert np.all((w.q >= low) & (w.q <= high)), (
-            f"{w.case.name}: a worst posture {np.round(w.q, 4)} lies outside "
-            f"WORKSPACE {WORKSPACE}; the search is not over the region the "
-            f"requirements name")
-        scale = np.maximum(w.tau, 1e-9)
-        gap = float(np.max(np.abs(w.opt - w.grid) / scale))
-        assert gap < rel, (
-            f"{w.case.name}: the grid says {w.grid} N m and the optimiser "
-            f"{w.opt} N m, {gap:.1%} apart at a grid step of {w.step}; one of "
-            f"them is not finding the peak")
-    step = np.round(worst()[0].step, 4)
-    print(f"  [PASS] grid (step {step} rad) and multi-start optimiser agree "
-          f"within {rel:.0%} on {len(worst())} load cases")
-    for w in worst():
-        print(f"         {w.case.name:<10} worst |tau| {np.round(w.tau, 3)} N m")
+    worst = searched(HOLDING)
+    plane = [c for c in worst.cases if CASES[c.choices["case"]].direction
+             == PLANE_XY]
+    assert plane, "the load-case table names no plane; nothing to hold to"
+    for found in plane:
+        case = CASES[found.choices["case"]]
+        band = {k: found.at[k] for k in BANDS}
+        q = vector(found.at["state"])
+        tau = static_torques(q, **band)
+        Jv = np.asarray(J_num(*q, **band), dtype=float)[:3, :]
+        exact = min(LIMITS[c] - abs(holding_torque(
+            tau, Jv, worst_tip_force(tau, Jv, case, j))[j])
+            for j, c in enumerate(COORDINATES))
+        assert abs(exact - found.value) < tol, (
+            f"{case.name}: the search's worst is {found.value:.9f} N m, the "
+            f"exact answer over every heading {exact:.9f} N m, at "
+            f"{found.at}")
+        print(f"  [PASS] {case.name}: the search's worst {found.value:.7f} N m "
+              f"matches the exact plane answer to {abs(exact - found.value):.1e}")
 
 
-def test_truth_worst_case_torque(tol=1e-6):
-    """The mandatory Milestone 3 truth check: the worst case **held**, under the
-    load case applied to the truth model as a real force.
+def test_truth_holding_sees_a_flipped_force(budget=Budget(global_points=16,
+                                                          polish_starts=0)):
+    """The truth confirmation's teeth: the holding margin with its force's sign
+    flipped in the derivation, as `g + J^T f` would have it, must disagree
+    with its truth beyond `agree`. The truth applies the force to the truth
+    model as a force, so it cannot share the flip; a truth that agreed here
+    would agree with anything."""
+    def flipped(p):
+        q, band = vector(p.state.q), band_values(p)
+        Jv = np.asarray(J_num(*q, **band), dtype=float)[:3, :]
+        force = tool_force(CASES[p.case], p.load)
+        return joint_slack(static_torques(q, **band) + Jv.T @ force)
 
-    A worst case is the number an actuator gets bought against, and everything
-    upstream of it is the derivation's own — g(q) from the Lagrangian, J_v from
-    the FK, and the transpose that turns a tip force into joint torques. The
-    tempting check is to recompute that expression from the truth model's
-    gravity torque and site Jacobian, and it is not enough: the mapping
-    `tau = g - J^T f` would sit on *both* sides, so a flipped sign in it is a
-    flipped sign in the comparison too. That is the blindness the truth model
-    exists to remove, and it is easy to rebuild one level up.
-
-    So the load case goes to the truth model as a **force**: `s.settle` takes
-    it as a load at the tool site and applies it there, at the site's current
-    position every step. The claimed torque is held, the model is released for
-    at least `HOLD_STEPS` steps, and it has to still be there. Nothing of the
-    derivation is on that side: MuJoCo feels the force, integrates the motion,
-    and either stays or does not. A sign error in the Jacobian transpose sends
-    the arm away from the posture, hard.
-
-    `s.inverse()` refuses a state with a joint limit active, so a worst case
-    found *on* a limit — a torque the end-stop would be carrying — fails
-    loudly here rather than being confirmed quietly.
-    """
-    worst_gap, worst_at, worst_drift = 0.0, None, 0.0
-    for w in worst():
-        for j in range(N):
-            s = truth().at(q=named(w.q[j]))
-            tau_truth = vector(s.inverse().generalised)
-            Jv = s.jacobian(TOOL).linear
-            force = worst_tip_force(tau_truth, Jv, w.case, j)
-            tau_hold = holding_torque(tau_truth, Jv, force)
-
-            gap = abs(abs(tau_hold[j]) - w.tau[j])
-            if worst_at is None or gap > worst_gap:
-                worst_gap, worst_at = gap, (w.case.name, j, w.q[j])
-            assert gap < tol, (
-                f"{w.case.name}: joint {j + 1}'s worst case reads "
-                f"{w.tau[j]:.6f} N m where the truth model reads "
-                f"{abs(tau_hold[j]):.6f} N m at q={np.round(w.q[j], 4)}")
-
-            out = s.settle(hold=commands(named(tau_hold)),
-                           loads={TOOL: force}, min_steps=HOLD_STEPS)
-            drift = max(abs(v) for v in out.moved.values())
-            worst_drift = max(worst_drift, drift)
-            assert out.stable and drift < 1e-3, (
-                f"{w.case.name}: holding {np.round(tau_hold, 4)} N m under a "
-                f"{np.round(force, 3)} N tool force, the truth model left "
-                f"q={np.round(w.q[j], 4)} for {dict(out.q)} — the torque that "
-                f"sizes this actuator does not hold the machine there")
-    name, j, qv = worst_at
-    print(f"  [PASS] every load case's worst torque holds the truth model "
-          f"still under its own tool force ({len(worst())} cases, {N} joints, "
-          f"{HOLD_STEPS} steps each)")
-    print(f"         worst |dtau| {worst_gap:.2e} N m ({name} joint {j + 1} at "
-          f"q = {np.round(qv, 4)}), worst drift {worst_drift:.2e} rad")
+    worst = armature.search(replace(HOLDING, fn=flipped, budget=budget))
+    assert not worst.truth.agrees, (
+        f"a flipped tool force agrees with the truth model: {worst}")
+    print(f"  [PASS] a flipped tool force disagrees with the truth model by "
+          f"{worst.truth.gap:.3f} N m, beyond {worst.truth.agree:g}")

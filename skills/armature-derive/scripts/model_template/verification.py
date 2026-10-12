@@ -5,45 +5,42 @@ Mirrors 03_results.md; self-tests in verification_checks.py, and the tables
 the note cites are printed by report_results.py. Depends on kinematics.py
 (fk_num, J_num) and dynamics/statics.py (static_torques).
 
-**"Worst" is computed, never sampled.** The search below answers each load case
-in the parameter block by a dense grid whose step it reports and by a
-multi-start optimiser, and returns the worse of the two — because a grid cannot
-see a peak between its points and an optimiser cannot promise it found the
-global one, while the pair bracket the answer and disagree out loud when they
-do. Over a *set* of directions the answer is exact instead: the worst tip force
-over the unit circle is a norm, not a search.
+**"Worst" is searched, never sampled or picked.** The holding margin below is
+declared once, over every posture in WORKSPACE, every row of the load-case
+table, every heading of a case that names a plane, and every tolerance band,
+and `run_all.py` hands it to `armature.search` (ADR 0005): a seeded Sobol set,
+every corner, then a Powell polish. Its truth re-derives the worst point's
+torques in the truth model and holds them there under the load as a real
+force. Over a plane of headings the answer is also exact, a norm
+(`worst_tip_force`), and a check holds the search to it.
 """
 
-from collections import namedtuple
-
 import numpy as np
-from scipy.optimize import least_squares, minimize
+from scipy.optimize import least_squares
 
-from armature.sampler import DEFAULT_SEED
+from armature import Choice, Coordinates, Direction, Margin, Space
 
-from params import LOAD_CASES, PLANE_XY, WORKSPACE
-from mechanism import COORDINATES
+from params import LOAD_CASES, PARAMS, PLANE_XY, WORKSPACE
+from mechanism import (COORDINATES, TOOL, band_values, bands, mechanism, truth,
+                       vector)
 from kinematics import J_num, fk_num
 from dynamics.statics import static_torques
 
-# Run order and heading for `run_all.py`, which discovers this module
-# by the `test_*` callables in verification_checks.py, not by name.
+# Run order and heading for `run_all.py`, which discovers this module by its
+# margin and by the `test_*` callables in verification_checks.py, not by name.
 MILESTONE = (3, "Milestone 3: verification")
 
-GRID_POINTS = 25        # per coordinate; the step is reported with the result
-OPT_STARTS = 8          # multi-start count, the grid's best among them
-
-# The search runs over the intended workspace, the box the sampler's `within`
-# reads, laid out in the order the numeric functions take their coordinates.
 N = len(COORDINATES)
-LO = np.array([WORKSPACE[c][0] for c in COORDINATES], dtype=float)
-HI = np.array([WORKSPACE[c][1] for c in COORDINATES], dtype=float)
-
-# `tau` and `q` are the answer — the worse of the two methods per joint, and
-# the posture it happens at. `grid` and `opt` are what each method alone found,
-# carried out so the note can say whether they agreed, and `step` is the grid's
-# spacing per coordinate, which bounds how far off the grid's own answer can be.
-Worst = namedtuple("Worst", "case tau q grid opt step")
+# The load-case table by row name: the holding margin's `case` axis.
+CASES = {case.name: case for case in LOAD_CASES}
+# What each joint's actuator can supply [N m, joint side]: the description's
+# derated torque limit through its gear.
+LIMITS = {a.joint: float(a.torque_limit) * float(a.gear)
+          for a in truth().description.actuators}
+# The truth hold: released for at least this many steps, it must stay within
+# HOLD_DRIFT [rad] of the posture.
+HOLD_STEPS = 500
+HOLD_DRIFT = 1e-3
 
 
 def tip_force(case):
@@ -51,14 +48,22 @@ def tip_force(case):
 
     `sign` multiplies the direction, which is what makes a signed case two rows
     rather than one reading. A case whose direction is a *set* has no single
-    force and raises here; ask `worst_tip_force` for the heading that binds a
-    given joint.
+    force and raises here; the holding margin searches its heading, and
+    `worst_tip_force` answers it exactly per joint.
     """
     assert case.direction != PLANE_XY, (
         f"load case {case.name!r} names a direction set, not a direction; its "
         f"worst heading is per joint — use worst_tip_force")
     sense = case.sign if case.sign else 1
     return sense * case.magnitude * np.asarray(case.direction, dtype=float)
+
+
+def tool_force(case, heading):
+    """The world-frame force [N] `case` applies at the tool, with `heading` the
+    searched unit vector where the case names a plane, ignored otherwise."""
+    if case.direction == PLANE_XY:
+        return case.magnitude * np.asarray(heading, dtype=float)
+    return tip_force(case)
 
 
 def holding_torque(tau, Jv, force):
@@ -85,8 +90,8 @@ def worst_tip_force(tau, Jv, case, j):
     the base plane it is exact rather than searched: `tau_hold_j` is
     `tau_j - F (col_j . u)`, whose magnitude over unit u in the plane peaks at
     `|tau_j| + F ||col_j restricted to the plane||`, reached with u opposing the
-    sign of tau_j. A handful of headings tried instead of this is the failure
-    the computed-worst-case rule exists to stop.
+    sign of tau_j. It is what the holding margin's search over headings is held
+    to, at the posture the search finds.
     """
     if case.direction != PLANE_XY:
         return tip_force(case)
@@ -98,98 +103,56 @@ def worst_tip_force(tau, Jv, case, j):
     return sense * case.magnitude * column / reach
 
 
-def combine(tau, Jv, case):
-    """Worst |holding torque| per joint under one load case [N m].
-
-    `holding_torque` at the worst force in the case's direction set, per joint
-    independently, which is what sizing an actuator asks. Split out from
-    `case_torque` so the truth check can push the same load case through the
-    *truth model's* gravity torque and site Jacobian.
-
-    That sharing is also this function's limit, and worth knowing before you
-    lean on it: a comparison whose two sides both call this cannot see an error
-    *in* it — a flipped force sign here is a flipped force sign on both sides,
-    which is the same blindness the truth model exists to remove, one level up.
-    Which is why Milestone 3's truth check does not stop at recomputing this: it
-    hands the force to the truth model as a real load at the tool and settles.
-    """
-    return np.array([abs(holding_torque(tau, Jv,
-                                        worst_tip_force(tau, Jv, case, j))[j])
-                     for j in range(N)])
+def joint_slack(tau):
+    """The least torque any joint has left under its limit [N m]."""
+    return min(LIMITS[c] - abs(float(t)) for c, t in zip(COORDINATES, tau))
 
 
-def case_torque(q_vals, case):
-    """Worst |holding torque| at `q_vals` under one load case [N m], per joint."""
-    return combine(static_torques(q_vals),
-                   np.asarray(J_num(*q_vals), dtype=float)[:3, :], case)
+def holding_slack(p):
+    """The holding margin [N m]: the least torque any joint's actuator has
+    left, holding `p.state` against gravity and `p.case`'s tool force, at the
+    point's band values. The limit is the description's derated torque limit,
+    and the derivation's g(q) and J_v give the torque."""
+    q, band = vector(p.state.q), band_values(p)
+    Jv = np.asarray(J_num(*q, **band), dtype=float)[:3, :]
+    return joint_slack(holding_torque(static_torques(q, **band), Jv,
+                                      tool_force(CASES[p.case], p.load)))
 
 
-def grid_search(case, points=GRID_POINTS):
-    """Worst |tau| per joint on a dense grid over WORKSPACE, and the grid step.
-
-    The step is returned, and printed beside the result, because it is the
-    caveat: a peak narrower than the step is a peak this method cannot see.
-    That is why the optimiser runs too.
-    """
-    axes = [np.linspace(lo, hi, points) for lo, hi in zip(LO, HI)]
-    mesh = np.stack([a.ravel() for a in np.meshgrid(*axes, indexing="ij")], -1)
-    tau = np.zeros(N)
-    q = np.zeros((N, N))
-    for qv in mesh:
-        value = case_torque(qv, case)
-        for j in np.where(value > tau)[0]:
-            tau[j], q[j] = value[j], qv
-    return tau, q, (HI - LO) / (points - 1)
-
-
-def optimiser_search(case, starts=OPT_STARTS, seed=DEFAULT_SEED, q0=None):
-    """Worst |tau| per joint by multi-start L-BFGS-B over WORKSPACE.
-
-    One maximisation per joint, from `starts` starting postures: the grid's
-    best for that joint where the caller passes one, and the rest drawn from
-    the workspace at random. Multi-start rather than one start because
-    |tau_j|(q) is not convex and a single descent finds the basin it began in.
-    """
-    rng = np.random.default_rng(seed)
-    tau = np.zeros(N)
-    q = np.zeros((N, N))
-    for j in range(N):
-        seeds = list(rng.uniform(LO, HI, (starts, N)))
-        if q0 is not None:
-            seeds.insert(0, np.asarray(q0[j], dtype=float))
-        for start in seeds:
-            out = minimize(lambda qv: -case_torque(qv, case)[j], start,
-                           method="L-BFGS-B", bounds=list(zip(LO, HI)))
-            if -out.fun > tau[j]:
-                tau[j], q[j] = -float(out.fun), np.array(out.x)
-    return tau, q
+def holding_truth(p):
+    """The holding margin from the truth model, which never saw g(q), J_v or
+    the sign in `holding_torque`: its own inverse dynamics with the case's
+    force applied at the tool, in the state compiled at the point's band
+    values. Then the torque is **held** — released for HOLD_STEPS under the
+    same force, the arm must stay put — so a torque that only reproduces is
+    not a torque that holds. A settle clamps at the torque limit, so a hold
+    beyond it falls here too."""
+    s, force = p.state, tool_force(CASES[p.case], p.load)
+    inv = s.inverse(loads={TOOL: force})
+    tau = {a.joint: inv.torque[a.name] * float(a.gear)
+           for a in s.compiled.description.actuators}
+    out = s.settle(hold=inv.torque, loads={TOOL: force}, min_steps=HOLD_STEPS)
+    drift = max(abs(v) for v in out.moved.values())
+    assert out.stable and drift < HOLD_DRIFT, (
+        f"{p.case}: holding {dict(inv.torque)} N m under a "
+        f"{np.round(force, 3)} N tool force, the truth model left "
+        f"{dict(s.q)} for {dict(out.q)} — the torque that sizes this "
+        f"actuator does not hold the machine there")
+    return joint_slack(tau[c] for c in COORDINATES)
 
 
-def worst_case_torque(case, points=GRID_POINTS, starts=OPT_STARTS):
-    """The worse of the grid and the optimiser for one load case.
-
-    Both, not either: the grid is blind between its points and the optimiser
-    cannot certify a global maximum, so the pair bracket the answer and a gap
-    between them is itself the finding — widen the grid or add starts until the
-    two agree to the precision the margin needs.
-    """
-    g_tau, g_q, step = grid_search(case, points)
-    o_tau, o_q = optimiser_search(case, starts, q0=g_q)
-    better = o_tau > g_tau
-    tau = np.where(better, o_tau, g_tau)
-    q = np.where(better[:, None], o_q, g_q)
-    return Worst(case, tau, q, g_tau, o_tau, step)
-
-
-def worst_over_load_cases(cases=None, points=GRID_POINTS, starts=OPT_STARTS):
-    """One `Worst` per row of the parameter block's load-case table.
-
-    Every row, including both signs of a signed one — the table is the set of
-    cases this design is sized against, and picking from it here would be the
-    one-sign reading the table exists to prevent.
-    """
-    return [worst_case_torque(case, points, starts)
-            for case in (LOAD_CASES if cases is None else cases)]
+# The actuators' holding margin, worst over every row of the load-case table
+# (both signs of a signed class are rows, so both are searched), every heading
+# where a case names a plane, every tolerance band, and every posture in
+# WORKSPACE. `load` is read only by a plane case; the others carry it unused.
+# The default budget (64 Sobol points per continuous dimension, every corner,
+# three Powell starts) costs about 3,200 evaluations over the five rows, two
+# seconds with the band recompiling the truth model per point, so none is set.
+HOLDING = Margin(
+    "holding torque", holding_slack, "N m",
+    over=Space(case=Choice(list(CASES)), load=Direction("xy"), **bands(),
+               state=Coordinates(mechanism, PARAMS, within=WORKSPACE)),
+    truth=holding_truth, agree=1e-6)
 
 
 def inverse_kinematics(target_xyz, q0=None, tol=1e-12):

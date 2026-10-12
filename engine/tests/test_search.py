@@ -502,6 +502,96 @@ def test_the_row_is_one_line_with_everything_a_note_cites():
                                                        11)
 
 
+# --- the truth ----------------------------------------------------------------
+def interior(p):
+    """An interior worst, between the Sobol points: the polish moves it, so
+    the worst and the pre-polish best are different points."""
+    return (p.x - 0.123456) ** 2 + (p.y + 0.4321) ** 2 - 1.0
+
+
+def test_truth_is_evaluated_at_the_worst_and_at_the_pre_polish_best():
+    seen = []
+
+    def truth(p):
+        seen.append({"x": p.x, "y": p.y})
+        return interior(p) + 1e-9
+
+    worst = search(Margin("slack", interior, "N", over=Space(
+        x=Interval(-1, 1), y=Interval(-1, 1)), truth=truth, agree=1e-6))
+    assert worst.at != worst.pre_polish_at
+    assert seen == [worst.at, worst.pre_polish_at]
+    confirmed = worst.truth
+    assert confirmed.value == pytest.approx(worst.value + 1e-9, abs=1e-15)
+    assert confirmed.pre_polish == pytest.approx(worst.pre_polish + 1e-9,
+                                                 abs=1e-15)
+    assert confirmed.gap == pytest.approx(1e-9, abs=1e-15)
+    assert confirmed.agree == 1e-6 and confirmed.agrees
+    assert "truth" in str(worst) and "agrees" in str(worst)
+
+
+def test_truth_runs_once_where_the_polish_did_not_move_the_worst():
+    seen = []
+
+    def truth(p):
+        seen.append(p.x)
+        return p.x - 0.3
+
+    worst = search(Margin("slack", lambda p: p.x - 0.3, "N", over=Space(
+        x=Interval(0, 1)), truth=truth, agree=1e-9))
+    assert worst.at == worst.pre_polish_at == {"x": 0.0}
+    assert seen == [0.0]
+    assert worst.truth.value == worst.truth.pre_polish == -0.3
+    assert worst.truth.gap == 0.0 and worst.truth.agrees
+
+
+def test_a_truth_that_disagrees_beyond_agree_is_recorded_not_hidden():
+    worst = search(Margin("slack", interior, "N", over=Space(
+        x=Interval(-1, 1), y=Interval(-1, 1)),
+        truth=lambda p: interior(p) - 0.1, agree=0.01))
+    assert worst.truth.gap == pytest.approx(0.1, abs=1e-12)
+    assert not worst.truth.agrees
+    assert "DISAGREES" in str(worst)
+    assert worst.value == pytest.approx(-1.0, abs=1e-12)  # fn's, not truth's
+
+
+def test_a_truth_that_reads_nan_disagrees():
+    worst = search(Margin("slack", lambda p: p.x, "N", over=Space(
+        x=Interval(0, 1)), truth=lambda p: math.nan, agree=1.0))
+    assert math.isnan(worst.truth.gap) and not worst.truth.agrees
+
+
+def test_a_truth_that_cannot_evaluate_the_worst_raises_naming_it():
+    def truth(p):
+        raise Infeasible("the settle did not come to rest")
+
+    with pytest.raises(ValueError, match=r"truth.*x = 0.*settle did not"):
+        search(Margin("slack", lambda p: p.x, "N", over=Space(
+            x=Interval(0, 1)), truth=truth, agree=1.0))
+
+
+def test_without_a_truth_nothing_is_confirmed():
+    worst = search(margin(lambda p: p.x, x=Interval(0, 1)))
+    assert worst.truth is None and "truth" not in str(worst)
+
+
+def test_truth_reads_the_state_fn_read_compiled_with_its_band():
+    def truth(p):
+        """The same margin on a fresh compile at the point's band value and
+        its state's coordinates."""
+        fresh = armature.compile(arm, {**ARM, "m2": p.m2}).at(q=p.state.q)
+        inv = fresh.inverse(loads={"tip": TIP_LOAD * p.load})
+        return min(ARM["limit"] - abs(t) for t in inv.torque.values())
+
+    worst = search(Margin(
+        "shoulder holding", holding, "N·m",
+        over=Space(m2=Band("m2", BANDS), state=Coordinates(arm, ARM),
+                   load=Direction("xy")),
+        truth=truth, agree=1e-9,
+        budget=Budget(global_points=16, polish_starts=1, polish_evals=20)))
+    assert worst.at["m2"] in BANDS["m2"]
+    assert worst.truth.agrees, worst.truth
+
+
 def test_a_margin_is_checked_when_it_is_declared():
     space = Space(x=Interval(0, 1))
     with pytest.raises(ValueError, match="agree"):

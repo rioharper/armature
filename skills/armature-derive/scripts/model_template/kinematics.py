@@ -1,9 +1,11 @@
 """
 kinematics.py — Milestone 1: forward kinematics and the geometric Jacobian.
 
-Mirrors 01_kinematics.md; its self-tests are in kinematics_checks.py. Imports
-only mechanism.py, so a red-team pass on Milestone 1 reads this file, its
-checks, and the description. Check it alone: `uv run python run_all.py kinematics`.
+Mirrors 01_kinematics.md; its self-tests are in kinematics_checks.py, and its
+margin, SIGMA (σ_min over the workspace), is searched by `run_all.py`. Imports
+only mechanism.py and params.py, so a red-team pass on Milestone 1 reads this
+file, its checks, and the description. Check it alone:
+`uv run python run_all.py kinematics`.
 
 The frames are the description's, read through the engine's symbolic view:
 each body's frame is its parent's turned about its joint's home axis by the
@@ -19,7 +21,10 @@ import numpy as np
 import sympy as sp
 from sympy.physics.mechanics import dynamicsymbols
 
-from mechanism import TOOL, numeric, view
+from armature import Coordinates, Margin, Space
+
+from mechanism import TOOL, mechanism, numeric, vector, view
+from params import PARAMS, SIGMA_MIN, WORKSPACE
 
 # Run order and heading for `run_all.py`, which discovers this module
 # by the `test_*` callables in kinematics_checks.py, not by name.
@@ -84,3 +89,28 @@ def singular_values(configs):
     return np.array([np.linalg.svd(np.asarray(J_num(*qv), dtype=float)[:3, :],
                                    compute_uv=False)
                      for qv in np.atleast_2d(np.asarray(configs, dtype=float))])
+
+
+def sigma_slack(p):
+    """σ_min of the derivation's J_v at the point's posture, less SIGMA_MIN
+    [m/rad]: the rank claim, as slack. SIGMA_MIN carries no derating; it is
+    the rate the requirement asks for."""
+    return float(singular_values(vector(p.state.q))[0, -1]) - SIGMA_MIN
+
+
+def sigma_truth(p):
+    """The same slack from the truth model's own site Jacobian, `s.jacobian`,
+    which never saw the derivation's frames chained."""
+    linear = p.state.jacobian(TOOL).linear
+    return float(np.linalg.svd(linear, compute_uv=False)[-1]) - SIGMA_MIN
+
+
+# σ_min(J_v) everywhere in the intended workspace, searched: the matrix the IK
+# inverts keeps its rank where the requirements name, at the rate SIGMA_MIN
+# asks. The envelope holds the elbow singularity and the workspace must not,
+# so the space is `within=WORKSPACE`. A band on a length would join this
+# space as `**bands()`; the template's one band, a mass, cannot move σ.
+SIGMA = Margin("sigma_min(J_v) over WORKSPACE", sigma_slack, "m/rad",
+               over=Space(state=Coordinates(mechanism, PARAMS,
+                                            within=WORKSPACE)),
+               truth=sigma_truth, agree=1e-9)

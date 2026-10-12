@@ -2,9 +2,10 @@
 params_checks.py — self-tests for the parameter block, 00_setup.md.
 
 The block is data, so its checks are about the shape of that data rather than
-about physics: that the load-case table has not lost a sign and that every row
-names a direction set. Each of those is a whole class of downstream result
-quietly sized against the wrong thing. The workspace and the rate envelope are
+about physics: that the load-case table has not lost a sign, that every row
+names a direction set, and that every tolerance band is a parameter's and holds
+its nominal. Each of those is a whole class of downstream result quietly sized
+against the wrong thing. The workspace and the rate envelope are
 held against the description's coordinates in mechanism_checks.py, which owns
 the joint envelope they sit inside.
 
@@ -13,7 +14,7 @@ against the truth model where they are *used*, and there is nothing in a shape
 for a simulator to be asked about.
 """
 
-from params import LOAD_CASES, PLANE_XY
+from params import BANDS, LOAD_CASES, PARAMS, PLANE_XY
 
 # The parameter block is data. Every constant in it reaches the truth model
 # through mechanism(p), which the engine validates when it compiles — a value
@@ -70,3 +71,24 @@ def test_every_load_case_names_a_direction_set():
             f"load case {case.name!r} direction {case.direction} is not a " \
             f"3-vector or {PLANE_XY!r}"
     print(f"  [PASS] {len(LOAD_CASES)} load cases each name a direction set")
+
+
+def test_every_band_is_a_parameter_and_holds_its_nominal():
+    """A band names a parameter of the block and contains its nominal.
+
+    A band on a name the description never reads widens nothing, and a band
+    that excludes its nominal is a typo whose search never visits the design
+    as drawn. The engine refuses both where a margin's space compiles the
+    mechanism, at import; this check holds every band, searched or not, and
+    runs where that import never happens (`run_all.py params`).
+    """
+    unknown = sorted(set(BANDS) - set(PARAMS))
+    assert not unknown, (f"bands {unknown} name no parameter of PARAMS; the "
+                         f"parameters are {sorted(PARAMS)}")
+    for name, (lo, hi) in BANDS.items():
+        assert lo < hi, f"band {name!r} = ({lo}, {hi}) has its low above its high"
+        assert lo <= PARAMS[name] <= hi, (
+            f"band {name!r} = ({lo}, {hi}) leaves its nominal {PARAMS[name]} "
+            f"outside; a band is a tolerance around the value the design uses")
+    print(f"  [PASS] {len(BANDS)} tolerance band(s), each a parameter's and "
+          f"holding its nominal: {sorted(BANDS)}")

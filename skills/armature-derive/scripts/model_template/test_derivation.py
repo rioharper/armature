@@ -10,7 +10,9 @@ file only makes pytest run them: pytest collects `test_*.py`, and neither
 *Which* checks those are is `run_all.py`'s discovery, imported rather than
 repeated. So `pytest` and `run_all.py` cannot disagree about what the
 model's self-tests are, and a module added later is collected by both without
-either file being edited.
+either file being edited. A margin a milestone declares is one of those
+checks, `margin[<name>]`: searched, held to passing, and confirmed in its
+truth model, the same check `run_all.py` runs.
 """
 
 import sys

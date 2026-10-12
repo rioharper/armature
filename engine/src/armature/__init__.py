@@ -38,7 +38,9 @@ a Powell polish, with where, n, the seed, the pre-polish best and the coverage.
 `Band("m2", BANDS)` searches a parameter's tolerance band, and
 `state=Coordinates(mechanism, PARAMS, within=, poses=)` gives `fn` a ready
 `p.state`, compiled with the point's band values; a point that cannot close
-is rejected under the loop that refused it.
+is rejected under the loop that refused it. A margin's `truth=` is evaluated
+at the worst point and the pre-polish best, and `worst.truth` says whether it
+agrees with `fn` within `agree=`.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
@@ -56,8 +58,9 @@ from .elements import (DescriptionError, actuator, body, cable, contact,
 from .review import Frames, Review, frames, render, review
 from .sampler import (PoseEnvelope, Rejected, Samples, clearance,
                       pose_envelope, sample, sample_states)
-from .search import (Band, Budget, Case, Choice, Coordinates, Direction,
-                     Infeasible, Interval, Margin, Point, Space, Worst, search)
+from .search import (Band, Budget, Case, Choice, Confirmed, Coordinates,
+                     Direction, Infeasible, Interval, Margin, Point, Space,
+                     Worst, search)
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
@@ -78,4 +81,4 @@ __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
             "pose_envelope", "sample", "sample_states"]
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
             "Margin", "Point", "Space", "Worst", "search"]
-__all__ += ["Band", "Coordinates"]
+__all__ += ["Band", "Confirmed", "Coordinates"]

@@ -13,7 +13,9 @@ down in a package, is collected when its sibling checks module
 (`part.py` -> `part_checks.py`, `check/mass.py` -> `check/mass_checks.py`)
 defines callables named `test_*`; each of those callables is one check.
 Nothing in this file lists modules or tests, so a part file added later is
-collected the moment its `<PART-ID>_checks.py` lands.
+collected the moment its `<PART-ID>_checks.py` lands. A module-level
+`armature.Margin` is collected too, searched and held to passing as in the
+model template; run without the engine, as a part file is, there are none.
 
 During development run one module or package by name:
 
@@ -66,14 +68,69 @@ def checks_in(module):
             and getattr(obj, "__module__", None) == module.__name__]
 
 
+def margin_type():
+    """The engine's `Margin`, or None where the engine does not import: a
+    directory that cannot import it declares no margins, and armature-cad's
+    part files run with build123d alone."""
+    try:
+        from armature import Margin
+    except ImportError:
+        return None
+    return Margin
+
+
+def margins_in(module):
+    """Every module-level `Margin` in `module`, in the order the file binds
+    them. Found by type, so one imported from another module is found here
+    too; `discover_milestones` keeps each margin once, where it is first
+    found in run order."""
+    kind = margin_type()
+    return [obj for obj in vars(module).values()
+            if kind is not None and isinstance(obj, kind)]
+
+
+_SEARCHED = {}
+
+
+def searched(margin):
+    """`margin`'s worst case, `armature.search(margin)`, searched once per
+    process: the margin's own check and any check that reads the same worst
+    share one search."""
+    if id(margin) not in _SEARCHED:
+        from armature import search
+        _SEARCHED[id(margin)] = margin, search(margin)
+    return _SEARCHED[id(margin)][1]
+
+
+def margin_check(margin):
+    """The check a discovered margin runs as: search it, print its row, and
+    fail where it does not pass, or where its truth disagrees beyond
+    `agree`. The margin rides on the check as `.margin`."""
+    def check():
+        worst = searched(margin)
+        assert worst.passes, f"a margin fails: {worst}"
+        assert worst.truth is None or worst.truth.agrees, (
+            f"a margin's truth disagrees with it: {worst}")
+        print(f"  [PASS] {worst}")
+    check.__name__ = check.__qualname__ = f"margin[{margin.name}]"
+    check.margin = margin
+    return check
+
+
 def checks_for(module):
-    """The module's own self-tests, then those in its sibling checks module."""
-    checks = checks_in(module)
+    """The module's own self-tests, then those in its sibling checks module,
+    then a check for each margin either declares."""
+    modules = [module]
     sibling = Path(module.__file__).with_name(
         Path(module.__file__).stem + "_checks.py")
     if sibling.is_file():
-        checks += checks_in(importlib.import_module(module.__name__ + "_checks"))
-    return checks
+        modules.append(importlib.import_module(module.__name__ + "_checks"))
+    checks = [check for m in modules for check in checks_in(m)]
+    margins = []
+    for margin in (margin for m in modules for margin in margins_in(m)):
+        if all(margin is not kept for kept in margins):
+            margins.append(margin)
+    return checks + [margin_check(margin) for margin in margins]
 
 
 def discover_milestones(names=None):
@@ -104,8 +161,26 @@ def discover_milestones(names=None):
             found.append(((order, title, ""), title, module))
 
     found.sort(key=lambda entry: entry[0])
-    triples = [(title, module, checks_for(module)) for _key, title, module in found]
+    triples, margins = [], set()
+    for _key, title, module in found:
+        checks = []
+        for check in checks_for(module):
+            margin = getattr(check, "margin", None)
+            if margin is not None:
+                if id(margin) in margins:
+                    continue
+                margins.add(id(margin))
+            checks.append(check)
+        triples.append((title, module, checks))
     return [triple for triple in triples if triple[2]]
+
+
+def discover_margins(names=None):
+    """Every discovered margin, in run order, as `(title, margin)` pairs:
+    what `report_results.py` prints its table from."""
+    return [(title, check.margin)
+            for title, _module, checks in discover_milestones(names)
+            for check in checks if hasattr(check, "margin")]
 
 
 def _run(title, checks):
