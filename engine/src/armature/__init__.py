@@ -35,6 +35,10 @@ case=Choice(CASES)))`, where `fn(point)` reads each axis by name and raises
 `Infeasible(reason)` at a point outside the space. `armature.search(margin)`
 returns its `Worst`: the least slack over a seeded Sobol set, every corner and
 a Powell polish, with where, n, the seed, the pre-polish best and the coverage.
+`Band("m2", BANDS)` searches a parameter's tolerance band, and
+`state=Coordinates(mechanism, PARAMS, within=, poses=)` gives `fn` a ready
+`p.state`, compiled with the point's band values; a point that cannot close
+is rejected under the loop that refused it.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
@@ -52,8 +56,8 @@ from .elements import (DescriptionError, actuator, body, cable, contact,
 from .review import Frames, Review, frames, render, review
 from .sampler import (PoseEnvelope, Rejected, Samples, clearance,
                       pose_envelope, sample, sample_states)
-from .search import (Budget, Case, Choice, Direction, Infeasible, Interval,
-                     Margin, Point, Space, Worst, search)
+from .search import (Band, Budget, Case, Choice, Coordinates, Direction,
+                     Infeasible, Interval, Margin, Point, Space, Worst, search)
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
@@ -74,3 +78,4 @@ __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
             "pose_envelope", "sample", "sample_states"]
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
             "Margin", "Point", "Space", "Worst", "search"]
+__all__ += ["Band", "Coordinates"]

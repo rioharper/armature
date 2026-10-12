@@ -34,6 +34,13 @@ under its reason, never reported as the worst, and ranks last during the
 polish. A design failing there, a cable going slack or a contact lifting,
 is a number, never an `Infeasible`. A `nan` is an error naming the point.
 
+Two axes touch the mechanism. A `Band` is a parameter's tolerance band, and
+`Coordinates` its independent coordinates as a ready `State`, compiled
+with the point's band values and placed by the sampler's map, so the
+search and the sampler mean one set of states by "over the envelope". A
+point the map refuses is `Infeasible`, under the loop, joint or envelope
+that refused it.
+
 Probed on 2026-10-11, pure sampling never landed on either golden worst
 case even at 10⁴ points; this method matched both closed forms in about
 650 evaluations.
@@ -49,6 +56,10 @@ from typing import NamedTuple
 import numpy as np
 from scipy.optimize import minimize
 from scipy.stats import qmc
+
+from .compiler import compile
+from .sampler import Rejected, unit_cube
+from .state import Placement
 
 DEFAULT_SEED = 20261011
 SOBOL_PER_DIM = 64    # global points per continuous dimension, before
@@ -180,21 +191,169 @@ class Direction(_Axis):
         return tuple(float(c) for c in value)
 
 
+@dataclass(frozen=True, init=False, repr=False)
+class Band(Interval):
+    """A parameter's tolerance band: `Band("m2", BANDS)` spans
+    `BANDS["m2"]`, a (low, high) pair, and its corners are both ends. The
+    mapping is an argument, so the engine reads no project file; the
+    template passes `params.BANDS`. In a space with `Coordinates`, each
+    band's value overrides its parameter before the state is compiled, and
+    the space checks, before anything compiles, that the parameter is one
+    of the mechanism's and that its nominal lies within its band. `fn`
+    reads the value by axis name, as `p.m2`."""
+    param: str
+
+    def __init__(self, param, bands):
+        if param not in bands:
+            raise ValueError(f"no band named {param!r}; the bands are "
+                             f"{sorted(bands)}")
+        try:
+            lo, hi = (float(v) for v in bands[param])
+        except (TypeError, ValueError):
+            raise ValueError(f"band {param!r} is a (low, high) pair; got "
+                             f"{bands[param]!r}") from None
+        object.__setattr__(self, "param", param)
+        object.__setattr__(self, "lo", lo)
+        object.__setattr__(self, "hi", hi)
+        try:
+            self.__post_init__()
+        except ValueError as err:
+            raise ValueError(f"band {param!r}: {err}") from None
+
+    def __repr__(self):
+        return f"Band({self.param!r}, ({self.lo!r}, {self.hi!r}))"
+
+
+class Coordinates(_Axis):
+    """A mechanism's independent coordinates, as a ready `State` at rest:
+    `Coordinates(mechanism, params, within=None, poses=None)`, with
+    `within` and `poses` as `armature.sample` takes them. Name the axis
+    `state` and `fn` reads `p.state`.
+
+    Each point is mapped by the sampler's `unit_cube`: every hinge and
+    slide over its joint range or `within`, every loop closed, every
+    floating body inside its pose envelope. Its corners are the corners of
+    those ranges. A point the map refuses, a loop that cannot close or a
+    pose outside the envelope, raises `Infeasible` with the map's reason,
+    such as `"loop 'pin'"`. In a `Worst`'s `at` the state is written as its
+    independent coordinates, by name.
+
+    The mechanism compiles once at `params`, when the space is made, which
+    fixes the axes: a space's dimension is known before it is searched.
+    Where the space has a `Band`, each point compiles again with its band
+    values (1–3 ms), and a band that would change the axes raises. The
+    nominal compile and the last are kept, so a space without a band, or a
+    run of points with the same band values, compiles once. Like the
+    compiled model, it is for one thread at a time."""
+
+    def __init__(self, mechanism, params, within=None, poses=None):
+        self.mechanism, self.params = mechanism, MappingProxyType(dict(params))
+        self.within = MappingProxyType(dict(within or {}))
+        self.poses = MappingProxyType(dict(poses or {}))
+        self._nominal = self._last = None  # each a (band values, UnitCube)
+
+    @property
+    def dims(self):
+        return self._cube({}).d
+
+    def corners(self):
+        return tuple(itertools.product((0.0, 1.0), repeat=self.dims))
+
+    def value(self, u, bands=None):
+        """The state at unit coordinates `u`, compiled with `bands`, each
+        parameter's value by name; raises `Infeasible` where the map refuses
+        the point."""
+        state = self._cube(bands or {}).map([u])[0]
+        if isinstance(state, Rejected):
+            raise Infeasible(state.reason)
+        return state
+
+    def plain(self, value):
+        return {n: _plain(value.q[n]) for n in value.compiled.independent}
+
+    def _check(self, band):
+        """Raises unless `band` names one of `params`, with its nominal
+        within the band."""
+        if band.param not in self.params:
+            raise ValueError(f"band {band.param!r} names no parameter of "
+                             f"this mechanism; its parameters are "
+                             f"{sorted(self.params)}")
+        nominal = self.params[band.param]
+        if not band.lo <= nominal <= band.hi:
+            raise ValueError(f"band {band.param!r}: its nominal {nominal!r} "
+                             f"lies outside the band ({band.lo!r}, "
+                             f"{band.hi!r})")
+
+    def _cube(self, bands):
+        """The map at `bands`, compiled, or kept from the last call there;
+        a band at its nominal value is no change."""
+        bands = {p: v for p, v in bands.items() if v != self.params[p]}
+        key = tuple(sorted(bands.items()))
+        for kept in (self._last, self._nominal):
+            if kept is not None and kept[0] == key:
+                return kept[1]
+        cube = unit_cube(compile(self.mechanism, {**self.params, **bands}),
+                         poses=self.poses, within=self.within)
+        if self._nominal is None and not key:
+            self._nominal = (key, cube)
+            return cube
+        axes = self._cube({}).axes
+        if cube.axes != axes:
+            raise ValueError(f"the band values {dict(bands)} change the "
+                             f"mechanism's coordinates from {list(axes)} to "
+                             f"{list(cube.axes)}; a band may change numbers, "
+                             f"not the coordinates searched")
+        self._last = (key, cube)
+        return cube
+
+    def __repr__(self):
+        name = getattr(self.mechanism, "__name__", None) or repr(
+            self.mechanism)
+        return f"Coordinates({name})"
+
+
+def _plain(value):
+    if isinstance(value, Placement):
+        return (tuple(float(c) for c in value.position),
+                tuple(tuple(float(c) for c in row) for row in value.rotation))
+    return float(value)
+
+
 class Space:
     """The named axes a margin is searched over, in the order given:
     `Space(q1=Interval(-math.pi, math.pi), load=Direction("xy"),
-    case=Choice(LOAD_CASES))`."""
+    case=Choice(LOAD_CASES))`.
+
+    A space holds at most one `Coordinates`, and each band once. Every
+    `Band` is checked against the `Coordinates`' parameters before the
+    mechanism compiles, and then the mechanism compiles at nominal, so a
+    bad band, `within` or envelope raises here rather than mid-search."""
 
     def __init__(self, **axes):
         for name, axis in axes.items():
             if not isinstance(axis, _Axis):
                 raise TypeError(f"{name!r} is not an axis: a space takes "
-                                f"Interval, Choice and Direction; got "
-                                f"{axis!r}")
+                                f"Interval, Choice, Direction, Band and "
+                                f"Coordinates; got {axis!r}")
             if name.startswith("_"):
                 raise ValueError(f"an axis name may not start with an "
                                  f"underscore; got {name!r}")
+        mechanisms = [n for n, a in axes.items() if isinstance(a, Coordinates)]
+        if len(mechanisms) > 1:
+            raise ValueError(f"a space holds one Coordinates, which every "
+                             f"band compiles into; got {mechanisms}")
+        bands = [a for a in axes.values() if isinstance(a, Band)]
+        twice = sorted(p for p, k in Counter(b.param for b in bands).items()
+                       if k > 1)
+        if twice:
+            raise ValueError(f"the bands {twice} appear twice; a parameter "
+                             f"takes one value at a point")
         self.axes = MappingProxyType(dict(axes))
+        if mechanisms:
+            coordinates = axes[mechanisms[0]]
+            for band in bands:
+                coordinates._check(band)
+            coordinates.dims  # compiles at nominal, fixing the axes
 
     @property
     def dims(self):
@@ -208,8 +367,9 @@ class Space:
 
 class Point:
     """One point of a space, as a margin's `fn` receives it: each axis's
-    value by name, `p.q1` or `p["q1"]`. The search's flat vector never
-    reaches `fn`."""
+    value by name, `p.q1` or `p["q1"]`, a band's as its value and
+    `Coordinates`' as a ready `State`, `p.state`. The search's flat vector
+    never reaches `fn`."""
     __slots__ = ("_values",)
 
     def __init__(self, values):
@@ -413,27 +573,38 @@ class _Run:
         self.covered = self.counted = 0
 
     def point(self, fixed, u):
-        values, i = {}, 0
+        """Each axis's value at unit coordinates `u`, the `Coordinates`'
+        state last, compiled with the point's band values. Raises
+        `Infeasible` where the map refuses the point."""
+        values, mechanism, i = {}, None, 0
         for name, axis in self.space.axes.items():
             if isinstance(axis, Choice):
                 values[name] = fixed[name]
+                continue
+            unit = tuple(float(x) for x in u[i:i + axis.dims])
+            i += axis.dims
+            if isinstance(axis, Coordinates):
+                values[name], mechanism = None, (name, axis, unit)
             else:
-                values[name] = axis.value(tuple(float(x) for x
-                                                in u[i:i + axis.dims]))
-                i += axis.dims
+                values[name] = axis.value(unit)
+        if mechanism:
+            name, axis, unit = mechanism
+            values[name] = axis.value(unit, {
+                a.param: values[n] for n, a in self.space.axes.items()
+                if isinstance(a, Band)})
         return values
 
     def evaluate(self, fixed, u):
         """`fn` at unit coordinates `u`: its slack, or None where it raised
         `Infeasible`; with the point as a plain dict."""
-        values = self.point(fixed, u)
-        at = {n: self.space.axes[n].plain(v) for n, v in values.items()}
         self.n += 1
         try:
+            values = self.point(fixed, u)
+            at = {n: self.space.axes[n].plain(v) for n, v in values.items()}
             slack = float(self.margin.fn(Point(values)))
         except Infeasible as refused:
             self.rejected[refused.reason] += 1
-            return None, at
+            return None, None
         if math.isnan(slack):
             raise ValueError(f"margin {self.margin.name!r} is nan at "
                              f"{_written(at)}: a point it cannot evaluate "
@@ -516,6 +687,8 @@ def _written(at):
 
 
 def _number(v):
+    if isinstance(v, dict):
+        return "(" + _written(v) + ")"
     if isinstance(v, tuple):
         return "(" + ", ".join(_number(c) for c in v) + ")"
     if isinstance(v, float):
