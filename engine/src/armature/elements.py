@@ -1,8 +1,9 @@
 """The typed elements a mechanism description is built from.
 
 Every number is written in the base frame at the home posture: a joint is an
-axis direction and a point on it, a COM, site or cable end is a position, and an
-inertia is a full tensor about the COM in base axes. The compiler derives the
+axis direction and a point on it (a free joint only the point), a COM, site or
+cable end is a position, and an inertia is a full tensor about the COM in base
+axes. The compiler derives the
 body-local frames MuJoCo needs.
 
 Values are whatever the description's parameters were: floats when the truth
@@ -13,7 +14,10 @@ converts them, so the constructors check shape only; `describe` checks values.
 from dataclasses import dataclass
 
 WORLD = "world"
-JOINT_KINDS = ("hinge", "slide")
+JOINT_KINDS = ("hinge", "slide", "free")
+# A free joint's scalar components, in the order its chain applies them: the
+# point's base-frame position, then rotations about the body's own axes.
+FREE_COMPONENTS = ("x", "y", "z", "rx", "ry", "rz")
 
 
 class DescriptionError(ValueError):
@@ -85,8 +89,11 @@ class Joint:
 
     def __post_init__(self):
         owner = f"joint {self.name!r}"
-        object.__setattr__(self, "axis", _vector(owner, "axis", self.axis))
+        if self.axis is not None:
+            object.__setattr__(self, "axis", _vector(owner, "axis", self.axis))
         object.__setattr__(self, "point", _vector(owner, "point", self.point))
+        if self.range is None:
+            return
         try:
             lo, hi = self.range
         except (TypeError, ValueError):
@@ -144,14 +151,23 @@ def body(name, *, mass, com, inertia):
     return Body(name, mass, com, inertia)
 
 
-def joint(name, kind, *, parent, child, axis, point, range, home=0.0,
-          stiffness=None, rest=None):
-    """A hinge or a slide from `parent` (a body or "world") to `child`.
+def joint(name, kind, *, parent, child, point, axis=None, range=None,
+          home=0.0, stiffness=None, rest=None):
+    """A hinge, a slide or a free joint from `parent` (a body or "world") to
+    `child`.
 
-    `axis` is a unit direction and `point` a point on it, at home. The joint's
-    coordinate, named `name`, reads `home` at the home posture and is kept
-    inside `range` (radians or metres; never degrees). A physical spring of
-    `stiffness` (N·m/rad or N/m) rests at `rest`, which defaults to `home`.
+    For a hinge or a slide, `axis` is a unit direction and `point` a point on
+    it, at home. The joint's coordinate, named `name`, reads `home` at the home
+    posture and is kept inside `range` (radians or metres; never degrees). A
+    physical spring of `stiffness` (N·m/rad or N/m) rests at `rest`, which
+    defaults to `home`.
+
+    A free joint makes `child` a floating body; its parent is the world.
+    `point` is a point fixed on the body, and the coordinate `name` is a
+    `Placement`: where that point is, and how the body is turned from home.
+    Its scalar components, which a variant can lock, are `name:x`, `name:y`
+    and `name:z`, the point's base-frame position, then `name:rx`, `name:ry`
+    and `name:rz`, turns about the body's own axes in that order.
     """
     return Joint(name, kind, parent, child, axis, point, range, home,
                  stiffness, rest)

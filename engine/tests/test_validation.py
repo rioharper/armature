@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import armature
-from armature import DescriptionError, actuator, body, cable, joint, site
+from armature import DescriptionError, actuator, body, cable, joint, lock, site
 
 I = np.eye(3) * 1e-3
 
@@ -157,3 +157,55 @@ def test_shape_errors_name_the_element():
               point=(1, 0, 0), range=(-3, 3))
     with pytest.raises(DescriptionError, match="body 'lower'"):
         body("lower", mass=1.0, com=(0, 0, 0), inertia=(1, 1, 1))
+
+
+def _free(**change):
+    """The arm's upper link made a floating body; `change` faults it."""
+    spec = dict(parent="world", child="upper", point=(0, 0, 0))
+    spec.update(change)
+    return {"shoulder": joint("shoulder", "free", **spec)}
+
+
+@pytest.mark.parametrize("change, why", [
+    (_free(parent="lower"), "hangs from the world"),
+    (_free(axis=(0, 0, 1)), "takes no axis"),
+    (_free(range=(-1, 1)), "takes no range"),
+    (_free(home=0.5), "takes no home value"),
+    (_free(stiffness=10.0), "takes no spring"),
+    ({"elbow": joint("elbow", "hinge", parent="upper", child="lower",
+                     point=(1, 0, 0), range=(-3, 3))}, "needs an axis"),
+    ({"elbow": joint("elbow", "slide", parent="upper", child="lower",
+                     axis=(1, 0, 0), point=(1, 0, 0))}, "needs a range"),
+])
+def test_joint_kind_faults(mjspec_untouched, change, why):
+    err = _fails(lambda p: arm(p, **change), "joint '")
+    assert why in str(err)
+
+
+def test_an_actuator_cannot_drive_a_free_joint(mjspec_untouched):
+    err = _fails(lambda p: arm(p, **_free(),
+                               motor=actuator("motor", joint="shoulder")),
+                 "actuator 'motor'")
+    assert "free" in str(err)
+
+
+def test_a_free_joint_is_locked_by_component():
+    floating = lambda p: arm(p, **_free())
+    m = armature.compile(floating, {"m": 1.0})
+    assert m.coordinates == ("shoulder", "elbow")
+    assert m.dofs[:6] == tuple(f"shoulder:{c}" for c in
+                               ("x", "y", "z", "rx", "ry", "rz"))
+    with pytest.raises(DescriptionError, match="no coordinate named 'shoulder'"):
+        armature.compile(armature.reduce(floating, lock("shoulder", 0.0,
+                                                        assumption="A1")),
+                         {"m": 1.0})
+    level = armature.reduce(floating, lock("shoulder:rz", 0.3, assumption="A1"))
+    assert armature.compile(level, {"m": 1.0}).coordinates == (
+        "shoulder:x", "shoulder:y", "shoulder:z", "shoulder:rx", "shoulder:ry",
+        "elbow")
+
+
+def test_symbolic_view_of_a_free_joint_matches_the_dofs():
+    floating = lambda p: arm(p, **_free())
+    view = armature.symbolic(floating, {"m": 1.0})
+    assert view.coordinates == armature.compile(floating, {"m": 1.0}).dofs

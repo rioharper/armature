@@ -109,7 +109,7 @@ def test_state_is_keyed_by_coordinate_name():
     m = armature.compile(two_slides, {})
     assert m.coordinates == ("b", "a")
     lin = m.at(q={"a": 0.1, "b": -0.2}).linearise()
-    assert lin.coordinates == ("b", "a")
+    assert lin.dofs == ("b", "a")
     assert np.diag(lin.stiffness) == pytest.approx([100.0, 300.0], rel=1e-6)
     s = m.at(q={"a": 0.1})
     assert dict(s.q) == {"b": 0.0, "a": 0.1}

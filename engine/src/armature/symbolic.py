@@ -8,6 +8,13 @@ exponentials (Lynch and Park, ch. 4) written as a chain of frames. A locked
 coordinate is turned by its locked value instead and drops out of the
 coordinates.
 
+A floating body is the chain its compiled variant uses: its point's position
+along the base axes, then turns about the body's own axes in x, y, z order,
+locked turns first. Its coordinates are the components left unlocked, named
+`<joint>:x` to `<joint>:rz` like the compiled dofs. Where the truth model keeps
+the free joint whole, its rates are the angular velocity instead of these
+angles' rates; the two agree at home.
+
 The derivation hangs its own `RigidBody`s on these frames and points and runs
 `LagrangesMethod` or `KanesMethod`; the view does not form equations.
 """
@@ -20,18 +27,19 @@ from sympy.physics.mechanics import (Point, ReferenceFrame, dynamicsymbols,
                                      inertia)
 
 from .description import describe, tree_order
-from .elements import WORLD
+from .elements import FREE_COMPONENTS, WORLD
 
 
 @dataclass(frozen=True, eq=False)
 class Symbolic:
     """The symbolic view of a description or a variant.
 
-    `q` maps each coordinate's name to its `dynamicsymbol`, in the compiled
-    model's order; `params` maps each parameter's name to its symbol. `world`
-    and `origin` are the base frame and its origin. Per body: `frames`, `com`
-    (a Point), `mass`, and `inertia`, the dyadic about the COM. Per joint:
-    `axes` (a Vector) and `anchors` (a Point on the axis). `sites` includes
+    `q` maps each coordinate's name to its `dynamicsymbol`, in the order of
+    the compiled model's dofs; `params` maps each parameter's name to its
+    symbol. `world` and `origin` are the base frame and its origin. Per body:
+    `frames`, `com` (a Point), `mass`, and `inertia`, the dyadic about the
+    COM. Per coordinate: `axes` (a Vector). Per joint: `anchors` (a Point on
+    the axis; a floating body's point). `sites` includes
     each cable's ends as `<cable>:start` and `<cable>:end`. `gravity` is a
     Vector. Every point's velocity in `world` is set.
     """
@@ -64,12 +72,23 @@ def symbolic(mechanism, params):
 
     joint_into = {j.child: j for j in d.joints}
     bodies = tree_order(d)
-    q = {joint_into[b.name].name: dynamicsymbols(joint_into[b.name].name)
-         for b in bodies if joint_into[b.name].name not in d.locks}
+    q = {}
+    for b in bodies:
+        j = joint_into[b.name]
+        names = ([f"{j.name}:{c}" for c in FREE_COMPONENTS]
+                 if j.kind == "free" else [j.name])
+        q.update({n: _coordinate(n) for n in names if n not in d.locks})
     frames, com, at = {WORLD: world}, {WORLD: origin}, {WORLD: (0, 0, 0)}
     axes, anchors = {}, {}
     for b in bodies:
         j = joint_into[b.name]
+        if j.kind == "free":
+            frames[b.name], anchors[j.name] = _floating(j, b, q, d.locks, world,
+                                                        origin, axes)
+            com[b.name] = anchors[j.name].locatenew(
+                b.name, _vector(_minus(b.com, j.point), frames[b.name]))
+            at[b.name] = b.com
+            continue
         parent = frames[j.parent]
         lock = d.locks.get(j.name)
         moved = (lock.at if lock else q[j.name]) - sp.sympify(j.home)
@@ -111,6 +130,39 @@ def symbolic(mechanism, params):
                     _ro(com), _ro({b.name: sp.sympify(b.mass) for b in d.bodies}),
                     _ro(tensors), _ro(axes), _ro(anchors), _ro(sites),
                     _vector(d.gravity, world))
+
+
+def _floating(j, b, q, locks, world, origin, axes):
+    """A floating body's frame and its moving point, built as its compiled
+    chain: the point along the base axes, then the locked turns, then the
+    free ones. Records each free component's axis in `axes`."""
+    def value(c):
+        name = f"{j.name}:{c}"
+        return sp.sympify(locks[name].at) if name in locks else q[name]
+
+    point = origin.locatenew(j.name, value("x") * world.x
+                             + value("y") * world.y + value("z") * world.z)
+    for c, u in zip("xyz", (world.x, world.y, world.z)):
+        if f"{j.name}:{c}" not in locks:
+            axes[f"{j.name}:{c}"] = u
+    turns = [c for c in ("rx", "ry", "rz") if f"{j.name}:{c}" in locks]
+    turns += [c for c in ("rx", "ry", "rz") if c not in turns]
+    frame = world
+    for k, c in enumerate(turns):
+        last = k == len(turns) - 1
+        turned = ReferenceFrame(b.name if last else f"{b.name}_{c}")
+        axis = (frame.x, frame.y, frame.z)[("rx", "ry", "rz").index(c)]
+        turned.orient_axis(frame, axis, value(c))
+        if f"{j.name}:{c}" not in locks:
+            axes[f"{j.name}:{c}"] = axis
+        frame = turned
+    return frame, point
+
+
+def _coordinate(name):
+    """A coordinate's dynamicsymbol. `dynamicsymbols` would read the colon in
+    `platform:x` as a range."""
+    return sp.Function(name)(dynamicsymbols._t)
 
 
 def _on(name, body, pos, frames, com, at):

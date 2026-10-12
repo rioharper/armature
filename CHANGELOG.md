@@ -19,6 +19,12 @@ Two changes: the plan moves off disk onto GitHub Issues, and subagents stop inhe
   - **Variants.** `reduce(mechanism, lock(...))` names one. A lock compiles as a weld with no joint equality, and `s.release(hold)` reports each locked coordinate's displacement by name.
   - **Fixture 1 checks.** FK, the Jacobian, M, g, the inverse dynamics and the elbow's reaction wrench match the closed forms at sampled states, and the inverse agrees with `mj_inverse`. The locked-elbow trap fails its release, as it must.
   - **Bug fixed.** `linearise` read M after `mjd_inverseFD` had left it at a perturbed posture, so M was evaluated at q − eps. On the 2R arm that is off by 4e-7.
+- **Fixture 2, a platform on four cables, runs through the description** ([#67](https://github.com/rioharper/armature/issues/67)).
+  - **Floating bodies.** `joint(name, "free", parent="world", child=..., point=...)` makes a floating body. Its value is a `Placement`, the point's position plus a 3×3 rotation, so no quaternion component is ever read as an angle. Rates and every matrix follow `m.dofs`: `name:x` to `name:z` for the point, then `name:rx` to `name:rz` for the angular velocity, all along base axes. Positions are written through `jnt_qposadr` and rates through `jnt_dofadr`, and a hinge child on a floating body reads its own angle.
+  - **Locks on a floating body.** `lock("hang:rx", ...)` holds one component. The free joint is rebuilt from the scalar joints that remain, so a level platform is three slides. Release reports each locked turn by name.
+  - **Records.** `settle` reports each cable's `tension`, exactly zero when slack. `wrench` counts cable forces, so a hanging platform's free joint carries nothing, while a level platform's slides carry the moment its welded turns hold.
+  - **Fixture 2 checks.** The four-pose settle table of the 2026-09-15 research note reproduces: tilts of 0°, 20.8°, 14.7° and 26.3°, with the slack cables at the low corner. The settles match an independent minimisation of the potential. The level-platform assumption holds at the room centre and fails, as an expected failure, at the other three poses. The 6×6 stiffness matches the potential's Hessian, and yaw matches m g A d / z0.
+  - **Breaking.** `Jacobian`, `Linearised` and `Inverse.generalised` are keyed by dof, not coordinate, and `qd` and `qdd` take dof names. For a mechanism with no floating body the names are unchanged.
 
 ### A writing pass over the plugin's own documents
 

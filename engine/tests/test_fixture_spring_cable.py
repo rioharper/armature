@@ -69,7 +69,7 @@ def test_slack_cable_reads_zero():
 
 def test_record_carries_method_and_step():
     lin = armature.compile(on_spring, PARAMS).at().linearise(eps=1e-7)
-    assert lin.coordinates == ("z",)
+    assert lin.dofs == ("z",)
     assert "mjd_inverseFD" in lin.method
     assert lin.eps == 1e-7
     assert "mjd_inverseFD" in str(lin) and "1e-07" in str(lin)

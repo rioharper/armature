@@ -151,7 +151,7 @@ def test_pose_and_jacobian_are_the_closed_forms(m, q, qd, qdd):
     assert jac.linear == pytest.approx(jacobian(*q), abs=1e-12)
     assert jac.angular == pytest.approx(np.array([[0, 0], [0, 0], [1, 1]]),
                                         abs=1e-12)
-    assert jac.coordinates == ("shoulder", "elbow")
+    assert jac.dofs == ("shoulder", "elbow")
     for record in (pose, jac):
         assert record.residual == 0.0 and record.method
 

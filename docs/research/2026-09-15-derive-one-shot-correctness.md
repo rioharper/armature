@@ -50,6 +50,12 @@ low corner 2.5 kg    tilt  26.3 deg   |dp|  52.3 mm   T [22.61  0.    7.72  0.  
 
 That is the review's F1 table to the printed precision (20.8° / 27 mm /
 16.71–3.93 N; 14.7°; 26° / 52 mm / 22.6–0–7.7–0 N), in one second of wall time.
+
+*Correction, 2026-10-11 (#67):* the top edge row's tensions are 35.68 / 8.82 N,
+not 35.73 / 8.84. The damped run above stops at 20 s, before that pose has come
+to rest. The engine's quench settle and an independent minimisation of the
+potential agree on 35.68 / 8.82 (8.8245). Every other number in the table
+stands.
 Had Milestone 1 carried a "settle the rig in MuJoCo at ten random envelope
 poses and compare tilt and tensions to the law" check, A5 would have failed at
 the first checkpoint run instead of at review.

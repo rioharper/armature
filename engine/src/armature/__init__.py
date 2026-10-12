@@ -19,13 +19,13 @@ from .compiler import Compiled, compile
 from .description import Description, describe
 from .elements import (DescriptionError, actuator, body, cable, gravity, joint,
                        site)
-from .state import (Inverse, Jacobian, Linearised, Pose, Released, Settled,
-                    State, Wrench)
+from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
+                    Settled, State, Wrench)
 from .symbolic import Symbolic, symbolic
 from .variants import Variant, lock, reduce
 
 __all__ = ["Compiled", "Description", "DescriptionError", "Inverse",
-           "Jacobian", "Linearised", "Pose", "Released", "Settled", "State",
-           "Symbolic", "Variant", "Wrench", "actuator", "body", "cable",
-           "compile", "describe", "gravity", "joint", "lock", "reduce",
-           "site", "symbolic"]
+           "Jacobian", "Linearised", "Placement", "Pose", "Released",
+           "Settled", "State", "Symbolic", "Variant", "Wrench", "actuator",
+           "body", "cable", "compile", "describe", "gravity", "joint", "lock",
+           "reduce", "site", "symbolic"]

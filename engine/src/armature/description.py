@@ -12,8 +12,8 @@ from types import MappingProxyType
 import numpy as np
 import sympy as sp
 
-from .elements import (JOINT_KINDS, WORLD, Actuator, Body, Cable,
-                       DescriptionError, Gravity, Joint, Site)
+from .elements import (FREE_COMPONENTS, JOINT_KINDS, WORLD, Actuator, Body,
+                       Cable, DescriptionError, Gravity, Joint, Site)
 from .variants import Lock, Variant
 
 ELEMENTS = (Body, Joint, Site, Cable, Actuator, Gravity)
@@ -38,6 +38,19 @@ class Description:
     variant: str = None
     reductions: tuple = ()
     locks: MappingProxyType = MappingProxyType({})
+
+
+def coordinate_joints(description):
+    """Every name a lock can hold, mapped to (joint, component): a hinge or
+    slide's own name with component None, and each free joint's six
+    `name:component` names."""
+    out = {}
+    for j in description.joints:
+        if j.kind == "free":
+            out.update({f"{j.name}:{c}": (j, c) for c in FREE_COMPONENTS})
+        else:
+            out[j.name] = (j, None)
+    return out
 
 
 def tree_order(description):
@@ -166,7 +179,7 @@ def describe(mechanism, params):
             problems.append(f"site {s.name!r}: body {s.body!r} is not declared")
     for c in by_kind[Cable]:
         problems += _check_cable(c, bodies)
-    joints = {j.name for j in by_kind[Joint]}
+    joints = {j.name: j for j in by_kind[Joint]}
     for a in by_kind[Actuator]:
         problems += _check_actuator(a, joints)
     if problems:
@@ -182,22 +195,24 @@ def describe(mechanism, params):
 def _reduce(description, variant):
     """`description` with the variant's reductions checked and recorded."""
     problems, locks = [], {}
-    joints = {j.name: j for j in description.joints}
+    held = coordinate_joints(description)
     for r in variant.reductions:
         owner = f"{r} in variant {variant.name!r}"
         if isinstance(r, Lock):
-            joint = joints.get(r.coordinate)
+            joint, _ = held.get(r.coordinate, (None, None))
             if joint is None:
                 problems.append(f"{owner}: no coordinate named "
                                 f"{r.coordinate!r}; the description has "
-                                f"{sorted(joints)}")
+                                f"{sorted(held)}")
                 continue
             if r.coordinate in locks:
                 problems.append(f"{owner}: {r.coordinate!r} is already locked")
-            lo, hi, at = (_num(v) for v in (*joint.range, r.at))
+            at = _num(r.at)
+            lo, hi = ((None, None) if joint.range is None
+                      else (_num(v) for v in joint.range))
             if at is None:
                 problems.append(f"{owner}: the locked value must be a number")
-            elif None not in (lo, hi, at) and not lo <= at <= hi:
+            elif None not in (lo, hi) and not lo <= at <= hi:
                 problems.append(f"{owner}: {at} lies outside the joint's "
                                 f"range ({lo}, {hi})")
             locks[r.coordinate] = r
@@ -260,10 +275,18 @@ def _check_joint(j, bodies):
         problems.append(f"{owner}: child {j.child!r} is not a declared body")
     if j.parent == j.child:
         problems.append(f"{owner}: parent and child are both {j.child!r}")
-    axis = _array(j.axis)
-    if axis is not None and abs(np.linalg.norm(axis) - 1) > UNIT_TOL:
-        problems.append(f"{owner}: axis {tuple(axis)} is not a unit vector "
-                        f"(norm {np.linalg.norm(axis):.6g})")
+    if j.kind == "free":
+        return problems + _check_free(j)
+    if j.axis is None:
+        problems.append(f"{owner}: a {j.kind} needs an axis")
+    else:
+        axis = _array(j.axis)
+        if axis is not None and abs(np.linalg.norm(axis) - 1) > UNIT_TOL:
+            problems.append(f"{owner}: axis {tuple(axis)} is not a unit vector "
+                            f"(norm {np.linalg.norm(axis):.6g})")
+    if j.range is None:
+        problems.append(f"{owner}: a {j.kind} needs a range, its envelope")
+        return problems
     lo, hi, home = _num(j.range[0]), _num(j.range[1]), _num(j.home)
     if lo is not None and hi is not None:
         if not lo < hi:
@@ -276,6 +299,24 @@ def _check_joint(j, bodies):
         problems.append(f"{owner}: stiffness {k} is negative")
     if j.rest is not None and j.stiffness is None:
         problems.append(f"{owner}: rest is given but there is no spring")
+    return problems
+
+
+def _check_free(j):
+    owner, problems = _label(j), []
+    if j.parent != WORLD:
+        problems.append(f"{owner}: a free joint hangs from the world, not "
+                        f"{j.parent!r}; MuJoCo keeps free joints at the top "
+                        f"level")
+    for label, given in (("axis", j.axis is not None),
+                         ("range", j.range is not None),
+                         ("home value", _num(j.home) != 0.0),
+                         ("spring", j.stiffness is not None
+                          or j.rest is not None)):
+        if given:
+            problems.append(f"{owner}: a free joint takes no {label}; its "
+                            f"home is the description's posture, and its "
+                            f"envelope is the sampler's")
     return problems
 
 
@@ -310,6 +351,9 @@ def _check_actuator(a, joints):
     owner, problems = _label(a), []
     if a.joint not in joints:
         problems.append(f"{owner}: joint {a.joint!r} is not declared")
+    elif joints[a.joint].kind == "free":
+        problems.append(f"{owner}: joint {a.joint!r} is free; an actuator "
+                        f"drives a hinge or a slide")
     for label, value, allow_zero in (("gear", a.gear, False),
                                      ("rotor_inertia", a.rotor_inertia, True),
                                      ("torque_limit", a.torque_limit, False)):
