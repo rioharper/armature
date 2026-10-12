@@ -213,6 +213,23 @@ def _actuator(a, d):
             else _n(a.torque_limit)}
 
 
+def _contact(c, d):
+    def described(s):
+        sizes = {"sphere": (s.radius,), "cylinder": (s.radius, s.half_length),
+                 "box": tuple(s.half_sizes or ()), "plane": ()}.get(s.kind, ())
+        return {"kind": s.kind, "pos": _v(s.pos),
+                "axis": None if s.axis is None else _v(s.axis),
+                "size": tuple(_n(v) for v in sizes)}
+    shape, against = described(c.shape), described(c.against)
+    return {"name": c.name, "body": c.body, "shape": shape["kind"],
+            "at": shape["pos"], "axis": shape["axis"], "size": shape["size"],
+            "against": against["kind"], "against at": against["pos"],
+            "against axis": against["axis"], "against size": against["size"],
+            "mu": _n(c.mu),
+            "stiffness": None if c.stiffness is None else _n(c.stiffness),
+            "damping": None if c.damping is None else _n(c.damping)}
+
+
 SECTIONS = (  # (title, the Description's attribute, its row from (element, d))
     ("Bodies", "bodies", _body),
     ("Joints", "joints", _joint),
@@ -220,6 +237,7 @@ SECTIONS = (  # (title, the Description's attribute, its row from (element, d))
     ("Cables", "cables", _cable),
     ("Loops", "loops", _loop),
     ("Actuators", "actuators", _actuator),
+    ("Contacts", "contacts", _contact),
 )
 
 

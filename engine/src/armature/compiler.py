@@ -27,6 +27,13 @@ constraint rows.
 MuJoCo refuses a moving body without mass or inertia, so a body a lump left
 without them compiles with `MASS_FLOOR` of its own mass and inertia, and the
 variant is flagged `approximate`.
+
+A contact compiles as a geom on its body, a geom on the world, and an explicit
+pair between them; no other geoms collide. The cone is pyramidal and, wherever
+friction acts, the noslip solver runs, so a resting contact does not creep. A
+rigid contact gets the loops' solver parameters; a compliant one gets direct
+stiffness and damping, scaled so its rest sag is the physical force over k;
+`rigid(contact)` drops that compliance for the rigid parameters.
 """
 
 from types import MappingProxyType
@@ -35,8 +42,9 @@ import mujoco
 import numpy as np
 
 from .assembly import Closure, write_q
-from .description import (coordinate_joints, describe, rigid_cables,
-                          tree_order)
+from .contact import TOUCH
+from .description import (compliant_contacts, coordinate_joints, describe,
+                          rigid_cables, tree_order)
 from .elements import FREE_COMPONENTS, WORLD
 from .rotations import AXES, floating_rotation, turn
 from .state import Placement, State, placement
@@ -52,6 +60,17 @@ CLOSURE_SOLIMP = (0.9999, 0.9999, 1e-3, 0.5, 2.0)  # MuJoCo's highest impedance
 MASS_FLOOR = 1e-6  # of a body's own mass and inertia, where a lump left none:
                    # MuJoCo refuses a moving body without either (mjMINVAL)
 
+CONTACT_SOLREF = CLOSURE_SOLREF  # a rigid contact: at rest a wheel sinks in
+CONTACT_SOLIMP = CLOSURE_SOLIMP  # by a few nanometres
+COMPLIANT_IMPEDANCE = 0.01  # a compliance's impedance d. Its rest sag does
+    # not depend on d (a sliding block read it exactly; the wheel on the
+    # incline, to 1.4e-4); its own mode is slowed by √(1 − d), so d is small,
+    # but below about 1e-3 the noslip solver no longer stops a slip
+NOSLIP_ITERATIONS = 20  # wherever friction acts: without it, MuJoCo's soft
+    # friction lets a resting contact creep. Noslip only acts on pyramidal
+    # cones in 3.15 (on elliptic ones it changes nothing), so the cone is
+    # pyramidal
+
 _KIND = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
 
@@ -65,6 +84,7 @@ def compile(mechanism, params):
     description = describe(mechanism, params)
     model = _spec(description).compile()
     _hold_rigid(model, description)
+    _comply(description, model)
     return Compiled(description, model, source=(mechanism, params))
 
 
@@ -329,6 +349,24 @@ def _spec(description):
         eq.data[:5] = [0.0, float(c.ratio), 0.0, 0.0, 0.0]
         eq.solref, eq.solimp = CLOSURE_SOLREF, CLOSURE_SOLIMP
 
+    if description.contacts:
+        spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+        if any(float(c.mu) > 0 for c in description.contacts):
+            spec.option.noslip_iterations = NOSLIP_ITERATIONS
+    compliant = compliant_contacts(description)
+    for c in description.contacts:  # one geom each side, colliding only as
+        _add_geom(handle[c.body], c.name, c.shape, com[c.body])  # this pair
+        _add_geom(spec.worldbody, f"{c.name}:against", c.against, np.zeros(3))
+        mu = float(c.mu)
+        pair = spec.add_pair(name=c.name, geomname1=f"{c.name}:against",
+                             geomname2=c.name, condim=3 if mu > 0 else 1)
+        pair.friction = [mu, mu, 0.0, 0.0, 0.0]
+        pair.margin = TOUCH  # reported when touching, not only once sunk in
+        pair.solref, pair.solimp = CONTACT_SOLREF, CONTACT_SOLIMP
+        if c.name in compliant:  # the stiffness is set by `_comply`
+            d = COMPLIANT_IMPEDANCE
+            pair.solimp = (d, d, 1e-3, 0.5, 2.0)
+
     for a in description.actuators:
         if a.joint in locks:  # its joint is gone, and its rotor with it
             continue
@@ -355,6 +393,53 @@ def _add_joint(body, j, com, armature):
     if j.stiffness is not None:
         mj.stiffness[0] = float(j.stiffness)  # a polynomial array; [0] is linear
         mj.springref = float(j.home if j.rest is None else j.rest)
+
+
+_GEOM = {"sphere": mujoco.mjtGeom.mjGEOM_SPHERE,
+         "cylinder": mujoco.mjtGeom.mjGEOM_CYLINDER,
+         "box": mujoco.mjtGeom.mjGEOM_BOX, "plane": mujoco.mjtGeom.mjGEOM_PLANE}
+
+
+def _add_geom(body, name, shape, com):
+    """`shape` as a geom on `body`, whose frame sits at `com` with base axes
+    at home. It collides with nothing but through its contact's pair, and
+    carries no mass: the body's inertia is explicit."""
+    size = {"sphere": lambda s: [float(s.radius), 0.0, 0.0],
+            "cylinder": lambda s: [float(s.radius), float(s.half_length), 0.0],
+            "box": lambda s: list(_floats(s.half_sizes)),
+            "plane": lambda s: [0.0, 0.0, 1.0]}[shape.kind](shape)
+    quat = [1.0, 0.0, 0.0, 0.0]
+    if shape.axis is not None:  # a cylinder's axis, a plane's normal: local z
+        quat = np.zeros(4)
+        mujoco.mju_quatZ2Vec(quat, _floats(shape.axis))
+    geom = body.add_geom(name=name, type=_GEOM[shape.kind], size=size,
+                         pos=_floats(shape.pos) - com, quat=quat)
+    geom.contype = geom.conaffinity = 0
+
+
+def _comply(description, model):
+    """Set each compliant contact's stiffness and damping in `model`.
+
+    MuJoCo's contact law is in acceleration units, scaled by its own
+    estimate of the contact's inverse mass, `diagA`; with direct
+    (negative) solref, each of a pyramidal contact's 2(condim − 1) edges
+    holds R f = −K r at rest, with R = (1 − d)/d diagA. So K = k (1 − d)
+    diagA / edges gives the physical k exactly at rest, and the damping
+    likewise. diagA comes from the bodies' inverse weights at qpos0, the
+    estimate MuJoCo 3.15 makes for a pyramidal edge: 2 μ² (1 + μ²) times
+    the translational weight, and the weight alone with no friction."""
+    for c in description.contacts:
+        if c.name not in compliant_contacts(description):
+            continue
+        pair = model.pair(c.name).id
+        mu = float(c.mu)
+        weight = model.body_invweight0[model.body(c.body).id, 0]
+        diag, edges = ((2 * mu ** 2 * (1 + mu ** 2) * weight, 4) if mu > 0
+                       else (weight, 1))
+        scale = (1 - COMPLIANT_IMPEDANCE) * diag / edges
+        damping = 0.0 if c.damping is None else float(c.damping)
+        model.pair_solref[pair] = [-float(c.stiffness) * scale,
+                                   -damping * scale]
 
 
 def _posed(j, com, parent_com, delta):

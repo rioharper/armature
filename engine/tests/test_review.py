@@ -222,3 +222,24 @@ def test_a_closed_chain_renders_at_its_closed_posture(tmp_path):
     moved = _pixels(armature.render(m.at(q=q), tmp_path / "moved.png"))
     _assert_not_blank(moved)
     assert np.any(home != moved)
+
+
+def test_frames_list_each_contact_against_mujocos_geoms():
+    """Each contact's shape and the shape it is against, in the base frame
+    at home, read back from MuJoCo's own geoms at qpos0."""
+    from test_fixture_wheel_leg import PARAMS as LEG_PARAMS
+    from test_fixture_wheel_leg import wheel_leg
+    table = armature.frames(wheel_leg, LEG_PARAMS)
+    data = _home(m := armature.compile(wheel_leg, LEG_PARAMS))
+    row = table.row("Contacts", "tyre")
+    assert (row["body"], row["shape"], row["against"]) == (
+        "wheel", "cylinder", "plane")
+    assert row["size"] == (LEG_PARAMS["r"], LEG_PARAMS["w"])
+    assert row["mu"] == LEG_PARAMS["mu"] and row["stiffness"] is None
+    for at, axis, geom in (("at", "axis", "tyre"),
+                           ("against at", "against axis", "tyre:against")):
+        g = m.model.geom(geom).id
+        assert row[at] == pytest.approx(data.geom_xpos[g], abs=1e-12)
+        assert row[axis] == pytest.approx(
+            data.geom_xmat[g].reshape(3, 3)[:, 2], abs=1e-12)
+    assert "## Contacts" in table.markdown()

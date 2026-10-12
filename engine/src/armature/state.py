@@ -19,6 +19,7 @@ reads the solver's constraint forces, which answer for whatever slack its soft
 constraints hold: `mj_inverse` on a five-bar was off by 61 % and 78 %.
 """
 
+import copy
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -31,6 +32,9 @@ from scipy.linalg import eigh
 from scipy.spatial.transform import Rotation
 
 from .assembly import RANK_TOL, tangent, write_q
+from .contact import (MOVE_TOL, RESOLVED, ContactForce, forces, frequencies,
+                      from_solver, roots, selectors, split, touching)
+from .description import compliant_contacts
 from .rotations import floating_rotation, turn
 from .variants import DISPLACED, QUANTIFIED, Couple, Lock
 
@@ -44,6 +48,17 @@ ROTATION_TOL = 1e-9     # |RᵀR − I| allowed in a given rotation
 CLOSURE_BOUND = 1e-6    # m: the slack a settle's soft loops may hold
 DETERMINED_TOL = 1e-9   # an unknown's share of the null space below which it
                         # is determined
+PENETRATION_BOUND = 1e-6  # m: how far a settle's rigid contacts may sink in
+LINEARISE_SOLREF = (0.005, 0.02)  # s: the two contact stiffnesses linearise
+    # runs at, rigid contacts and loops alike; a root that moves between them
+    # is the solver's
+LINEARISE_SOLIMP = (0.95, 0.95, 1e-3, 0.5, 2.0)  # constant, so the contact
+    # force is linear in its sink; at 0.9999 a rigid contact sinks only
+    # nanometres, and a difference step lifts it clear
+CONTACT_EPS = 1e-8      # the difference step on a model with contact: well
+                        # inside the micrometres a soft contact sinks
+ROUNDS = 3              # settles, each re-solving the hold, to find the rest
+                        # a linearisation with contact is taken at
 
 
 class Placement(NamedTuple):
@@ -134,11 +149,18 @@ class State:
 
         On a closed chain, `qdd` takes the independent dofs; the dependent
         accelerations are solved so the loops stay closed.
+
+        Each touching contact adds rows at its points (see `contact`), and
+        `contacts` reports, under its name, its normal force, its friction
+        force and its friction-cone margin from the same solve. The
+        accelerations are taken as given: a contact's rows carry force, not
+        motion, so at rest `qdd` is zero.
         """
         return self._solve(self._data(), qdd, loads)[0]
 
     def _solve(self, data, qdd, loads):
-        """The inverse record, and the unknowns [τ; λ], at `data`."""
+        """The inverse record, the unknowns [τ; λ_loops; λ_contacts] (NaN
+        where undetermined), and the touching contact points, at `data`."""
         compiled = self.compiled
         model, closure = compiled.model, compiled.closure
         _refuse_constraints(model, data, "an inverse solve")
@@ -147,23 +169,35 @@ class State:
             wanted, jac = self._dependent_accel(data, qdd)
         else:
             wanted, jac = self._by_dof(qdd, "qdd"), np.zeros((0, model.nv))
+        points, contact_jac = touching(compiled, data)
         accel = turned @ wanted + drift
         mass = np.zeros((model.nv, model.nv))
         mujoco.mj_fullM(model, data, mass)
         need = turned.T @ (mass @ accel + data.qfrc_bias - data.qfrc_passive
                            - _load_force(model, data, loads))
-        columns = turned.T @ np.hstack([_moment(model, data).T, jac.T])
-        unknowns, rank, condition, residual = _least_squares(columns, need)
+        columns = turned.T @ np.hstack([_moment(model, data).T, jac.T,
+                                        contact_jac.T])
+        solved, rank, condition, residual, null = _least_squares(columns,
+                                                                 need)
+        unknowns = solved.copy()
+        unknowns[_undetermined(null, np.eye(len(solved)))] = np.nan
         torques = dict(zip(compiled.actuators,
                            (float(t) for t in unknowns[:model.nu])))
-        forces = closure.forces(unknowns[model.nu:]) if closure else {}
+        start = model.nu + len(jac)
+        loop_forces = (closure.forces(unknowns[model.nu:start]) if closure
+                       else {})
+        carried = forces(compiled, points, solved[start:])
+        for name, total in selectors(points, start, len(solved)).items():
+            if _undetermined(null, total).any():  # its total, not its split
+                carried[name] = _unknown(carried[name])
         record = Inverse(
-            MappingProxyType(torques), MappingProxyType(forces),
+            MappingProxyType(torques), MappingProxyType(loop_forces),
             MappingProxyType(dict(zip(compiled.dofs,
                                       (float(v) for v in need)))),
             rank, columns.shape[1], condition, residual,
-            _over_limit(model, torques), INVERSE_METHOD)
-        return record, unknowns
+            _over_limit(model, torques), INVERSE_METHOD,
+            MappingProxyType(carried))
+        return record, unknowns, points
 
     def _dependent_accel(self, data, qdd):
         """`qdd` over the dofs, the dependent accelerations solved so the
@@ -196,6 +230,11 @@ class State:
         On a closed chain the loops are MuJoCo's soft constraints, at the
         solver parameters the compiler sets. `residual` is how far open they
         are at rest, and a settle that leaves one open past 1e-6 m raises.
+
+        Contacts are MuJoCo's, with the noslip solver wherever friction acts,
+        and `contacts` reports what each touching one carries at rest, read
+        from the solver. A rigid contact sunk in past 1e-6 m raises; a
+        compliant one sinks by its normal force over its stiffness.
         """
         model, data = self.compiled.model, self._data()
         data.qvel[:] = 0.0
@@ -207,23 +246,18 @@ class State:
         for name, torque in command.items():
             data.ctrl[model.actuator(name).id] = float(torque)
 
-        stable, steps = False, max_steps
-        for step in range(1, max_steps + 1):
-            mujoco.mj_step1(model, data)
-            data.qfrc_applied[:] = _load_force(model, data, loads)  # here, now
-            mujoco.mj_step2(model, data)
-            if not (np.all(np.isfinite(data.qpos))
-                    and np.all(np.isfinite(data.qvel))):
-                steps = step
-                break
-            if float(data.qvel @ data.qacc) < 0.0:
-                data.qvel[:] = 0.0
-            if (step >= min_steps and np.max(np.abs(data.qvel)) < REST_SPEED
-                    and np.max(np.abs(data.qacc)) < REST_ACCEL):
-                stable, steps = True, step
-                break
-
+        stable, steps = _quench(model, data, loads, min_steps, max_steps)
         mujoco.mj_forward(model, data)
+        carried = from_solver(self.compiled, data)
+        for c in self.compiled.description.contacts:
+            sunk = carried[c.name].penetration if c.name in carried else 0.0
+            if (c.name not in compliant_contacts(self.compiled.description)
+                    and not sunk <= PENETRATION_BOUND):
+                raise RuntimeError(
+                    f"the settle left contact {c.name!r} sunk in {sunk:.3g} "
+                    f"m, past the {PENETRATION_BOUND:g} bound: the solver's "
+                    f"soft contact is not holding it, so the rest pose is "
+                    f"not the mechanism's")
         closure = self.compiled.closure
         if closure:
             which, gap = closure.worst(closure.rows(data)[0])
@@ -240,7 +274,8 @@ class State:
         return Settled(MappingProxyType(rest), MappingProxyType(moved),
                        MappingProxyType(_tensions(model, data)), stable, steps,
                        _over_limit(model, command), tuple(rows),
-                       _closure(model, data), SETTLE_METHOD)
+                       _closure(model, data), SETTLE_METHOD,
+                       MappingProxyType(carried))
 
     def wrench(self, body, qdd=None, loads=None):
         """The wrench `body`'s parent exerts on it across its joint, for this
@@ -256,23 +291,36 @@ class State:
 
         On a closed chain each loop's force comes from the explicit solve
         `inverse` makes for the same `qdd` and `loads`, applied at its two
-        sites; the solver's own constraint forces are not read.
+        sites, and each touching contact's likewise, at its points; the
+        solver's own constraint forces are not read.
         """
         compiled = self.compiled
         model, data = compiled.model, self._data()
         _refuse_constraints(model, data, "a wrench")
-        loop_forces = []
-        if compiled.closure:
-            forces = self._solve(data, qdd, loads)[0].constraint
+        loop_forces, contact_forces = [], []
+        if compiled.closure or compiled.description.contacts:
+            record, unknowns, points = self._solve(data, qdd, loads)
             for loop in compiled.description.loops:
-                force = forces[loop.name]
+                force = record.constraint[loop.name]
                 if not np.all(np.isfinite(force)):
                     raise ValueError(f"loop {loop.name!r}'s force is not "
                                      f"determined here (the solve lost "
                                      f"rank), so no wrench is")
                 loop_forces += [(loop.a, force), (loop.b, -force)]
+            row = model.nu + (compiled.closure.size if compiled.closure else 0)
+            for p in points:  # each point's force, on the contact's body
+                k = len(p.directions)
+                force = p.directions.T @ unknowns[row:row + k]
+                if not np.all(np.isfinite(force)):
+                    raise ValueError(f"contact {p.contact!r}'s force at "
+                                     f"{p.position} is not determined here "
+                                     f"(the solve lost rank), so no wrench is")
+                contact_forces.append((p, force))
+                row += k
             data.efc_force[:] = 0.0  # the solver's, not the mechanism's
-            qdd = dict(zip(compiled.dofs, self._dependent_accel(data, qdd)[0]))
+            if compiled.closure:
+                qdd = dict(zip(compiled.dofs,
+                               self._dependent_accel(data, qdd)[0]))
         bid = _named(model, mujoco.mjtObj.mjOBJ_BODY, body, model.nbody)
         if bid == 0 or model.body_jntnum[bid] == 0:
             raise ValueError(f"body {body!r} has no joint of its own to carry "
@@ -283,9 +331,13 @@ class State:
         data.qacc[:] = turned @ self._by_dof(qdd, "qdd") + drift
         named = [(_named(model, mujoco.mjtObj.mjOBJ_SITE, s, model.nsite), f)
                  for s, f in loop_forces]
-        for site, force in _loads(model, loads) + named:
-            on = model.site_bodyid[site]
-            lever = data.site_xpos[site] - data.xipos[on]  # xfrc acts at the COM
+        applied = [(model.site_bodyid[site], data.site_xpos[site], force)
+                   for site, force in _loads(model, loads) + named]
+        body_of = {c.name: c.body for c in compiled.description.contacts}
+        applied += [(model.body(body_of[p.contact]).id, p.position, force)
+                    for p, force in contact_forces]
+        for on, at, force in applied:
+            lever = at - data.xipos[on]  # xfrc acts at the COM
             data.xfrc_applied[on, :3] += force
             data.xfrc_applied[on, 3:] += np.cross(lever, force)
         mujoco.mj_rnePostConstraint(model, data)
@@ -422,10 +474,24 @@ class State:
         the closing loop, and the full eigenproblem adds the solver's
         constraint stiffness as modes. Rows follow the independent dofs, and
         the posture is taken at rest.
+
+        With contact, the roots come from `mjd_transitionFD`, the one-step
+        map's linearisation, each eigenvalue λ turned back into its root s
+        through the Euler step (see `contact.roots`), at rest under the torques
+        `inverse` gives. It runs twice, with the rigid contacts and the loops
+        at two solver stiffnesses, each from the rest it settles to there.
+        A root that moves between them is the solver's own, as is one the
+        timestep cannot resolve; those are discarded and listed in
+        `discarded`, each as its value at the two stiffnesses. A damping
+        threshold cannot do this: a servo's mode is as lightly damped as the
+        mechanism's own. `roots` are the kept ones, and `frequencies` their
+        modes; there is no stiffness matrix, and `mass` is M over the dofs.
         """
         compiled = self.compiled
         model, data = compiled.model, self._data()
         _refuse_constraints(model, data, "a linearisation")
+        if compiled.description.contacts:
+            return self._linearise_contact()
         if compiled.closure:
             return self._linearise_closed(eps)
         nv = model.nv
@@ -484,6 +550,60 @@ class State:
                           _frozen(_frequencies(stiffness, mass)),
                           max(_closure(model, data), worst),
                           LINEARISE_CLOSED_METHOD, eps)
+
+    def _linearise_contact(self):
+        compiled = self.compiled
+        model = compiled.model
+        runs, compliant = [], compliant_contacts(compiled.description)
+        for timeconst in LINEARISE_SOLREF:
+            soft = copy.deepcopy(model)  # the compiled model stays as it is
+            for c in compiled.description.contacts:
+                if c.name not in compliant:  # a compliance is physical: kept
+                    i = soft.pair(c.name).id
+                    soft.pair_solref[i] = (timeconst, 1.0)
+                    soft.pair_solimp[i] = LINEARISE_SOLIMP
+            soft.eq_solref[:] = (timeconst, 1.0)
+            soft.eq_solimp[:] = LINEARISE_SOLIMP
+            data = self._rest_on(soft)
+            runs.append((roots(soft, data, CONTACT_EPS), soft, data))
+        kept, discarded = split(runs[0][0], runs[1][0], model.opt.timestep)
+        _, soft, data = runs[0]
+        turned = tangent(compiled, data)[0]
+        mass = np.zeros((model.nv, model.nv))
+        mujoco.mj_fullM(soft, data, mass)
+        return Linearised(compiled.dofs, None,
+                          _frozen(turned.T @ mass @ turned),
+                          _frozen(frequencies(kept)), _closure(soft, data),
+                          LINEARISE_CONTACT_METHOD, CONTACT_EPS,
+                          _frozen_complex(kept), _frozen_complex(discarded))
+
+    def _rest_on(self, soft):
+        """`data` on model `soft` at the rest it settles to from this
+        posture, at rest, each actuator holding what `inverse` gives there.
+        Each round re-solves the hold where the last one settled, since a
+        soft contact moves the point it pushes at; the last must rest."""
+        compiled = self.compiled
+        zero = MappingProxyType({d: 0.0 for d in compiled.dofs})
+        state = State(compiled, self.q, zero)
+        for k in range(ROUNDS):
+            hold = np.nan_to_num(
+                state._solve(state._data(), None, None)[1][:soft.nu])
+            data = mujoco.MjData(soft)
+            write_q(compiled, data, state.q)
+            data.ctrl[:] = hold
+            last = k == ROUNDS - 1
+            stable, steps = _quench(soft, data, None, HOLD_STEPS,
+                                    MAX_STEPS if last else HOLD_STEPS)
+            if last and not stable:
+                raise RuntimeError(
+                    f"no rest near this state at the linearisation's contact "
+                    f"stiffness after {steps} steps; a linearisation with "
+                    f"contact is taken at rest")
+            state = State(compiled, MappingProxyType(
+                {n: state._read(data, n) for n in compiled.coordinates}), zero)
+        data.qvel[:] = 0.0
+        mujoco.mj_forward(soft, data)
+        return data
 
     def _nudged(self, dof, step):
         """The coordinate independent `dof` belongs to, moved `step` along
@@ -550,6 +670,11 @@ LINEARISE_CLOSED_METHOD = (
     "on the constraint manifold: K by central differences of the reduced "
     "force G^T (bias - passive - S tau) in the independent dofs, loops "
     "re-closed by Newton at each step; M = G^T M G from mj_fullM")
+LINEARISE_CONTACT_METHOD = (
+    f"roots s = (lambda - 1)/(dt sqrt(lambda)) of mjd_transitionFD "
+    f"(central) at rest, run at solref {LINEARISE_SOLREF[0]:g} and {LINEARISE_SOLREF[1]:g} s on the "
+    f"rigid contacts and loops; roots that move more than {MOVE_TOL:g} "
+    f"between them, or beyond |s| dt = {RESOLVED:g}, discarded")
 
 
 @dataclass(frozen=True, eq=False)
@@ -591,6 +716,12 @@ class Inverse:
     and those read NaN. `condition` is infinite then, or when there are no
     unknowns. `residual` is the largest generalised force left unsupplied,
     and `over_limit` names the actuators whose torque exceeds their limit.
+
+    `contacts` maps each touching contact to the `ContactForce` it carries:
+    its normal force, its friction force and its cone margin, a total over
+    its points. Its points' multipliers count among `unknowns`; how a total
+    splits across points it cannot tell apart is not reported, and a total
+    the solve cannot determine reads NaN.
     """
     torque: MappingProxyType
     constraint: MappingProxyType
@@ -601,6 +732,7 @@ class Inverse:
     residual: float
     over_limit: tuple
     method: str
+    contacts: MappingProxyType = MappingProxyType({})
 
 
 @dataclass(frozen=True, eq=False)
@@ -612,7 +744,8 @@ class Settled:
     tension at rest (N), exactly zero when slack. `stable` says whether it
     came to rest within `steps`. `over_limit` names actuators held beyond
     their limit, and `constraints` the constraint rows active at rest, such
-    as a joint limit the mechanism came to lean on."""
+    as a joint limit the mechanism came to lean on. `contacts` maps each
+    touching contact to the `ContactForce` the solver has it carry at rest."""
     q: MappingProxyType
     moved: MappingProxyType
     tension: MappingProxyType
@@ -622,6 +755,7 @@ class Settled:
     constraints: tuple
     residual: float
     method: str
+    contacts: MappingProxyType = MappingProxyType({})
 
 
 @dataclass(frozen=True, eq=False)
@@ -699,7 +833,12 @@ class Linearised:
     and `mass` follow `dofs`, which on a closed chain are its independent
     dofs only; `frequencies` are in Hz, signed and ascending.
     `method` and `eps`, the finite-difference step, say how it was computed,
-    since a finite-difference stiffness is only as good as its step."""
+    since a finite-difference stiffness is only as good as its step.
+
+    With contact, `stiffness` is None, `roots` are the kept roots (s⁻¹, a
+    complex pair per oscillating mode, zero for a neutral direction), and
+    `discarded` the solver's, one row each: its value at the first contact
+    stiffness and at the second."""
     dofs: tuple
     stiffness: np.ndarray
     mass: np.ndarray
@@ -707,6 +846,8 @@ class Linearised:
     residual: float
     method: str
     eps: float
+    roots: np.ndarray = None
+    discarded: np.ndarray = None
 
     def __str__(self):
         freqs = ", ".join(f"{f:.6g}" for f in self.frequencies)
@@ -715,20 +856,57 @@ class Linearised:
 
 
 def _least_squares(columns, need):
-    """Solve columns · x = need by least squares through the SVD: x, the
-    rank at `RANK_TOL`, the condition, and the residual. An unknown with a
-    share in the null space is not determined and reads NaN."""
+    """Solve columns · x = need by least squares through the SVD: the
+    least-norm x, the rank at `RANK_TOL`, the condition, the residual, and
+    the null space's basis (rows), which `_undetermined` reads."""
     n = columns.shape[1]
     if not n:
         return (np.zeros(0), 0, math.inf,
-                float(np.max(np.abs(need), initial=0.0)))
+                float(np.max(np.abs(need), initial=0.0)), np.zeros((0, 0)))
     u, s, vt = np.linalg.svd(columns)
     rank = int(np.sum(s > RANK_TOL * s[0])) if s[0] > 0 else 0
     x = vt[:rank].T @ ((u[:, :rank].T @ need) / s[:rank])
     residual = float(np.max(np.abs(columns @ x - need), initial=0.0))
-    x[np.linalg.norm(vt[rank:], axis=0) > DETERMINED_TOL] = np.nan
     condition = s[0] / s[n - 1] if rank == n else math.inf
-    return x, rank, float(condition), residual
+    return x, rank, float(condition), residual, vt[rank:]
+
+
+def _undetermined(null, combinations):
+    """Which rows of `combinations` (each a linear combination of the
+    unknowns) have a share in the null space, so the solve cannot tell
+    their value: a least-norm number there would be a guess."""
+    if not len(null):
+        return np.zeros(len(combinations), dtype=bool)
+    return np.linalg.norm(combinations @ null.T, axis=1) > DETERMINED_TOL
+
+
+def _unknown(record):
+    """A `ContactForce` whose total the solve could not determine."""
+    return ContactForce(math.nan, _frozen(np.full(3, np.nan)), math.nan,
+                        record.penetration, record.point)
+
+
+def _quench(model, data, loads, min_steps, max_steps):
+    """Step `data` from where it is, zeroing the velocity whenever the
+    mechanism turns back on itself, until it rests: (stable, steps).
+
+    Rest is judged on the speed each step reaches, before any quench; read
+    after one, a steady creep, whose acceleration is nil, would pass for
+    rest the moment rounding flips the sign of q̇·q̈."""
+    for step in range(1, max_steps + 1):
+        mujoco.mj_step1(model, data)
+        data.qfrc_applied[:] = _load_force(model, data, loads)  # here, now
+        mujoco.mj_step2(model, data)
+        if not (np.all(np.isfinite(data.qpos))
+                and np.all(np.isfinite(data.qvel))):
+            return False, step
+        speed = float(np.max(np.abs(data.qvel), initial=0.0))
+        if float(data.qvel @ data.qacc) < 0.0:
+            data.qvel[:] = 0.0
+        if (step >= min_steps and speed < REST_SPEED
+                and np.max(np.abs(data.qacc), initial=0.0) < REST_ACCEL):
+            return True, step
+    return False, max_steps
 
 
 def _moment(model, data):
@@ -833,10 +1011,9 @@ def _closure(model, data):
 
 
 def _refuse_constraints(model, data, what):
-    """Raise on any active row but a loop's or a couple's, which the queries
-    carry explicitly."""
-    other = np.flatnonzero(data.efc_type[:data.nefc]
-                           != mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+    """Raise on any active row but a loop's, a couple's or a contact's,
+    which the queries carry explicitly."""
+    other = np.flatnonzero(~np.isin(data.efc_type[:data.nefc], _CARRIED))
     if len(other):
         rows = sorted({_constraint(model, data, i) for i in other})
         raise RuntimeError(
@@ -845,14 +1022,30 @@ def _refuse_constraints(model, data, what):
             f"constraint forces, not the mechanism's")
 
 
+_CARRIED = (mujoco.mjtConstraint.mjCNSTR_EQUALITY,
+            mujoco.mjtConstraint.mjCNSTR_CONTACT_FRICTIONLESS,
+            mujoco.mjtConstraint.mjCNSTR_CONTACT_PYRAMIDAL,
+            mujoco.mjtConstraint.mjCNSTR_CONTACT_ELLIPTIC)
+
+
 def _constraint(model, data, row):
     kind = mujoco.mjtConstraint(data.efc_type[row]).name.removeprefix("mjCNSTR_")
     if kind == "LIMIT_JOINT":
         return f"limit on joint {model.joint(data.efc_id[row]).name!r}"
+    if kind.startswith("CONTACT"):  # its pair's moving geom bears its name
+        names = [model.geom(int(g)).name
+                 for g in data.contact.geom[data.efc_id[row]]]
+        return f"contact {min(names, key=len)!r}"  # not `<name>:against`
     return kind.lower()
 
 
 def _frozen(array):
     array = np.array(array, dtype=float)
+    array.flags.writeable = False
+    return array
+
+
+def _frozen_complex(array):
+    array = np.array(array, dtype=complex)
     array.flags.writeable = False
     return array

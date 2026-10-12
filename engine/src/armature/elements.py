@@ -3,8 +3,9 @@
 Every number is written in the base frame at the home posture: a joint is an
 axis direction and a point on it (a free joint only the point), a COM, site or
 cable end is a position, and an inertia is a full tensor about the COM in base
-axes. A loop closes two sites that coincide at home. The compiler derives the
-body-local frames MuJoCo needs.
+axes. A loop closes two sites that coincide at home, and a contact sets a
+body's shape against a fixed one. The compiler derives the body-local frames
+MuJoCo needs.
 
 Values are whatever the description's parameters were: floats when the truth
 model compiles it, SymPy symbols when the derivation reads it. Nothing here
@@ -12,9 +13,11 @@ converts them, so the constructors check shape only; `describe` checks values.
 """
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 WORLD = "world"
 JOINT_KINDS = ("hinge", "slide", "free")
+SHAPE_KINDS = ("sphere", "cylinder", "box", "plane")
 # A free joint's scalar components, in the order its chain applies them: the
 # point's base-frame position, then rotations about the body's own axes.
 FREE_COMPONENTS = ("x", "y", "z", "rx", "ry", "rz")
@@ -134,6 +137,36 @@ class Loop:
     b: str
 
 
+class Shape(NamedTuple):
+    """A contact shape at home, in the base frame. A tuple, so validation
+    finds the parameters inside it."""
+    kind: str
+    pos: tuple
+    axis: tuple = None
+    radius: object = None
+    half_length: object = None
+    half_sizes: tuple = None
+
+
+@dataclass(frozen=True)
+class Contact:
+    name: str
+    body: str
+    shape: Shape
+    against: Shape
+    mu: object
+    stiffness: object = None
+    damping: object = None
+
+    def __post_init__(self):
+        owner = f"contact {self.name!r}"
+        for label in ("shape", "against"):
+            if not isinstance(getattr(self, label), Shape):
+                raise DescriptionError([f"{owner}: {label} must be made by "
+                                        f"shape(...), got "
+                                        f"{getattr(self, label)!r}"])
+
+
 @dataclass(frozen=True)
 class Actuator:
     name: str
@@ -206,6 +239,44 @@ def loop(name, a, b):
     force, on `a`'s body, is reported under `name`.
     """
     return Loop(name, a, b)
+
+
+def shape(kind, *, pos, axis=None, radius=None, half_length=None,
+          half_sizes=None):
+    """A contact shape, at home in the base frame.
+
+    - "sphere": centre `pos` and `radius`;
+    - "cylinder": centre `pos`, `axis` (a unit direction), `radius` and
+      `half_length` along the axis;
+    - "box": centre `pos` and `half_sizes` along the base axes;
+    - "plane": a point `pos` on it and its outward unit normal `axis`. A
+      plane is fixed, so it is only ever what a contact is `against`: the
+      floor, or an incline.
+    """
+    owner = f"{kind} shape"
+    return Shape(kind, _vector(owner, "pos", pos),
+                 None if axis is None else _vector(owner, "axis", axis),
+                 radius, half_length,
+                 None if half_sizes is None
+                 else _vector(owner, "half_sizes", half_sizes))
+
+
+def contact(name, *, body, shape, against, mu, stiffness=None, damping=None):
+    """`body`'s `shape` touching `against`, a shape fixed to the world, with
+    Coulomb friction coefficient `mu` (0 for a frictionless contact).
+
+    Without `stiffness`, the contact is rigid: the compiler sets the
+    stiffest contact MuJoCo keeps stable, a settle reports how far the
+    shapes interpenetrate, and raises past 1e-6 m. With `stiffness` (N/m)
+    and optionally `damping` (N·s/m), the contact is a physical compliance,
+    such as a tyre's: at rest it sinks in by its normal force over
+    `stiffness`. A compliance acts at one point, so it takes a sphere.
+
+    The queries carry a touching contact as explicit rows at the points
+    MuJoCo finds: `inverse` reports its normal force, its friction force and
+    its friction-cone margin under `name`, never the solver's own forces.
+    """
+    return Contact(name, body, shape, against, mu, stiffness, damping)
 
 
 def actuator(name, *, joint, gear=1.0, rotor_inertia=0.0, torque_limit=None):

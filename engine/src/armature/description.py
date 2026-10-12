@@ -12,11 +12,12 @@ from types import MappingProxyType
 import numpy as np
 import sympy as sp
 
-from .elements import (FREE_COMPONENTS, JOINT_KINDS, WORLD, Actuator, Body,
-                       Cable, DescriptionError, Gravity, Joint, Loop, Site)
+from .elements import (FREE_COMPONENTS, JOINT_KINDS, SHAPE_KINDS, WORLD,
+                       Actuator, Body, Cable, Contact, DescriptionError,
+                       Gravity, Joint, Loop, Site)
 from .variants import Couple, Lock, Lump, Planar, Rigid, Variant, massless
 
-ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity)
+ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity, Contact)
 
 DEFAULT_GRAVITY = (0.0, 0.0, -9.81)
 UNIT_TOL = 1e-9        # |‖axis‖ − 1| allowed, so (0, √½, √½) written in floats passes
@@ -50,12 +51,21 @@ class Description:
     couples: tuple = ()
     locked_by: MappingProxyType = MappingProxyType({})
     floored: MappingProxyType = MappingProxyType({})
+    contacts: tuple = ()
 
 
 def rigid_cables(description):
     """The cables a variant's `rigid` holds at their rest length."""
     rigid = {r.element for r in description.reductions if isinstance(r, Rigid)}
     return tuple(c for c in description.cables if c.name in rigid)
+
+
+def compliant_contacts(description):
+    """The names of the contacts compiled with their compliance: those that
+    declare one, less those a variant's `rigid` stiffens."""
+    rigid = {r.element for r in description.reductions if isinstance(r, Rigid)}
+    return frozenset(c.name for c in description.contacts
+                     if c.stiffness is not None and c.name not in rigid)
 
 
 def coordinate_joints(description):
@@ -203,6 +213,8 @@ def describe(mechanism, params):
     joints = {j.name: j for j in by_kind[Joint]}
     for a in by_kind[Actuator]:
         problems += _check_actuator(a, joints)
+    for c in by_kind[Contact]:
+        problems += _check_contact(c, bodies)
     problems += [f"parameter {n!r} is defined but never used; the description "
                  f"lacks the element that reads it, or it is stale"
                  for n in sorted(set(p) - p.used)]
@@ -214,7 +226,8 @@ def describe(mechanism, params):
                        sites=by_kind[Site], cables=by_kind[Cable],
                        loops=by_kind[Loop], actuators=by_kind[Actuator],
                        gravity=gravity,
-                       params_used=frozenset(p.used))
+                       params_used=frozenset(p.used),
+                       contacts=by_kind[Contact])
 
 
 def _reduce(description, variant):
@@ -283,9 +296,18 @@ def _check_lock(r, owner, held, locks):
 
 def _rigid(r, owner, description, locks, by, cables):
     """Check `rigid`, and lock a compliant joint where its spring rests;
-    `cables` collects the cables made rigid so far."""
+    `cables` collects the cables and contacts made rigid so far."""
     joints = {j.name: j for j in description.joints}
     if r.element in {c.name for c in description.cables}:
+        if r.element in cables:
+            return [f"{owner}: {r.element!r} is already rigid"]
+        cables.add(r.element)
+        return []
+    contacts = {c.name: c for c in description.contacts}
+    if r.element in contacts:  # compiled without its compliance
+        if contacts[r.element].stiffness is None:
+            return [f"{owner}: contact {r.element!r} has no compliance; it "
+                    f"is rigid already"]
         if r.element in cables:
             return [f"{owner}: {r.element!r} is already rigid"]
         cables.add(r.element)
@@ -564,6 +586,65 @@ def _check_actuator(a, joints):
         if v is not None and not (v >= 0 if allow_zero else v > 0):
             problems.append(f"{owner}: {label} {v} must be "
                             f"{'non-negative' if allow_zero else 'positive'}")
+    return problems
+
+
+def _check_contact(c, bodies):
+    owner, problems = _label(c), []
+    if c.body == WORLD:
+        problems.append(f"{owner}: the world cannot be the moving body; a "
+                        f"fixed shape is what a contact is against")
+    elif c.body not in bodies:
+        problems.append(f"{owner}: body {c.body!r} is not declared")
+    for label, s in (("shape", c.shape), ("against", c.against)):
+        problems += [f"{owner}: {label}: {p}" for p in _check_shape(s)]
+    if c.shape.kind == "plane":
+        problems.append(f"{owner}: a plane is fixed; it can only be what the "
+                        f"contact is against")
+    mu = _num(c.mu)
+    if mu is not None and not mu >= 0:
+        problems.append(f"{owner}: mu {mu} must be non-negative")
+    k = _num(c.stiffness) if c.stiffness is not None else None
+    if k is not None and not k > 0:
+        problems.append(f"{owner}: stiffness {k} must be positive")
+    damping = _num(c.damping) if c.damping is not None else None
+    if damping is not None and damping < 0:
+        problems.append(f"{owner}: damping {damping} is negative")
+    if c.damping is not None and c.stiffness is None:
+        problems.append(f"{owner}: damping is given but there is no "
+                        f"stiffness; a rigid contact takes neither")
+    if c.stiffness is not None and c.shape.kind != "sphere":
+        problems.append(f"{owner}: a compliance acts at one point, so it "
+                        f"takes a sphere; a {c.shape.kind} touches at "
+                        f"several, each of which would take the stiffness")
+    return problems
+
+
+def _check_shape(s):
+    """The problems with shape `s`: its kind, and the sizes that kind takes."""
+    if s.kind not in SHAPE_KINDS:
+        return [f"kind {s.kind!r} is not one of {SHAPE_KINDS}"]
+    wanted = {"sphere": ("radius",), "cylinder": ("axis", "radius",
+                                                  "half_length"),
+              "box": ("half_sizes",), "plane": ("axis",)}[s.kind]
+    problems = []
+    for name in ("axis", "radius", "half_length", "half_sizes"):
+        given = getattr(s, name) is not None
+        if given and name not in wanted:
+            problems.append(f"a {s.kind} takes no {name}")
+        elif not given and name in wanted:
+            problems.append(f"a {s.kind} needs {name}")
+    for name in ("radius", "half_length"):
+        v = _num(getattr(s, name)) if getattr(s, name) is not None else None
+        if v is not None and not v > 0:
+            problems.append(f"{name} {v} must be positive")
+    sizes = _array(s.half_sizes) if s.half_sizes is not None else None
+    if sizes is not None and not np.all(sizes > 0):
+        problems.append(f"half_sizes {tuple(sizes)} must be positive")
+    axis = _array(s.axis) if s.axis is not None else None
+    if axis is not None and abs(np.linalg.norm(axis) - 1) > UNIT_TOL:
+        problems.append(f"axis {tuple(axis)} is not a unit vector (norm "
+                        f"{np.linalg.norm(axis):.6g})")
     return problems
 
 

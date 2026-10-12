@@ -9,7 +9,9 @@ queried on explicit, named states.
     s.inverse(), s.settle(hold), s.linearise()
 
 A closed chain adds `loop(name, a, b)`; `m.independent` names what `at()`
-takes, and it solves the rest so every loop closes.
+takes, and it solves the rest so every loop closes. A wheel or a foot adds
+`contact(name, body=..., shape=shape(...), against=shape("plane", ...),
+mu=...)`; `s.inverse()` reports what each touching contact carries.
 
     rigid = armature.reduce(mechanism, lock("elbow", 0.0, assumption="A3"))
     armature.compile(rigid, PARAMS).at().release(hold)
@@ -30,9 +32,10 @@ frames table and skeleton renders.
 
 from .coarse import box, compose, cylinder, point, rod, sphere
 from .compiler import Compiled, compile
+from .contact import ContactForce
 from .description import Description, describe
-from .elements import (DescriptionError, actuator, body, cable, gravity, joint,
-                       loop, site)
+from .elements import (DescriptionError, actuator, body, cable, contact,
+                       gravity, joint, loop, shape, site)
 from .review import Frames, Review, frames, render, review
 from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
                     Settled, State, Wrench)
@@ -49,3 +52,4 @@ __all__ += ["Frames", "Review", "box", "compose", "cylinder", "frames", "point",
             "render", "review", "rod", "sphere"]
 __all__ += ["AccountingError", "account", "lump", "massless", "planar",
             "rigid"]
+__all__ += ["ContactForce", "contact", "shape"]
