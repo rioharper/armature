@@ -42,8 +42,9 @@ the project's mechanism description, compiled in full by the **engine**. The eng
 plugin's `engine/` package, imported as `armature`, which a project pins rather than
 copies. It holds the description's elements and their validation, the compiler, the
 queries on a state (`pose`, `jacobian`, `inverse`, `settle`, `wrench`, `linearise`,
-`release`), the reductions and `account`, the symbolic view, the sampler and the review
-artifact. It is a standard Python package with its own tests, outside this file's rules, so
+`release`), the reductions and `account`, the symbolic view, the sampler, the worst-case
+search (`armature.search`, which takes a `Margin` over a `Space` of named axes) and the
+review artifact. It is a standard Python package with its own tests, outside this file's rules, so
 a fix reaches a project as a version bump, never a re-copy. Its docstrings are its
 reference, and `armature/__init__.py` is the map.
 
@@ -74,9 +75,10 @@ Three rules keep it honest, all of them layout rules rather than physics:
   and the review artifact are its checks. Every simplification stays on the derivation's
   side, as a reduction the truth model does not make.
 - **Every checks module draws its configurations from the engine's sampler**,
-  `armature.sample` and `armature.sample_states`. One sampler, seeded, so "over the
-  envelope" is the same set in the kinematics check, the dynamics check and the worst-case
-  search, and a reviewer re-running a file gets the configurations the note was written
+  `armature.sample` and `armature.sample_states`, and every worst case is a `Margin` the
+  search finds. One sampler, seeded, whose map the search's `Coordinates` axis shares, so
+  "over the envelope" is the same set in the kinematics check, the dynamics check and the
+  worst-case search, and a reviewer re-running a file gets the configurations the note was written
   from. A checks module with a generator of its own is a check nobody can reproduce from the
   note; the rule and the reason are in **armature-derive**'s
   `references/derivation-standards.md`, under *Evidence over an envelope*.
@@ -123,6 +125,13 @@ naming convention rather than a registry because `layout.py` imports nothing but
 standard library: it reads the source's function names with `ast`, so it works on a machine
 where MuJoCo will not import, which is exactly the machine most likely to have skipped the
 truth model.
+
+**Every module-level `Margin` in such a model passes `truth=` and `agree=`, or its module
+says why it does not**, with the same exemption below. A margin computed from the
+derivation is the derivation's claim at the one point that sizes the design; the search
+evaluates `truth` at its worst point and its pre-polish best, and `run_all.py` fails a
+disagreement beyond `agree`. `layout.py` reads a margin from the source as it reads a check's
+name, as an assignment whose value calls `Margin` or `armature.Margin`.
 
 Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, and
 **any directory with no `mechanism.py`**, where the gate reports `n/a` and passes, which is

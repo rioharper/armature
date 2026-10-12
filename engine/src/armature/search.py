@@ -497,7 +497,8 @@ class Worst:
     spent. `pre_polish` is the least slack before the polish, at
     `pre_polish_at`, so a reviewer sees whether the polish moved it.
     `rejected` counts the `Infeasible` points by reason, and `coverage` is
-    the fraction of the global set's feasible points that pass. `truth`
+    the fraction of the global set's feasible points that pass, pooled over
+    every combination; a `Case` carries none. `truth`
     is the `Confirmed` record of the margin's truth at `at` and at
     `pre_polish_at`, or None for a margin without one. Print it for the
     one-line row a note cites."""

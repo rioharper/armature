@@ -133,7 +133,7 @@ Either way, update the part's mass rows in `docs/01-spec/budgets.md` (Source: mo
 
 The **release transition** is the gate: before any drawing, DXF, or order leaves the project, dispatch the **armature-red-team** agent with the batch's part-definition paths plus `analysis/derivation/03_results.md` and `docs/01-spec/bom.md` — interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop checked. Sketch-grade batches skip it; offer it early when a batch is interface-heavy and the modeling hours ahead are large.
 
-**Sweep the tolerance corners before the dispatch.** Every tolerance this batch grants — a fit, a free length, a rate band — is exercised at the corners of its product first, so a margin that holds at nominal and fails at a corner is never the review's discovery. The sweep belongs to **armature-derive** (Milestone 3): hand it the grants, and carry the worst corner's value beside the nominal in *Critical dimensions & tolerances*.
+**Sweep the tolerance corners before the dispatch.** Every tolerance this batch grants — a fit, a free length, a rate band — is exercised at the corners of its product first, so a margin that holds at nominal and fails at a corner is never the review's discovery. The sweep belongs to **armature-derive** (Milestone 3): hand it the grants, which it declares as bands that every margin they can move searches, and carry the worst corner's value beside the nominal in *Critical dimensions & tolerances*.
 
 ## Hand-offs
 

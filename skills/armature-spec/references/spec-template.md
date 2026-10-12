@@ -155,6 +155,8 @@ tasks make; the seams **armature-test** agrees are the links above.
 Back-of-envelope checks that the physics closes: actuator sizing, energy
 budget, mass rollup, structural sanity, and the loop-latency rollup across
 §8.2's links where a control loop crosses one. Show arithmetic with units.
+Each check states its worst case over the envelope; where the arithmetic is
+by hand, it names the posture, direction, sign and band value it assumed.
 
 ## 10. Risk Register
 | Risk | Likelihood | Impact | Mitigation | Revisit trigger |
