@@ -45,6 +45,12 @@ the row reading healthy, which is how a breach survives a review.
 
 ## Power
 
+An actuator's or the bus's power row is a drive margin's worst-case row, not
+arithmetic (armature-derive's `references/derivation-standards.md`, *Actuators
+and the bus*): its Source reads `model` and names the row `run_all.py` prints
+(`bus: source power`, `bus: brake power`). The other lines
+(compute, sensors, the hotel load `drive.py` carries) are debited as usual.
+
 | Line item | Budget (W) | Current estimate (W) | Margin | Source |
 | --- | --- | --- | --- | --- |
 | System peak | | | | |

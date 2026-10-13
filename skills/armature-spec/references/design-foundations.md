@@ -53,6 +53,6 @@ The most important step. **A mechanism is never done.** After it works, test it,
 
 ## Level 2: Additional tools
 
-- **Design calculations:** motor/gearbox sizing from torque-speed curves is non-negotiable before committing to actuators. Use published motor curves and a sizing calculator or spreadsheet; check stall torque margins, thermal duty cycle, and current draw against the power budget.
+- **Design calculations:** motor/gearbox sizing from torque-speed curves is non-negotiable before committing to actuators. The sizing is `armature.drive`, run over the machine's missions from spec §9; it checks the torque–speed envelope, the thermal duty, the drivers' currents and the bus against the published data.
 - **3D printing:** viable for real structural parts if you know your printer's limits (orientation-dependent strength, tolerances, warp). Great for brackets, guides, ducting, and quick iterations; learn tolerance test prints, embedded nuts for fastener strength, and design features that print well.
 - **Design for controllability:** as software ambition grows, mechanisms must get more precise. Backlash, compliance, and friction that a human driver tolerates will wreck a controller. Rigid transmissions, quality sensing on the right shafts, and predictable dynamics are design-time decisions, not software patches.

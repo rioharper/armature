@@ -53,9 +53,9 @@ the joints that body carries.
 *Workspace* (6.2) becomes the flight or stride envelope: apex height and
 ground range for a hopper or a drone, stride length and step height for a
 legged platform, turning radius and footprint for a wheeled base.
-*Motion profile* (6.4) becomes the event that sizes the loads — touchdown
-speed and landing attitude for anything that leaves the ground, top speed
-and braking deceleration for a wheeled base — in place of a cycle time.
+*Missions* (6.4) lead with the events that size the loads — a touchdown
+at its speed and landing attitude for anything that leaves the ground, a
+braking stop from top speed for a wheeled base — beside the moves and holds.
 *Mounting* (6.5) becomes the attitude envelope: which way gravity points
 across the poses the body actually holds, and the worst of them.
 
@@ -73,12 +73,15 @@ Mass *range* (min/max, not one nominal number), and where it sits
 relative to the tool point (offset, or "treat as point mass at the
 flange" if unknown).
 
-### 6.4 Motion profile
-Target peak/continuous velocity and acceleration (per axis or overall),
-and duty cycle beyond cycle time, if the motion itself — not just holding
-a loaded pose — is expected to drive the loads. State "static case
-dominates, motion profile TBD" if genuinely unknown at this stage rather
-than leaving the field blank.
+### 6.4 Missions
+Wherever there are actuators, the missions they are sized against: each
+one's moves (start and end, or start, direction and distance, under
+velocity, acceleration and jerk limits, stated per coordinate or along the
+path), holds (posture, duration, load), events (e-stop partway through a
+move, power loss, touchdown, with what each motor does), and its duty
+(period and session length). §9's `missions.py` is this section written as
+code, under the rules in armature-derive's `references/derivation-standards.md`,
+*Actuators and the bus*, which also say how an assumed mission is labelled.
 
 ### 6.5 Mounting & gravity orientation
 How the base is mounted and which way gravity points relative to the
@@ -152,11 +155,27 @@ targets, and repo split are implementation decisions the plan's software
 tasks make; the seams **armature-test** agrees are the links above.
 
 ## 9. Feasibility Calculations
-Back-of-envelope checks that the physics closes: actuator sizing, energy
-budget, mass rollup, structural sanity, and the loop-latency rollup across
-§8.2's links where a control loop crosses one. Show arithmetic with units.
-Each check states its worst case over the envelope; where the arithmetic is
-by hand, it names the posture, direction, sign and band value it assumed.
+Checks that the physics closes.
+
+**Actuators and the bus are run, not worked** (ADR 0007). Create
+`analysis/model/`, the project's one model directory, from armature-derive's
+`scripts/model_template/`: copy `pyproject.toml`, `run_all.py`, `layout.py`,
+`layout_checks.py`, `drive.py`, `drive_checks.py` and `missions.py`, and
+leave the derivation's milestones for derive. Then write them for this
+machine: `params.py`, a coarse `mechanism.py` from `armature.coarse`
+bodies, `drive.py` from the candidate parts' datasheet rows, `missions.py`
+from §6.4, and `drive_checks.py`'s hand-worked answers. The template's
+`test_spec_stage.py` runs this same set. Run
+`uv run python run_all.py` there and table each drive margin's worst-case
+row: value, where it sits, the band values, and the truth's agreement.
+List every `DRIVE_EXEMPT` entry with its reason. The rules are armature-derive's
+`references/derivation-standards.md`, *Actuators and the bus*.
+
+**The other checks** are energy budget, mass rollup, structural sanity, and
+the loop-latency rollup across §8.2's links where a control loop crosses
+one. Show their arithmetic with units. Each states its worst case over the
+envelope; where the arithmetic is by hand, it names the posture, direction,
+sign and band value it assumed.
 
 ## 10. Risk Register
 | Risk | Likelihood | Impact | Mitigation | Revisit trigger |

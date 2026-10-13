@@ -56,7 +56,13 @@ params.py                the values, keyed by name; standard library only
 mechanism.py             MILESTONE = (0, ...); mechanism(p), DERIVED, and the truth model
 mechanism_checks.py      compiles exactly, boxes inside the ranges, a release that fails
 report_truth.py          writes the review artifact: frames table and skeleton renders
+missions.py              what the actuators are sized against, from spec §6.4
+drive.py                 drive(p), DRIVE_MARGINS = margins(...), DRIVE_EXEMPT
+drive_checks.py          the drive's data against hand-worked answers
 ```
+
+Spec §9 writes this half first, with a coarse `mechanism.py`, and derive refines the
+same files (ADR 0007).
 
 `mechanism.py` holds the description, `mechanism(p)`, and `DERIVED`, the variant the
 derivation reads. It gives every other module the cached `truth()`, `derived()` and
@@ -131,7 +137,10 @@ says why it does not**, with the same exemption below. A margin computed from th
 derivation is the derivation's claim at the one point that sizes the design; the search
 evaluates `truth` at its worst point and its pre-polish best, and `run_all.py` fails a
 disagreement beyond `agree`. `layout.py` reads a margin from the source as it reads a check's
-name, as an assignment whose value calls `Margin` or `armature.Margin`.
+name, as an assignment whose value calls `Margin` or `armature.Margin`. An assignment
+calling armature.drive's `margins`, imported from `armature.drive`, carries its own truth,
+the resolution check, and passes; a `margins(...)` imported from anywhere else is held as
+a bare margin.
 
 Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, whose
 `layout_checks.py` argues its `TRUTH_EXEMPT`, and

@@ -49,6 +49,12 @@ One `##` section per part, appended as it is found. A CAD model's section carrie
 1. Manufacturer's own site first; distributor pages (Digi-Key, Mouser, McMaster-Carr) are acceptable sources for both datasheets and CAD models.
 2. Match the **exact** part number, suffix and revision included. A description ("a 6805 bearing", "an AK60-6") → find the candidate; its exact P/N is the thing to confirm.
 3. Extract the numbers the dispatch asked for, plus the part type's design drivers (stall and continuous torque, rated current and voltage, mass, principal dimensions, material limits), noting the section, table, or page each came off — that list becomes the row's `Clauses read`.
+4. For a motor, a driver, a gearbox or a bus part, fetch what `armature.drive` reads, each number with its **basis** exactly as the sheet prints it (rules: `${CLAUDE_PLUGIN_ROOT}/skills/armature-derive/references/derivation-standards.md`, *Actuators and the bus*):
+   - **Motor:** Kt (per A_rms or A_peak, motor or output side), Ke or Kv (V_rms or V_peak, line or phase), resistance (line or phase, at what temperature), wiring (wye or delta), peak and continuous current (A_rms or A_peak), thermal resistance and capacitance (winding to ambient, or to case) and the winding's temperature limit. Add the published torque–speed curve with the voltage it was measured at.
+   - **Driver:** peak and continuous current (A_rms or A_peak), over- and undervoltage trips, efficiency, and its flux-brake parameters (d-axis current and onset voltage).
+   - **Gearbox:** efficiency forward and backward.
+   - **Bus:** capacitance on the board.
+   A number the sheet does not print is recorded as `not published`, which is what lets the margin that needs it read UNCHECKED.
 
 ### The stand-in question
 
