@@ -42,12 +42,24 @@ is rejected under the loop that refused it. A margin's `truth=` is evaluated
 at the worst point and the pre-polish best, and `worst.truth` says whether it
 agrees with `fn` within `agree=`.
 
+`armature.drive` sizes actuators from a mission (ADR 0006). A `Motor`
+names the basis of every constant: `Kt(1.22, per="A_rms", side="output")`,
+`Ke(9.6, per="V_rms/krpm", between="line", side="motor")`,
+`Resistance(0.55, between="line")` and its `wiring`. `drive.check(motor,
+n)` fails a Kt that disagrees with Ke by more than 2 %, or an envelope that
+misses a published `Curve`. `drive.electrical(tau, omega, n, motor,
+gearbox, driver)` takes one actuator's output samples to current, voltage,
+copper loss and bus power, in Lee et al.'s power-invariant d-q convention.
+`drive.envelope(motor, n, v_bus)` is the torque–speed envelope at a bus
+voltage, and `drive.repeat` integrates the winding's thermal RC over a duty.
+
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
 PARAMS, directory, states)` writes the Milestone 0 review artifact: the
 frames table and skeleton renders.
 """
 
+from . import drive
 from .assembly import ClosureError
 from .coarse import box, compose, cylinder, point, rod, sphere
 from .compiler import Compiled, compile
