@@ -25,7 +25,8 @@ from test_fixture_2r_arm import arm, joint_torque
 from test_fixture_five_bar import PARAMS as FIVE_BAR
 from test_fixture_five_bar import five_bar
 
-LIMITS = Limits(v=1.5, a=4.0, j=40.0)  # rad/s, rad/s², rad/s³
+LIMITS = Limits(v=1.5, a=4.0, j=40.0,  # rad/s, rad/s², rad/s³
+                along="coordinate")
 
 
 @pytest.fixture(scope="module")
@@ -83,7 +84,7 @@ def test_a_move_reads_its_start_direction_and_distance_from_search_axes(m):
     LIMITS,
     Limits(v={"shoulder": 1.0, "elbow": 0.5},
            a={"shoulder": 3.0, "elbow": 6.0},
-           j={"shoulder": 30.0, "elbow": 10.0})])
+           j={"shoulder": 30.0, "elbow": 10.0}, along="coordinate")])
 def test_a_move_keeps_within_its_limits_at_every_sample(m, limits):
     """The rates and accelerations are the trace's own; the jerk is the
     acceleration's slope between samples, a mean of the jerk, so it is held
@@ -102,6 +103,46 @@ def test_a_move_keeps_within_its_limits_at_every_sample(m, limits):
     v, a = (_on(lim, leading) for lim in (limits.v, limits.a))
     assert np.max(np.abs(t.qd[leading])) == pytest.approx(v, rel=1e-6)
     assert np.max(np.abs(t.qdd[leading])) == pytest.approx(a, rel=1e-6)
+
+
+def test_a_move_limited_along_its_path_holds_its_speed_there(m):
+    """Limits along the path bound the magnitude of the rate and its
+    derivatives, as Plumb's 2.0 m/s does: a diagonal move under v reaches v
+    along it, where the same limits on each coordinate reach √2·v."""
+    start = {"shoulder": -1.0, "elbow": -1.0}
+    end = {"shoulder": 1.0, "elbow": 1.0}
+    v, a, j = 0.5, 2.0, 20.0
+
+    def run(along):
+        return trace(m, Mission(along, [move(start, end=end, limits=Limits(
+            v=v, a=a, j=j, along=along))]), CONFIRM_RATE)
+
+    def magnitude(rates):
+        return np.hypot(rates["shoulder"], rates["elbow"])
+
+    path, each = run("path"), run("coordinate")
+    speed, accel = magnitude(path.qd), magnitude(path.qdd)
+    jerk = np.hypot(*(np.diff(path.qdd[n]) / np.diff(path.t)
+                      for n in start))
+    assert np.max(speed) <= v * (1 + 1e-9)
+    assert np.max(speed) == pytest.approx(v, rel=1e-6)
+    assert np.max(accel) == pytest.approx(a, rel=1e-6)
+    assert np.max(jerk) <= j * (1 + 1e-9)
+    assert np.max(magnitude(each.qd)) == pytest.approx(math.sqrt(2) * v,
+                                                       rel=1e-6)
+    for name, value in end.items():
+        assert path.q[name][-1] == pytest.approx(value, abs=1e-9)
+    np.testing.assert_allclose(path.q["elbow"], path.q["shoulder"],
+                               atol=1e-12)  # the diagonal, a straight line
+
+
+def test_limits_name_what_they_bound():
+    with pytest.raises(TypeError, match="along"):
+        Limits(v=1.0, a=1.0, j=1.0)
+    with pytest.raises(ValueError, match="'coordinate', 'path'"):
+        Limits(v=1.0, a=1.0, j=1.0, along="axis")
+    with pytest.raises(ValueError, match="path"):
+        Limits(v={"shoulder": 1.0}, a=1.0, j=1.0, along="path")
 
 
 # --- the geared pendulum swing -----------------------------------------------
@@ -172,6 +213,27 @@ def test_a_geared_swing_peaks_and_rms_as_its_closed_form():
         t.speed["motor"], SWING["N"] * AMPLITUDE * W * np.cos(W * t.t),
         rtol=0, atol=1e-9)
     assert t.gear["motor"] == SWING["N"]
+
+
+def test_a_trace_splits_out_the_rotors_own_torque():
+    """The rotor's share of the motor torque is J_m·ω̇_m = J_m·N·q̈, and the
+    rest is the load across the gear: at the output, N(τ − rotor) is the
+    swing's joint torque without the rotor, J q̈ + m g l_c sin q, at ω/N."""
+    m = armature.compile(pendulum, SWING)
+    t = trace(m, Mission("swing", [follow(swing_q, PERIOD, qd=swing_qd,
+                                          qdd=swing_qdd)]), CONFIRM_RATE)
+    qdd = -AMPLITUDE * W ** 2 * np.sin(W * t.t)
+    np.testing.assert_allclose(t.rotor["motor"],
+                               SWING["Jm"] * SWING["N"] * qdd, rtol=0,
+                               atol=1e-12)
+    tau, omega, rotor = t.output("motor")
+    load = SWING["N"] * np.array([motor_torque(x, rotor=False)
+                                  for x in t.t])
+    np.testing.assert_allclose(tau, load, rtol=0,
+                               atol=1e-9 * np.max(np.abs(load)))
+    np.testing.assert_allclose(omega, AMPLITUDE * W * np.cos(W * t.t),
+                               rtol=0, atol=1e-12)
+    assert rotor is t.rotor["motor"]
 
 
 def test_a_followed_q_without_its_rates_is_differenced():
@@ -265,6 +327,23 @@ def test_the_actuation_seam_replaces_inverse(monkeypatch):
                                atol=1e-9)
     assert np.all(t.torque["winch"][~swung] == TIP[1])
     assert t.residual is None
+    assert np.all(t.rotor["winch"] == 0.0)  # none given, none assumed
+    with pytest.raises(KeyError, match="winch"):
+        t.output("winch")  # its gear is the project's, not the engine's
+
+
+def test_an_actuation_seam_may_name_its_rotors_share():
+    """A seam that returns (torque, speed, rotor) gives the rotor's share
+    of its torque, which `output` takes out before the gear of ratio n."""
+    def winch(state, qdd, loads):
+        return {"winch": (3.0, 20.0, 0.5)}
+
+    m = armature.compile(pendulum, SWING)
+    t = trace(m, Mission("seam", [hold({"pivot": 0.0}, 0.1)],
+                         actuation=winch), CONFIRM_RATE)
+    assert np.all(t.rotor["winch"] == 0.5)
+    tau, omega, _ = t.output("winch", n=4.0)
+    assert np.all(tau == 4.0 * (3.0 - 0.5)) and np.all(omega == 5.0)
 
 
 # --- a closed chain ----------------------------------------------------------
@@ -276,7 +355,7 @@ def test_a_five_bar_move_reads_inverse_called_directly():
     assert m.independent == ("A", "E")
     t = trace(m, Mission("reach", [
         move({"A": 0.0, "E": 0.0}, end={"A": 0.25, "E": -0.15},
-             limits=Limits(v=1.0, a=5.0, j=50.0)),
+             limits=Limits(v=1.0, a=5.0, j=50.0, along="coordinate")),
         hold(None, 0.2)]), SEARCH_RATE)
     assert len(t.t) > 40
     for k in range(len(t.t)):

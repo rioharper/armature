@@ -1,10 +1,8 @@
 """The drive data and the quasi-static electrical model (ADR 0006).
 
-Every motor constant names its basis as a required keyword. Both wrong
-torque constants found so far were basis errors (Plumb's 9.55/Kv against
-its datasheet's 8.27/Kv; Ibex's line resistance is ambiguous between line
-and phase), and A_rms and A_peak share a dimension, so units cannot catch
-them:
+Every motor constant names its basis as a required keyword, for the
+reason ADR 0006 gives; A_rms and A_peak share a dimension, so units cannot
+catch a slip between them:
 
 - `Kt(value, per="A_rms" | "A_peak", side="motor" | "output")`, in N·m per
   ampere of line current;
@@ -72,6 +70,14 @@ def _number(owner, name, value, low=0.0, inclusive=False):
         bound = "≥" if inclusive else ">"
         raise ValueError(f"{owner}'s {name} is finite and {bound} {low:g}; "
                          f"got {value}")
+    return value
+
+
+def _positive(value, label):
+    """`value` as a finite number > 0, or raise naming it by `label`."""
+    value = float(value)
+    if not (math.isfinite(value) and value > 0):
+        raise ValueError(f"{label} is a positive number; got {value}")
     return value
 
 
@@ -315,8 +321,8 @@ class Driver:
 class Electrical:
     """The electrical model at each (τ_out, ω_out) sample, as arrays: the
     rotor's torque `tau` (N·m) and speed `omega` (rad/s); the q-axis
-    `current` (A) and `voltage` (V), signed, in d-q; the winding's `resistance` R_φ(T) (Ω) and
-    `copper` loss (W); the electrical `power` into the motor (W, negative
+    `current` (A) and `voltage` (V), signed, in d-q; the winding's
+    `resistance` R_φ(T) (Ω) and `copper` loss (W); the electrical `power` into the motor (W, negative
     when it generates); and `bus`, that power seen from the bus through the
     driver (W), None without a driver."""
     tau: np.ndarray
@@ -330,27 +336,31 @@ class Electrical:
 
 
 def electrical(tau, omega, n, motor, gearbox=None, driver=None,
-               temperature=None):
+               temperature=None, rotor=0.0):
     """The quasi-static electrical model at per-actuator output samples
-    `tau` (N·m) and `omega` (rad/s), through a gear of ratio `n`.
+    `tau` (N·m) and `omega` (rad/s), through a gear of ratio `n`. `tau` is
+    the load across the gear; `rotor` (N·m, motor side) is the rotor's own
+    inertia torque J_m·ω̇_m, which turns on the motor's side of the gear, so
+    no efficiency touches it. `Trace.output` gives all three.
 
-    The rotor's torque follows the sign of τ·ω. Motoring (τ·ω ≥ 0, so a hold
-    counts as motoring) it is τ/(N·η); back-driven it is τ·η_b/N. No gearbox
-    is a direct drive, with η = 1. Then i = τ_m/Kt and V = R_φ(T)·i + Ke·ω_m
-    in d-q, with R_φ(T) = R₀(1 + α(T − T₀)) at the winding `temperature`
-    (°C, a scalar or one per sample; by default the resistance's own T₀).
-    Electrical power is V·i; the bus sees it over the driver's efficiency
-    when drawing and times it when returning.
+    The load's share of the rotor's torque follows the sign of τ·ω, the
+    load's alone. Motoring (τ·ω ≥ 0, so a hold counts as motoring) it is
+    τ/(N·η); back-driven it is τ·η_b/N. No gearbox is a direct drive, with
+    η = 1. Then τ_m is that plus `rotor`, i = τ_m/Kt and V = R_φ(T)·i +
+    Ke·ω_m in d-q, with R_φ(T) = R₀(1 + α(T − T₀)) at the winding
+    `temperature` (°C, a scalar or one per sample; by default the
+    resistance's own T₀). Electrical power is V·i; the bus sees it over the
+    driver's efficiency when drawing and times it when returning.
 
     The motor's data is checked first, as `check` does it."""
     n = _number("electrical", "the gear ratio n", n)
     c = _resolve(motor, n, gearbox)
-    tau, omega = np.broadcast_arrays(np.asarray(tau, dtype=float),
-                                     np.asarray(omega, dtype=float))
-    forward, backward = ((1.0, 1.0) if gearbox is None
-                         else (gearbox.forward, gearbox.backward))
+    tau, omega, rotor = np.broadcast_arrays(
+        np.asarray(tau, dtype=float), np.asarray(omega, dtype=float),
+        np.asarray(rotor, dtype=float))
+    forward, backward = _efficiencies(gearbox)
     tau_m = np.where(tau * omega >= 0, tau / (n * forward),
-                     tau * backward / n)
+                     tau * backward / n) + rotor
     omega_m = omega * n
     current = tau_m / c.kt
     resistance = np.broadcast_to(_hot(c, temperature), tau.shape)
@@ -404,8 +414,8 @@ def envelope(motor, n, v_bus, gearbox=None, driver=None, temperature=None):
     if not limits:
         raise DriveError("the envelope needs a current limit: the motor's "
                          "i_peak or the driver's i_peak")
-    eta = 1.0 if gearbox is None else gearbox.forward
-    return _bound(c, n, v_bus, eta, min(limits), float(_hot(c, temperature)))
+    return _bound(c, n, v_bus, _efficiencies(gearbox)[0], min(limits),
+                  float(_hot(c, temperature)))
 
 
 def kt_from_kv(kv, *, convention):
@@ -516,7 +526,7 @@ def _against(curve, c, n, gearbox):
     if curve.side == "motor":
         n, eta = 1.0, 1.0
     else:
-        eta = 1.0 if gearbox is None else gearbox.forward
+        eta = _efficiencies(gearbox)[0]
     model = _bound(c, n, curve.voltage, eta, c.i_peak, c.r).torque(
         curve.speed)
     gaps = np.abs(model - np.asarray(curve.torque))
@@ -538,6 +548,12 @@ def _bound(c, n, v_bus, eta, i_max, r):
     return Envelope(v_bus, v_max / (c.ke * n),
                     c.kt * min(i_max, v_max / r) * n * eta,
                     c.kt, c.ke, r, i_max, v_max, n, eta)
+
+
+def _efficiencies(gearbox):
+    """The gearbox's (forward, backward) efficiency; a direct drive's is 1."""
+    return (1.0, 1.0) if gearbox is None else (gearbox.forward,
+                                               gearbox.backward)
 
 
 def _phase(motor):

@@ -30,7 +30,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .electrical import Motor, Thermal, _phase
+from .electrical import Motor, Thermal, _phase, _positive
 
 PERIODIC = 0.1  # K: a cycle starting this close to the periodic state is
                 # the periodic state
@@ -77,8 +77,8 @@ def repeat(t, thermal, period, session, power=0.0, current=None,
     cycle starts within 0.1 K of the periodic state, or `session` (s) ends.
     A session ending partway through a cycle ends it there. The trace is
     integrated once, as an affine map, and each cycle reuses it."""
-    period = _positive("period", period)
-    session = _positive("session", session)
+    period = _positive(period, "the period")
+    session = _positive(session, "the session")
     t, a, b = _affine(t, thermal, power, current, motor)
     since = t - t[0]
     if since[-1] > period:
@@ -178,9 +178,3 @@ def _times(t):
         raise ValueError("a trace's times are finite and do not decrease")
     return t
 
-
-def _positive(name, value):
-    value = float(value)
-    if not (math.isfinite(value) and value > 0):
-        raise ValueError(f"the {name} is finite and > 0; got {value}")
-    return value

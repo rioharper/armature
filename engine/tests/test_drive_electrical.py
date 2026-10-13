@@ -147,6 +147,20 @@ def test_motoring_draws_tau_omega_over_eta_and_back_driving_returns_eta_b():
     assert np.allclose(out.bus, [8.75 / 0.9, -3.312 * 0.9])
 
 
+def test_the_rotors_own_torque_is_added_after_the_gearbox():
+    """The rotor's inertia turns on the motor's side of the gear, so no
+    efficiency touches it, and the branch is read from the load alone. At
+    N = 10, 2 N·m of load at +3 rad/s motors: 2/(10·0.8) = 0.25 N·m, plus
+    0.4 N·m of rotor, is 0.65. At −3 rad/s it is back-driven, though the
+    rotor's −0.5 N·m makes the total τ·ω positive: 2·0.6/10 = 0.12 N·m,
+    less 0.5, is −0.38."""
+    m = motor(r=Resistance(0.2, between="phase"))
+    out = electrical([2.0, 2.0], [3.0, -3.0], 10, m, gearbox=GEAR,
+                     rotor=[0.4, -0.5])
+    assert np.allclose(out.tau, [0.65, -0.38])
+    assert np.allclose(out.current, [6.5, -3.8])
+
+
 def test_direct_drive_without_a_driver_has_no_bus_power():
     out = electrical(1.0, 10.0, 1, motor())
     assert out.tau == pytest.approx(1.0)
