@@ -358,7 +358,10 @@ class Trace:
     `t` is each sample's time (s), from 0 to the mission's end, which is
     always the last sample; `segment` the index of the segment it falls in,
     a boundary sample belonging to the later one; `spans` each segment's
-    (start, end) time.
+    (start, end) time. At an event's start and end, where the torque jumps,
+    both sides are sampled at the boundary, at one time, the earlier
+    segment's first, so the bus takes the jump as a step rather than a ramp
+    over a sample interval.
 
     `q` is every coordinate by name, dependent ones included, each an array
     over the samples; a floating body's is a `Placement` of an (n, 3)
@@ -463,21 +466,17 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
         temperature = dict(temperature or {})
     rows, times, which, driven, profiles = [], [], [], [], []
     starts, before, simulated, last = [0.0], None, [], len(segments) - 1
-    event_end = None  # the last event's final row and driven
     for i, segment in enumerate(segments):
         begun = starts[-1]
         if isinstance(segment, Event):
             start = _event_start(m, mission, i, segment, before, profiles)
-            if not rows:
+            if not rows or times[-1] == times[0]:  # no time has passed
                 v0 = point[1]
-            else:  # the bus as the segments before left it, at this start
-                last_row, last_driven = (
-                    event_end if profiles[-1].kind == "event" else
-                    (_ending(m, mission, profiles[-1], actuators), None))
+            else:  # the bus as the segments before left it, at this start,
+                   # which they were sampled up to
                 v0 = float(charge(_assemble(
-                    m, mission, rate, times + [begun], which + [i - 1],
-                    starts, profiles, actuators, rows + [last_row],
-                    driven + [last_driven]), drive, capacitance=point[0],
+                    m, mission, rate, times, which, starts, profiles,
+                    actuators, rows, driven), drive, capacitance=point[0],
                     v_source=point[1], temperature=temperature).v[-1])
             runs = [_simulate(m, start, segment, drive, actuators,
                               temperature, *point, v0, step)
@@ -489,17 +488,15 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
                                segment.loads, False)
             profiles.append(profile)
             starts.append(begun + segment.duration)
-            kept = len(runs[0].t) if i == last else len(runs[0].t) - 1
-            times += [begun + t for t in runs[0].t[:kept]]
-            which += [i] * kept
-            rows += runs[0].rows[:kept]
-            driven += runs[0].driven[:kept]
+            times += [begun + t for t in runs[0].t]
+            which += [i] * len(runs[0].t)
+            rows += runs[0].rows
+            driven += runs[0].driven
             simulated.append(Simulated(i, *(
                 _event_run(m, mission, i, segment, step, run, actuators)
                 for step, run in zip((segment.timestep,
                                       segment.timestep / 2), runs))))
             before = profile.end
-            event_end = (runs[0].rows[-1], runs[0].driven[-1])
             continue
         profile = segment._profile(m, before)
         if before is not None:
@@ -512,6 +509,12 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
         profiles.append(profile)
         starts.append(begun + profile.duration)
         local = _grid(begun, starts[-1], rate, i == last)
+        if i > 0 and isinstance(segments[i - 1], Event) and (
+                not len(local) or local[0] != begun):
+            local = np.insert(local, 0, begun)  # the event's end, this side
+        if isinstance(following, Event):
+            local = np.append(local, starts[-1])  # the event's start, this
+                                                  # side
         _sample(m, mission, profile, local - begun, actuators, rows)
         times += list(local)
         which += [i] * len(local)
@@ -577,15 +580,6 @@ def _truncated(profile, fraction):
     return _Profile(profile.kind, duration, profile.start,
                     profile.sample(duration)[0], profile.sample,
                     profile.loads, profile.constant)
-
-
-def _ending(m, mission, profile, actuators):
-    """The row at the end of `profile`, the segment before an event, which
-    the bus is charged up to."""
-    rows = []
-    _sample(m, mission, profile, np.array([profile.duration]), actuators,
-            rows)
-    return rows[0]
 
 
 def _event_bus(m, mission, drive, capacitance, v_source):

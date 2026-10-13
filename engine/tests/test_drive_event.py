@@ -160,8 +160,9 @@ def test_a_coasting_pendulum_keeps_its_energy_to_first_order():
 # --- after(move, fraction) ----------------------------------------------------
 def test_an_estop_partway_through_a_move_inherits_its_rates():
     """The move from 0 to 1.2 rad, planned here by ruckig itself; the event
-    starts at 0.4 of it, in its posture and at its rate, and the mission's
-    samples before it stop short of that time."""
+    starts at 0.4 of it, in its posture and at its rate. The move's own
+    samples stop there too, its last at the event's first time, where the
+    torque jumps from the move's to the short's."""
     limits = dict(v=2.0, a=8.0, j=80.0)
     inp = InputParameter(1)
     inp.current_position, inp.target_position = [0.0], [1.2]
@@ -182,13 +183,25 @@ def test_an_estop_partway_through_a_move_inherits_its_rates():
               1000.0, drive=drive(["motor"], 0.5, kt=0.01))
     first = int(np.argmax(t.segment == 1))
     assert t.t[first] == pytest.approx(at, abs=1e-12)
-    assert np.all(t.t[:first] < at)
+    assert t.t[first - 1] == t.t[first] and t.segment[first - 1] == 0
+    assert np.all(t.t[:first - 1] < at)
+    assert t.q["pivot"][first - 1] == pytest.approx(q, abs=1e-12)
+    assert t.torque["motor"][first - 1] != t.torque["motor"][first]
     assert t.q["pivot"][first] == pytest.approx(q, abs=1e-12)
     assert t.qd["pivot"][first] == pytest.approx(qd, abs=1e-12)
     assert t.speed["motor"][first] == pytest.approx(SWING["N"] * qd,
                                                     abs=1e-9)
     assert t.spans[0] == (0.0, pytest.approx(at, abs=1e-12))
     assert t.t[-1] == pytest.approx(at + 0.2, abs=1e-12)
+
+    # a hold after the event starts at its end, sampled on both sides
+    then = trace(m, Mission("e-stop, held", [
+        lift, event(after(lift, 0.4), {"motor": "short"}, 0.2),
+        hold(None, 0.1)]), 1000.0, drive=drive(["motor"], 0.5, kt=0.01))
+    ended = int(np.argmax(then.segment == 2))
+    assert then.t[ended] == then.t[ended - 1] == pytest.approx(at + 0.2)
+    assert then.segment[ended - 1] == 1
+    assert then.q["pivot"][ended] == then.q["pivot"][ended - 1]
 
     # the same event first in its own mission runs the move on its own
     alone = trace(m, Mission("e-stop alone", [event(after(lift, 0.4),
