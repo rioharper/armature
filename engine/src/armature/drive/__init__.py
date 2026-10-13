@@ -18,6 +18,12 @@ BrakeResistor(threshold, r, energy, power), hotel))`, and `charge(trace,
 drive, capacitance=..., v_source=...)` integrates their bus powers against
 its source, capacitance, brake resistor and each driver's flux brake, at a
 substep refined until halving it moves the peak V by less than `agree`.
+
+An `event(start, modes, duration)` is a segment forward-simulated from a
+state or from `after(segment, fraction)`, each actuator coasting, shorted,
+flux-braking or following a torque profile, with the bus stepped alongside;
+`trace(m, mission, rate, drive=..., capacitance=..., v_source=...)` runs it
+at its timestep and at half of it.
 """
 
 from .bus import (AGREE, BrakeResistor, Bus, Charged, Drive, Source,
@@ -26,6 +32,8 @@ from .electrical import (Checked, Current, Curve, Driver, DriveError,
                          Electrical, Envelope, FluxBrake, Gearbox, Ke, Kt,
                          Motor, Resistance, Thermal, check, electrical,
                          envelope, kt_from_kv)
+from .event import (EVENT_STEP, After, Event, Moved, Run, Simulated, after,
+                    event)
 from .mission import (CONFIRM_RATE, SEARCH_RATE, Duty, Follow, Hold, Limits,
                       Mission, Move, Trace, follow, hold, move, trace)
 from .thermal import Heated, Repeated, heat, repeat, rms_torque
@@ -37,5 +45,7 @@ __all__ = ["Checked", "Current", "Curve", "DriveError", "Driver",
 __all__ += ["Heated", "Repeated", "heat", "repeat", "rms_torque"]
 __all__ += ["CONFIRM_RATE", "Duty", "Follow", "Hold", "Limits", "Mission",
             "Move", "SEARCH_RATE", "Trace", "follow", "hold", "move", "trace"]
+__all__ += ["EVENT_STEP", "After", "Event", "Moved", "Run", "Simulated",
+            "after", "event"]
 __all__ += ["AGREE", "BrakeResistor", "Bus", "Charged", "Drive", "Source",
             "charge"]

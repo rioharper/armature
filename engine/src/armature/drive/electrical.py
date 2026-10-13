@@ -358,12 +358,19 @@ def electrical(tau, omega, n, motor, gearbox=None, driver=None,
     tau, omega, rotor = np.broadcast_arrays(
         np.asarray(tau, dtype=float), np.asarray(omega, dtype=float),
         np.asarray(rotor, dtype=float))
+    return _electrical(c, n, gearbox, driver, tau, omega, rotor,
+                       np.broadcast_to(_hot(c, temperature), tau.shape))
+
+
+def _electrical(c, n, gearbox, driver, tau, omega, rotor, resistance):
+    """`electrical` on resolved constants `c`, at the winding's
+    `resistance`: the model itself, which an event's simulation steps
+    sample by sample."""
     forward, backward = _efficiencies(gearbox)
     tau_m = np.where(tau * omega >= 0, tau / (n * forward),
                      tau * backward / n) + rotor
     omega_m = omega * n
     current = tau_m / c.kt
-    resistance = np.broadcast_to(_hot(c, temperature), tau.shape)
     voltage = resistance * current + c.ke * omega_m
     power = voltage * current
     bus = None
@@ -408,14 +415,21 @@ def envelope(motor, n, v_bus, gearbox=None, driver=None, temperature=None):
     n = _number("envelope", "the gear ratio n", n)
     v_bus = _number("envelope", "v_bus", v_bus)
     c = _resolve(motor, n, gearbox)
+    limit = _current_limit(c, motor, driver)
+    if limit is None:
+        raise DriveError("the envelope needs a current limit: the motor's "
+                         "i_peak or the driver's i_peak")
+    return _bound(c, n, v_bus, _efficiencies(gearbox)[0], limit,
+                  float(_hot(c, temperature)))
+
+
+def _current_limit(c, motor, driver):
+    """The winding's current limit (d-q A): the lower of the motor's
+    `i_peak` and the driver's, None where neither is given."""
     limits = [c.i_peak] + ([] if driver is None
                            else [driver.i_peak.dq(motor.wiring)])
     limits = [i for i in limits if i is not None]
-    if not limits:
-        raise DriveError("the envelope needs a current limit: the motor's "
-                         "i_peak or the driver's i_peak")
-    return _bound(c, n, v_bus, _efficiencies(gearbox)[0], min(limits),
-                  float(_hot(c, temperature)))
+    return min(limits) if limits else None
 
 
 def kt_from_kv(kv, *, convention):

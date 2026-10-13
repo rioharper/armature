@@ -29,9 +29,11 @@ squares, such as a cable robot's positive tensions, since the engine's
 `actuator` drives joints only.
 
 Segments run without jumps: each starts where the one before it ended, or
-the trace raises, naming both. An event, forward-simulated from a state
-(#87), will be a segment of its own kind; `trace` asks each segment for its
-profile, and that is where an event's simulation slots in.
+the trace raises, naming both. An **event** (`event.py`) is simulated, not
+prescribed: from a state, or from `after(segment, fraction)`, where the
+segment just before it stops at that fraction, rates and all, and the event
+takes over. `trace` runs the segments in order, so an event starts from the
+state, and the bus, the segments before it left.
 """
 
 import math
@@ -43,7 +45,9 @@ import numpy as np
 from ruckig import InputParameter, Result, Ruckig, Synchronization, Trajectory
 
 from ..state import Placement, State, placement
+from .bus import Drive, _within, charge
 from .electrical import _positive
+from .event import After, Event, Run, Simulated, _simulate
 from .thermal import rms_torque
 
 SEARCH_RATE = 200.0    # Hz: a mission's samples in a search
@@ -306,7 +310,7 @@ def follow(q, duration, qd=None, qdd=None, loads=None):
                   qdd, MappingProxyType(dict(loads or {})))
 
 
-SEGMENTS = (Move, Hold, Follow)
+SEGMENTS = (Move, Hold, Follow, Event)
 
 
 @dataclass(frozen=True, eq=False)
@@ -321,7 +325,9 @@ class Mission:
     actuators at every sample. Its actuators need not be the engine's. An
     actuator may add a third number, `(torque, speed, rotor)`: the rotor's
     own inertia torque J_m·ω̇_m within its torque, which `Trace.output`
-    takes out before the gear; without it, the rotor's share is zero."""
+    takes out before the gear; without it, the rotor's share is zero. An
+    event simulates the engine's own actuators, so a mission with one has
+    no actuation."""
     name: str
     segments: tuple
     duty: Duty = None
@@ -334,8 +340,8 @@ class Mission:
         for s in segments:
             if not isinstance(s, SEGMENTS):
                 raise TypeError(f"mission {self.name!r}: {s!r} is not a "
-                                f"segment; make one with move, hold or "
-                                f"follow")
+                                f"segment; make one with move, hold, "
+                                f"follow or event")
         if self.duty is not None and not isinstance(self.duty, Duty):
             raise TypeError(f"mission {self.name!r}: its duty is a "
                             f"Duty(period, session); got {self.duty!r}")
@@ -373,6 +379,13 @@ class Trace:
     actuators. `residual` is each
     sample's `Inverse.residual`, the generalised force the actuators could
     not supply; under an actuation seam it is None.
+
+    An event is sampled at each of its own timesteps, its state, q̈ and
+    torques the simulation's own, with a residual of 0: its forces are the
+    ones applied. `driven` says, for each actuator at each sample, whether
+    its driver is on, so its flux brake can act: off where an event coasts
+    or shorts it, on everywhere else. `events` reports each event as a
+    `Simulated`, run at its timestep and at half of it.
     """
     mission: str
     rate: float
@@ -388,6 +401,8 @@ class Trace:
     gear: MappingProxyType
     residual: object
     method: str
+    driven: MappingProxyType = None
+    events: tuple = ()
 
     @property
     def duration(self):
@@ -423,39 +438,121 @@ class Trace:
                 _frozen(self.speed[actuator] / n), rotor)
 
 
-def trace(m, mission, rate):
+def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
+          temperature=None):
     """`mission` on the compiled mechanism `m`, sampled at `rate` (Hz): a
     `Trace` of each actuator's motor torque and speed.
+
+    An event is sampled at each of its own timesteps instead, and needs the
+    `drive` its modes run on, with the bus at `capacitance` (F) and
+    `v_source` (V), points in its bands as `charge` takes them, and each
+    winding at `temperature[a]` (°C, a number; by default its resistance's
+    T₀). Its bus starts where the segments before it left it, charged as
+    `charge` would, or at `v_source` where it is first. Without events these
+    are not read.
 
     Raises where a segment starts more than `CONTINUITY` from where the one
     before it ended, or where the mission runs longer than its duty's
     period."""
     rate = _positive(rate, "a trace's rate")
-    profiles, before = [], None
-    for i, segment in enumerate(mission.segments):
+    segments = mission.segments
+    actuators = _actuators(m)
+    events = [i for i, s in enumerate(segments) if isinstance(s, Event)]
+    if events:
+        point = _event_bus(m, mission, drive, capacitance, v_source)
+        temperature = dict(temperature or {})
+    rows, times, which, driven, profiles = [], [], [], [], []
+    starts, before, simulated, last = [0.0], None, [], len(segments) - 1
+    event_end = None  # the last event's final row and driven
+    for i, segment in enumerate(segments):
+        begun = starts[-1]
+        if isinstance(segment, Event):
+            start = _event_start(m, mission, i, segment, before, profiles)
+            if not rows:
+                v0 = point[1]
+            else:  # the bus as the segments before left it, at this start
+                last_row, last_driven = (
+                    event_end if profiles[-1].kind == "event" else
+                    (_ending(m, mission, profiles[-1], actuators), None))
+                v0 = float(charge(_assemble(
+                    m, mission, rate, times + [begun], which + [i - 1],
+                    starts, profiles, actuators, rows + [last_row],
+                    driven + [last_driven]), drive, capacitance=point[0],
+                    v_source=point[1], temperature=temperature).v[-1])
+            runs = [_simulate(m, start, segment, drive, actuators,
+                              temperature, *point, v0, step)
+                    for step in (segment.timestep, segment.timestep / 2)]
+            end = runs[0].rows[-1][0]
+            profile = _Profile("event", segment.duration,
+                               _posture(m, start, "an event's start"),
+                               _posture(m, end, "an event's end"), None,
+                               segment.loads, False)
+            profiles.append(profile)
+            starts.append(begun + segment.duration)
+            kept = len(runs[0].t) if i == last else len(runs[0].t) - 1
+            times += [begun + t for t in runs[0].t[:kept]]
+            which += [i] * kept
+            rows += runs[0].rows[:kept]
+            driven += runs[0].driven[:kept]
+            simulated.append(Simulated(i, *(
+                _event_run(m, mission, i, segment, step, run, actuators)
+                for step, run in zip((segment.timestep,
+                                      segment.timestep / 2), runs))))
+            before = profile.end
+            event_end = (runs[0].rows[-1], runs[0].driven[-1])
+            continue
         profile = segment._profile(m, before)
         if before is not None:
             _continuous(mission.name, i, profile, before)
+        following = segments[i + 1] if i < last else None
+        if (isinstance(following, Event)
+                and isinstance(following.start, After)
+                and following.start.segment is segment):
+            profile = _truncated(profile, following.start.fraction)
         profiles.append(profile)
+        starts.append(begun + profile.duration)
+        local = _grid(begun, starts[-1], rate, i == last)
+        _sample(m, mission, profile, local - begun, actuators, rows)
+        times += list(local)
+        which += [i] * len(local)
+        driven += [None] * len(local)
         before = profile.end
-    starts = np.cumsum([0.0] + [p.duration for p in profiles])
     total = float(starts[-1])
     if mission.duty is not None and total > mission.duty.period:
         raise ValueError(f"mission {mission.name!r} runs {total:g} s, longer "
                          f"than its duty's period, {mission.duty.period:g} s")
-    times = _sample_times(total, rate)
-    which = np.minimum(np.searchsorted(starts, times, side="right") - 1,
-                       len(profiles) - 1)
+    return _assemble(m, mission, rate, times, which, starts, profiles,
+                     actuators, rows, driven, tuple(simulated))
 
-    actuators = _actuators(m)
-    rows, kept = [], {}
-    for time, i in zip(times, which):
-        profile = profiles[i]
-        local = min(max(time - starts[i], 0.0), profile.duration)
-        if profile.constant and i in kept:
-            rows.append(kept[i])
+
+def _grid(begun, ends, rate, last):
+    """The multiples of 1/rate in [begun, ends), as one grid over the whole
+    mission samples it. The last segment's run to the mission's end, which
+    is always the last sample: a multiple within `END_TOL` of it is moved
+    onto it."""
+    first = max(0, math.floor(begun * rate) - 1)
+    count = (math.floor(ends * rate * (1 + 1e-12)) if last
+             else math.ceil(ends * rate) + 1)
+    times = np.arange(first, count + 1) / rate
+    keep = times >= begun
+    if not last:
+        return times[keep & (times < ends)]
+    times = times[keep]
+    if len(times) and times[-1] >= ends - END_TOL:
+        times[-1] = ends
+        return times
+    return np.append(times, ends)
+
+
+def _sample(m, mission, profile, local, actuators, rows):
+    """Append to `rows` the samples of `profile` at its `local` times."""
+    kept = None
+    for time in local:
+        if profile.constant and kept is not None:
+            rows.append(kept)
             continue
-        q, qd, qdd = profile.sample(local)
+        q, qd, qdd = profile.sample(min(max(float(time), 0.0),
+                                        profile.duration))
         state = m.at(q=q, qd=qd)
         loads = profile.loads or {}
         if mission.actuation is not None:
@@ -469,10 +566,88 @@ def trace(m, mission, rate):
             residual = inv.residual
         row = (state, qdd, out, residual)
         if profile.constant:
-            kept[i] = row
+            kept = row
         rows.append(row)
-    return _assemble(m, mission, rate, times, which, starts, profiles,
-                     actuators, rows)
+
+
+def _truncated(profile, fraction):
+    """`profile` stopped at `fraction` of its duration, where an event
+    takes over."""
+    duration = fraction * profile.duration
+    return _Profile(profile.kind, duration, profile.start,
+                    profile.sample(duration)[0], profile.sample,
+                    profile.loads, profile.constant)
+
+
+def _ending(m, mission, profile, actuators):
+    """The row at the end of `profile`, the segment before an event, which
+    the bus is charged up to."""
+    rows = []
+    _sample(m, mission, profile, np.array([profile.duration]), actuators,
+            rows)
+    return rows[0]
+
+
+def _event_bus(m, mission, drive, capacitance, v_source):
+    """The bus point an event runs at, (C, V_s), after checking the drive
+    carries every actuator."""
+    if mission.actuation is not None:
+        raise ValueError(f"mission {mission.name!r}: an event simulates the "
+                         f"engine's own actuators, and an actuation seam "
+                         f"replaces them; give the event its own mission")
+    if not isinstance(drive, Drive):
+        raise TypeError(f"mission {mission.name!r} has an event, whose modes "
+                        f"run on drive data; give trace drive=Drive(...)")
+    off = [a for a in m.actuators if a not in drive.bus.actuators]
+    if off:
+        raise ValueError(f"the drive's bus does not carry {off}; an event "
+                         f"runs every actuator on its motor and driver, so "
+                         f"add them to Bus(actuators=...)")
+    return (_within("capacitance", drive.bus.capacitance, capacitance),
+            _within("v_source", drive.bus.source.v, v_source))
+
+
+def _event_start(m, mission, i, event, before, profiles):
+    """The `State` event `i` starts from."""
+    start = event.start
+    if isinstance(start, After):
+        segments = mission.segments
+        if i > 0 and segments[i - 1] is start.segment:
+            profile = profiles[-1]  # already stopped at the fraction
+            q, qd, _ = profile.sample(profile.duration)
+        elif i == 0 and not any(s is start.segment for s in segments):
+            profile = start.segment._profile(m, None)
+            q, qd, _ = profile.sample(start.fraction * profile.duration)
+        else:
+            raise ValueError(f"mission {mission.name!r}: event {i} starts "
+                             f"after a segment that is not the one before "
+                             f"it; an event takes over from the segment just "
+                             f"before it, or, first, from one outside the "
+                             f"mission")
+        return m.at(q=q, qd=qd)
+    if isinstance(start, State):
+        independent = set(_independent_dofs(m))
+        state = m.at(q=_posture(m, start, "an event's start"),
+                     qd={d: v for d, v in start.qd.items()
+                         if d in independent})
+    else:
+        state = m.at(q=_posture(m, start, "an event's start"))
+    if before is not None:
+        _continuous(mission.name, i, _Profile(
+            "event", 0.0, _posture(m, state, ""), None, None, None, False),
+            before)
+    return state
+
+
+def _event_run(m, mission, i, event, step, run, actuators):
+    """A `Run` of event `i` at `step`, its trace the event's alone."""
+    profile = _Profile("event", event.duration, None, None, None, None,
+                       False)
+    alone = _assemble(m, Mission(f"{mission.name}, event {i}", [event]),
+                      1 / step, list(run.t), [0] * len(run.t),
+                      [0.0, event.duration], [profile], actuators, run.rows,
+                      run.driven)
+    return Run(step, alone, run.v, run.contacts)
 
 
 class _Profile:
@@ -485,17 +660,6 @@ class _Profile:
         self.kind, self.duration = kind, duration
         self.start, self.end, self.sample = start, end, sample
         self.loads, self.constant = loads, constant
-
-
-def _sample_times(total, rate):
-    """Every multiple of 1/rate up to `total`, and `total` itself."""
-    count = math.floor(total * rate * (1 + 1e-12))
-    times = np.arange(count + 1) / rate
-    if times[-1] < total - END_TOL:
-        times = np.append(times, total)
-    else:
-        times[-1] = total
-    return times
 
 
 def _seam(mission, state, qdd, loads):
@@ -513,7 +677,7 @@ def _seam(mission, state, qdd, loads):
 
 
 def _assemble(m, mission, rate, times, which, starts, profiles, actuators,
-              rows):
+              rows, driven, events=()):
     names = tuple(rows[0][2])
     for k, row in enumerate(rows):
         if tuple(row[2]) != names:
@@ -542,9 +706,14 @@ def _assemble(m, mission, rate, times, which, starts, profiles, actuators,
              for a in names}
     residual = (None if mission.actuation is not None
                 else _frozen(np.array([row[3] for row in rows])))
+    on = {a: _frozen(np.array([True if d is None else d[a] for d in driven]))
+          for a in names}
     method = (f"actuation(state, qdd, loads) at {rate:g} Hz"
               if mission.actuation is not None else
               f"m.at(q, qd), then State.inverse(qdd, loads), at {rate:g} Hz")
+    if any(isinstance(s, Event) for s in mission.segments):
+        method += ("; events forward-simulated under implicitfast, sampled "
+                   "at each timestep")
     return Trace(mission.name, rate, _frozen(times), _frozen(which),
                  tuple((float(starts[i]), float(starts[i + 1]))
                        for i in range(len(profiles))),
@@ -553,7 +722,7 @@ def _assemble(m, mission, rate, times, which, starts, profiles, actuators,
                  MappingProxyType(speed), MappingProxyType(rotor),
                  MappingProxyType({a: g
                                    for a, (_, g, _) in actuators.items()}),
-                 residual, method)
+                 residual, method, MappingProxyType(on), events)
 
 
 def _actuators(m):

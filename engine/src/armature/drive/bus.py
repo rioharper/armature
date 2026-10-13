@@ -45,7 +45,8 @@ clamps are:
   hot winding reads both the capacity and the heat low, so give it. All of
   it is taken to heat the winding, and none is lost in the driver. Its heat,
   per actuator on the trace's own times, is `heat`'s `power=` input for
-  that motor.
+  that motor. It acts only while its driver is on, as `Trace.driven` says:
+  an event that coasts or shorts the motor has switched it off.
 
 Clamps at one level share what they take in proportion to their
 capacities. A clamp below the source's voltage takes the source's own
@@ -321,6 +322,7 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
     power, flux = {}, []
     temperature = dict(temperature or {})
     gear = dict(gear or {})
+    driven = getattr(trace, "driven", None) or {}
     for a in bus.actuators:
         n = gear.get(a)
         tau, omega, rotor = trace.output(a, n)
@@ -334,8 +336,10 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
                        temperature.get(a), rotor=rotor)
         power[a] = e.bus
         if driver.flux_brake is not None:
-            i_d = driver.flux_brake.i_d.dq(motor.wiring)
-            flux.append((a, driver.flux_brake.onset, i_d ** 2 * e.resistance))
+            capacity = _flux_capacity(driver, motor, e.resistance)
+            if a in driven:  # a coasting or shorted driver's bridge is off
+                capacity = np.where(driven[a], capacity, 0.0)
+            flux.append((a, driver.flux_brake.onset, capacity))
     total = sum(power.values())
     run = partial(_run, t, total, flux, bus, c, v_s, v0)
     if substep is not None:
@@ -411,23 +415,14 @@ def _run(t, power, flux, bus, c, v_s, v0, h):
     """The bus over sample times `t` with the actuators' total bus `power`
     (W) at each, at substep `h`, from `v0`, its source at `v_s`."""
     half_c = 0.5 * c
-    source, brake = bus.source, bus.brake
-    clamps = [_Clamp(v_s, SOURCE, True)]
-    if source.sinks:
-        clamps.append(_Clamp(v_s, SOURCE, False))
-    if brake is not None:
-        clamps.append(_Clamp(brake.threshold, BRAKE, False))
-    clamps += [_Clamp(onset, ("flux", a), False) for a, onset, _ in flux]
-    levels = [(half_c * level ** 2,
-               [k.key for k in clamps if k.level == level and k.floor],
-               [k.key for k in clamps if k.level == level and not k.floor])
-              for level in sorted({k.level for k in clamps})]
+    brake = bus.brake
+    levels = _levels(bus, c, v_s, [(a, onset) for a, onset, _ in flux])
     flux_capacity = {("flux", a): values for a, _, values in flux}
     heat = {a: np.zeros(len(t) - 1) for a, _, _ in flux}
 
     energy, v = half_c * v0 ** 2, v0
     times, volts, sourced, braked = [float(t[0])], [v0], [], []
-    cap = {SOURCE: source.p_max}  # W: each clamp's capacity this substep
+    cap = {SOURCE: bus.source.p_max}  # W: each clamp's capacity this substep
     for k in range(len(t) - 1):
         span = float(t[k + 1] - t[k])
         if span == 0:
@@ -439,7 +434,7 @@ def _run(t, power, flux, bus, c, v_s, v0, h):
             cap[key] = float(values[k])
         for j in range(m):
             if brake is not None:
-                cap[BRAKE] = max(v, brake.threshold) ** 2 / brake.r
+                cap[BRAKE] = _brake_capacity(brake, v)
             drawn = p0 + (p1 - p0) * (j + 0.5) / m + bus.hotel
             energy, flows = _substep(energy, -drawn, step, levels, cap)
             v = math.sqrt(energy / half_c)
@@ -452,6 +447,35 @@ def _run(t, power, flux, bus, c, v_s, v0, h):
                 heat[a][k] += flows.get(("flux", a), 0.0)
     return _Run(np.array(times), np.array(volts), np.append(sourced, 0.0),
                 np.append(braked, 0.0), heat)
+
+
+def _flux_capacity(driver, motor, resistance):
+    """What `driver`'s flux brake absorbs (W) at the winding's R_φ:
+    i_d²·R_φ in d-q."""
+    return driver.flux_brake.i_d.dq(motor.wiring) ** 2 * resistance
+
+
+def _brake_capacity(brake, v):
+    """What the brake resistor takes (W) over a substep starting at bus
+    voltage `v`: V²/R, at its threshold where V is below it."""
+    return max(v, brake.threshold) ** 2 / brake.r
+
+
+def _levels(bus, c, v_s, flux):
+    """The clamps of `bus` at capacitance `c`, its source at `v_s`, with a
+    flux brake at each (actuator, onset) in `flux`, grouped by level: each
+    level's energy ½CV², its floors' keys and its ceilings' keys, lowest
+    first, as `_substep` takes them."""
+    clamps = [_Clamp(v_s, SOURCE, True)]
+    if bus.source.sinks:
+        clamps.append(_Clamp(v_s, SOURCE, False))
+    if bus.brake is not None:
+        clamps.append(_Clamp(bus.brake.threshold, BRAKE, False))
+    clamps += [_Clamp(onset, ("flux", a), False) for a, onset in flux]
+    return [(0.5 * c * level ** 2,
+             [k.key for k in clamps if k.level == level and k.floor],
+             [k.key for k in clamps if k.level == level and not k.floor])
+            for level in sorted({k.level for k in clamps})]
 
 
 def _substep(e, rate, step, levels, cap):

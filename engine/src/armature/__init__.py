@@ -52,6 +52,9 @@ gearbox, driver)` takes one actuator's output samples to current, voltage,
 copper loss and bus power, in Lee et al.'s power-invariant d-q convention.
 `drive.envelope(motor, n, v_bus)` is the torque–speed envelope at a bus
 voltage, and `drive.repeat` integrates the winding's thermal RC over a duty.
+A mission's `drive.event` is forward-simulated on a copy of the model, each
+motor coasting, shorted, flux-braking or following a torque profile, with
+the bus stepped alongside.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
