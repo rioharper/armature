@@ -22,8 +22,8 @@ HERE = Path(__file__).resolve().parent
 COARSE = HERE / "coarse_2r"
 # What spec §9 copies beside its own params.py and mechanism.py. The
 # derivation's milestones are derive's to write, and are left behind.
-SPEC_STAGE = ("run_all.py", "layout.py", "drive.py", "drive_checks.py",
-              "missions.py")
+SPEC_STAGE = ("run_all.py", "layout.py", "layout_checks.py", "drive.py",
+              "drive_checks.py", "missions.py")
 SHARED = ("DRIVE", "BANDS", "WORKSPACE", "QD_LIMITS", "QDD_LIMITS",
           "F_CONTACT")
 # Every drive margin's name on this 2R arm, as drive.py's margins name them.

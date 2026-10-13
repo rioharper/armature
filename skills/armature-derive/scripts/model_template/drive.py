@@ -2,32 +2,15 @@
 drive.py — the drive: each actuator's motor and driver, the bus they share,
 and the margins that size them over the missions (ADR 0006).
 
-`drive(p)` builds the engine's `Drive` from params.DRIVE, each constant with
-its basis as a keyword, so a slip between A_rms and A_peak, or line and
-phase, is a disagreement the engine names rather than a number it uses. The
-gear ratio and the rotor's inertia are not here: they are the description's
-`actuator`, said once, and the engine reads them from the compiled model.
-
-DRIVE_MARGINS are `armature.drive.margins`: one ADR 0005 margin per check,
-discovered by `run_all.py` like any other and searched once a run. The peak
-margins (each (tau, omega) sample inside the torque-speed envelope at the
-bus's lowest voltage, the driver's peak current, the bus's peak and minimum
-voltage, the supply's power) search SPACE, every mission, and the bus's
-capacitance and supply bands; the duty margins (each winding's temperature,
-each driver's RMS current) run the written missions over their duty. Each
-margin's truth re-runs its worst case at 1 kHz with every event at half its
-timestep: a resolution check, which `layout.py`'s gate accepts as its truth.
-
-A margin whose data is missing — a winding with neither thermal data nor a
-continuous rating — is UNCHECKED, and `run_all.py` fails it, unless
-DRIVE_EXEMPT names it with the reason it may stand unchecked.
-
-Example: two direct-drive motors on a 48 V supply behind a diode, which
-cannot sink, so what the arm regenerates lands on the bus capacitance alone.
-Replace with your machine's. Self-tests in drive_checks.py.
+`drive(p)` builds the engine's `Drive` from params.DRIVE, each constant's
+basis a keyword. DRIVE_MARGINS are armature.drive's margins, one per check,
+which `run_all.py` discovers and searches like any other; a margin missing
+its data is UNCHECKED and fails, unless DRIVE_EXEMPT argues it may stand.
+Example: the 2R arm's two direct-drive motors. Replace with your machine's.
+Self-tests in drive_checks.py.
 """
 
-from armature import Budget
+from armature import Band, Budget, Space
 from armature.drive import (Bus, Current, Drive, Driver, Ke, Motor,
                             Resistance, Source, Thermal, energy, kt_from_kv,
                             margins)
@@ -71,6 +54,9 @@ def motor(p, k):
 
 
 def driver(p):
+    """Each joint's driver, the same part on both: its efficiency, one
+    constant whichever way power flows, its peak and continuous line
+    currents, and the bus voltages it trips at."""
     return Driver(efficiency=p["eta_driver"],
                   i_peak=Current(p["i_peak"], per="A_peak"),
                   i_continuous=Current(p["i_cont"], per="A_rms"),
@@ -78,19 +64,24 @@ def driver(p):
 
 
 def drive(p):
-    """The drive at the parameters `p`: params.DRIVE, with any band's value
-    of a search point in. The bus's capacitance and supply voltage are its
-    bands, which the margins search as their own axes."""
+    """The drive at the parameters `p`: params.DRIVE, with a search point's
+    band values in. The source is a PSU behind a diode, which cannot sink,
+    so what the arm regenerates lands on the bus capacitance alone."""
     return Drive(
         motors={a: motor(p, k) for a, k in MOTORS.items()},
         drivers={a: driver(p) for a in MOTORS},
         bus=Bus(actuators=tuple(MOTORS),
-                source=Source(v=BANDS["v_bus"], sinks=False,
-                              p_max=p["p_supply"]),
-                capacitance=BANDS["c_bus"], hotel=p["hotel"]))
+                source=Source(v=p["v_bus"], sinks=False,
+                              p_max=p["p_source"]),
+                capacitance=p["c_bus"], hotel=p["hotel"]))
 
 
-DRIVE_MARGINS = margins(drive, MISSIONS, SPACE, params=DRIVE, budget=BUDGET)
+# The drive's own bands, each a DRIVE number drive(p) reads at its band value:
+# searched beside the missions' axes, by every margin, peak and duty alike.
+DRIVE_BANDS = {k: Band(k, BANDS, of="drive") for k in BANDS if k in DRIVE}
+OVER = Space(**SPACE.axes, **DRIVE_BANDS)
+
+DRIVE_MARGINS = margins(drive, MISSIONS, OVER, params=DRIVE, budget=BUDGET)
 
 # The margins that may stand UNCHECKED, by name, each with its argued reason:
 # `{"elbow_motor: winding": "the elbow only ever holds; its driver's RMS
@@ -102,4 +93,4 @@ DRIVE_EXEMPT = {}
 def energies():
     """Each written mission's energy at nominal, by `armature.drive.energy`:
     reported in report_results.py, never checked."""
-    return energy(drive, MISSIONS, SPACE, params=DRIVE)
+    return energy(drive, MISSIONS, OVER, params=DRIVE)

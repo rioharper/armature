@@ -1,34 +1,23 @@
 """
 missions.py — what the machine is asked to do, as moves, holds and events,
 with a duty cycle: the motion the actuators and the bus are sized against
-(ADR 0006). `drive.py` declares the margins that run them.
-
-Write each mission the way the spec's §6.4 states it. A **written** mission
-is a `Mission`, run as written: its duty's thermal and energy margins read
-it, and a mission the spec only assumes says so in its comment. A
-**searched** mission is a named function of a search point, `mission(p) ->
-Mission`: its move's end comes from a `Coordinates` axis, an event's trigger
-from an `Interval`, so the worst move is found and not named. Every axis it
-reads goes in SPACE, which the peak margins search; the duty margins read
-only the written missions, over the bands.
-
-A move is rest to rest under LIMITS, profiled by ruckig in the joint
-coordinates; a hold keeps a posture under loads at named sites; an event is
-forward-simulated, each actuator coasting, shorted, flux-braking or
-following a torque profile, from a state or from `after(segment, fraction)`.
-
-Example: the 2R arm presses a part against a fixture for three seconds, ten
-seconds a cycle, for a four-hour session, and any move it makes may be cut
-short by an e-stop that shorts both motors. Replace with your machine's.
+(ADR 0006), written the way the spec's §6.4 states it. A written mission is
+a `Mission`, which the duty margins run as written; a searched one is a
+named function of a search point, `mission(p) -> Mission`, whose axes go in
+SPACE, so its worst move is found rather than named. `drive.py` declares
+the margins that run them. Example: the 2R arm presses a part against a
+fixture, and any move it makes may be cut short by an e-stop. Replace with
+your machine's.
 """
 
 from armature import Band, Coordinates, Interval, Space
 from armature.drive import (Duty, Limits, Mission, after, event, hold, move)
 
-from params import BANDS, F_CONTACT, PARAMS, QD_LIMITS, QDD_LIMITS, WORKSPACE
-from mechanism import TOOL, mechanism, truth
+from params import F_CONTACT, PARAMS, QD_LIMITS, QDD_LIMITS, WORKSPACE
+from mechanism import BANDS, TOOL, mechanism, truth
 
-# Each move's limits are the spec's rate envelope, per joint. The jerk is the
+# A move runs rest to rest under LIMITS, profiled by ruckig in the joint
+# coordinates. Its limits are the spec's rate envelope, per joint. The jerk is the
 # move class's too: each joint reaches its acceleration limit in JERK_TIME.
 JERK_TIME = 0.1  # s
 LIMITS = Limits(v=QD_LIMITS, a=QDD_LIMITS,
@@ -76,11 +65,11 @@ def stop(p):
 
 MISSIONS = [PRESSING, stop]
 
-# What the peak margins search, beside the margins' own axes (the mission,
-# the bus's capacitance and supply bands): every mechanism band, the move's
-# end, and the e-stop's trigger. A machine that moves between any two
+# What a searched mission reads, and the peak margins search: every mechanism
+# band, the move's end, and the e-stop's trigger. drive.py adds its own bands,
+# and the margins add the mission's Choice. A machine that moves between any two
 # postures, not from rest, searches its start too, with a second
 # `Coordinates` axis.
-SPACE = Space(**{k: Band(k, BANDS) for k in BANDS if k in PARAMS},
+SPACE = Space(**{k: Band(k, BANDS) for k in BANDS},
               end=Coordinates(mechanism, PARAMS, within=WORKSPACE),
               fraction=Interval(0.0, 1.0))

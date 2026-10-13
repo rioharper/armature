@@ -47,6 +47,7 @@ analysis/model/
   report_results.py        <- prints the symbolic results, the named configurations, the tables
   report_truth.py          <- writes the review artifact: the frames table and skeleton renders
   layout.py                <- the two gates: the code-line budget and the truth check
+  layout_checks.py         <-   the gates as checks, with their teeth
   run_all.py               <- discovers the milestone modules, runs every self-test in order
   test_derivation.py       <- the same checks, exposed to pytest
 ```

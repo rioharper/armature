@@ -8,8 +8,8 @@ it runs where build123d does not:
 
     python cad/parts/layout.py     # the gate table; exit 1 on a violation
 
-`run_all.py` discovers the checks below like any other, so the full run
-fails on a module over budget. Running one module or package
+`run_all.py` discovers its checks, in `layout_checks.py`, like any other, so
+the full run fails on a module over budget. Running one module or package
 (`run_all.py check`) leaves them out: a file still being written is not
 red-barred mid-work. The same file ships in armature-derive's model template;
 a part directory has no mechanism description, so the truth gate stands down
@@ -20,7 +20,6 @@ here and reports n/a.
 import ast
 import io
 import sys
-import tempfile
 import tokenize
 from collections import namedtuple
 from pathlib import Path
@@ -45,8 +44,11 @@ MARGIN = "Margin"
 # The drive margins (ADR 0006) are declared by one call that returns them all,
 # `armature.drive.margins(...)`, and each carries its truth, by construction:
 # the resolution check, its worst case re-run at 1 kHz and every event at half
-# its timestep. An assignment whose value calls `margins` is read as that.
+# its timestep. An assignment whose value calls `margins` is read as that, but
+# only where the module imports it from there; any other `margins(...)` is a
+# look-alike, held to the gate as a margin with no truth.
 DRIVE_MARGINS = "margins"
+DRIVE_MODULE = "armature.drive"
 # What says a directory has a truth model: the mechanism description it is
 # compiled from. The truth model itself is the engine's, outside this tree.
 DESCRIPTION = "mechanism.py"
@@ -135,31 +137,64 @@ def truth_checks(source):
             and node.name.startswith(TRUTH_PREFIX)]
 
 
-def _assigned_calls(source, name):
-    """Each module-level assignment whose value calls `name` (or `x.name`),
-    as (targets, call)."""
+def _assigned_calls(source, *names):
+    """Each module-level assignment whose value calls one of `names` (or
+    `x.name`), as (targets, call)."""
     for node in ast.parse(source).body:
         targets = (node.targets if isinstance(node, ast.Assign)
                    else [node.target] if isinstance(node, ast.AnnAssign)
                    else [])
         call = getattr(node, "value", None)
-        if targets and isinstance(call, ast.Call) and name == (
+        if targets and isinstance(call, ast.Call) and (
                 getattr(call.func, "id", None)
-                or getattr(call.func, "attr", None)):
+                or getattr(call.func, "attr", None)) in names:
             yield targets, call
+
+
+def _drive_imports(source):
+    """What the module's own imports bind armature.drive's margins to: the
+    names of the function, and the dotted names of the module."""
+    functions, modules = set(), set()
+    for node in ast.parse(source).body:
+        if isinstance(node, ast.ImportFrom) and node.level == 0:
+            for alias in node.names:
+                if node.module == DRIVE_MODULE and alias.name == DRIVE_MARGINS:
+                    functions.add(alias.asname or alias.name)
+                elif node.module == "armature" and alias.name == "drive":
+                    modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name in ("armature", DRIVE_MODULE):
+                    modules.add(alias.asname if alias.asname and
+                                alias.name == DRIVE_MODULE else DRIVE_MODULE)
+    return functions, modules
+
+
+def _drive_calls(source):
+    """The module-level `margins(...)` assignments, split into those that
+    call armature.drive's and the look-alikes, each by target name."""
+    functions, modules = _drive_imports(source)
+    found, lookalikes = [], []
+    for targets, call in _assigned_calls(source, DRIVE_MARGINS, *functions):
+        f = call.func
+        ours = (f.id in functions if isinstance(f, ast.Name)
+                else ast.unparse(f.value) in modules)
+        (found if ours else lookalikes).extend(ast.unparse(t) for t in targets)
+    return found, lookalikes
 
 
 def drive_margins(source):
     """The module-level drive margins, by the name each set is bound to: an
-    assignment whose value calls `margins` or `armature.drive.margins`."""
-    return [ast.unparse(t) for targets, _ in
-            _assigned_calls(source, DRIVE_MARGINS) for t in targets]
+    assignment whose value calls armature.drive's `margins`, as the module
+    imports it."""
+    return _drive_calls(source)[0]
 
 
 def bare_margins(source):
     """The module-level margins declared with no `truth=`, by the name each is
     bound to: an assignment whose value calls `Margin` or `armature.Margin`
-    with no truth, by keyword or as the fifth argument, or with None."""
+    with no truth, by keyword or as the fifth argument, or with None; and
+    one that calls a `margins` that is not armature.drive's."""
     bare = []
     for targets, call in _assigned_calls(source, MARGIN):
         truth = [k.value for k in call.keywords if k.arg == "truth"] \
@@ -167,7 +202,7 @@ def bare_margins(source):
         if not truth or (isinstance(truth[0], ast.Constant)
                          and truth[0].value is None):
             bare += [ast.unparse(t) for t in targets]
-    return bare
+    return bare + _drive_calls(source)[1]
 
 
 def model_files(root=HERE):
@@ -223,154 +258,6 @@ def unconfirmed_margins(rows):
             for name in row.bare or []]
 
 
-def test_modules_within_budget():
-    over = [f"{row.where} ({row.lines} code lines)" for row in size_table()
-            if row.lines > BUDGET and row.exempt is None]
-    assert not over, (
-        f"over the {BUDGET}-code-line budget: {', '.join(over)}; split along "
-        f"the note's sections, or declare {EXEMPT} with the reason it cannot")
-    print(f"  [PASS] every module within {BUDGET} code lines or exempt with a reason")
-
-
-def test_checks_modules_are_paired():
-    """A checks module whose module was renamed away — or is a report
-    renderer, which discovery never collects — never runs; say so."""
-    orphans = []
-    for path in model_files():
-        if path.stem.endswith("_checks"):
-            stem = path.stem[:-len("_checks")]
-            if (stem == "report" or stem.startswith("report_")
-                    or not path.with_name(stem + ".py").is_file()):
-                orphans.append(path.relative_to(HERE).as_posix())
-    assert not orphans, f"checks modules no discovered module pairs with: {orphans}"
-    print("  [PASS] every checks module pairs with a module")
-
-
-def test_milestone_checks_carry_a_truth_check():
-    """
-    Every checks module beside a mechanism description defines a
-    `test_truth_*`, or says why it does not.
-
-    A milestone's self-consistency checks are blind to the assumption sitting
-    on both sides of them, so a milestone whose only evidence is
-    self-consistency has shown its equations consistent and nothing about this
-    machine. This gate is what stops the truth model being skipped in silence,
-    which is the only way it ever gets skipped.
-    """
-    rows = size_table()
-    if all(row.truth is None for row in rows):
-        print("  [PASS] no mechanism description here; the truth gate is n/a")
-        return
-    missing = unchecked_claims(rows)
-    assert not missing, (
-        f"checks modules with no {TRUTH_PREFIX}* check: {', '.join(missing)}; "
-        f"add one, or declare {TRUTH_EXEMPT} with the reason this module's "
-        f"claims need none")
-    found = sum(len(row.truth or []) for row in rows)
-    excused = [row.where for row in rows if row.truth == [] and row.truth_exempt]
-    print(f"  [PASS] {found} truth check(s) across the gated checks modules"
-          + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
-
-
-def test_every_margin_carries_a_truth():
-    """
-    Every margin declared beside a mechanism description passes `truth=`, or
-    its module says why its claims need none.
-
-    A margin computed from the derivation is the derivation's claim at the
-    point the search found, and the worst point is the one place a wrong
-    assumption costs the most. `run_all.py` confirms it there in the truth
-    model, within the margin's `agree`; this gate is what stops a margin
-    being declared without one in silence.
-    """
-    rows = size_table()
-    if all(row.bare is None for row in rows):
-        print("  [PASS] no mechanism description here; the margin gate is n/a")
-        return
-    missing = unconfirmed_margins(rows)
-    assert not missing, (
-        f"margins with no truth=: {', '.join(missing)}; pass truth= and agree=, "
-        f"or declare {TRUTH_EXEMPT} in the module with the reason its claims "
-        f"need none")
-    excused = [f"{row.where}: {name}" for row in rows if row.truth_exempt
-               for name in row.bare or []]
-    drive = [f"{row.where}: {name}" for row in rows for name in row.drive]
-    print("  [PASS] every margin carries a truth"
-          + (f"; the drive margins' is the resolution check: "
-             f"{', '.join(drive)}" if drive else "")
-          + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
-
-
-def test_the_truth_gate_has_teeth():
-    """
-    The gate against fixtures: it fails a bare checks module and a margin with
-    no truth, passes an argued exemption for each, refuses an unargued one,
-    and stands down with no mechanism description.
-
-    Built in a temporary directory rather than asserted against this one,
-    because a gate is only evidence once it has been seen to fail, and this
-    directory is meant never to make it fail.
-    """
-    bare = "def test_something():\n    pass\n"
-    argued = 'TRUTH_EXEMPT = "alpha fixes a naming convention, not a claim"\n'
-    margin = "A = armature.Margin('a', f, 'N', S{})\nB = 1\n"
-    with tempfile.TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        checks = root / "alpha_checks.py"
-        module = root / "alpha.py"
-        module.write_text(margin.format(""), encoding="utf-8")
-        checks.write_text(bare, encoding="utf-8")
-        assert all(row.truth is None and row.bare is None
-                   for row in size_table(root)) \
-            and not unchecked_claims(size_table(root)), \
-            "the truth gate fired in a directory with no mechanism description"
-
-        (root / DESCRIPTION).write_text("def mechanism(p):\n    return []\n",
-                                        encoding="utf-8")
-        assert unchecked_claims(size_table(root)) == ["alpha_checks.py"], \
-            "a checks module with no truth check and no exemption passed"
-        for truthless in ("", ", truth=None", ", None, None"):
-            module.write_text(margin.format(truthless), encoding="utf-8")
-            assert unconfirmed_margins(size_table(root)) == ["alpha.py: A"], \
-                f"a margin declared with {truthless or 'no truth'} passed"
-        for confirmed in (", truth=t, agree=1e-9", ", t, 1e-9"):
-            module.write_text(margin.format(confirmed), encoding="utf-8")
-            assert not unconfirmed_margins(size_table(root)), \
-                f"a margin declared with {confirmed} did not clear the gate"
-        module.write_text(argued + margin.format(""), encoding="utf-8")
-        assert not unconfirmed_margins(size_table(root)), \
-            "an argued TRUTH_EXEMPT did not clear a margin"
-        module.write_text("D = armature.drive.margins(drive, missions)\n",
-                          encoding="utf-8")
-        assert not unconfirmed_margins(size_table(root)) and [
-            row.drive for row in size_table(root)
-            if row.where == "alpha.py"] == [["D"]], \
-            "the drive margins, which carry their resolution truth, were " \
-            "not read as such"
-
-        checks.write_text(argued + bare, encoding="utf-8")
-        assert not unchecked_claims(size_table(root)), \
-            "an argued TRUTH_EXEMPT did not clear the gate"
-
-        checks.write_text(f"{TRUTH_PREFIX}settle = None\n"
-                          f"def {TRUTH_PREFIX}settle_():\n    pass\n",
-                          encoding="utf-8")
-        assert [row.truth for row in size_table(root) if row.where ==
-                "alpha_checks.py"] == [[f"{TRUTH_PREFIX}settle_"]], \
-            "the gate counted a name that is not a callable"
-
-        for unargued in ("TRUTH_EXEMPT = True\n", 'TRUTH_EXEMPT = ""\n'):
-            checks.write_text(unargued + bare, encoding="utf-8")
-            try:
-                size_table(root)
-            except ValueError:
-                continue
-            raise AssertionError(f"{unargued.strip()} passed as a reason")
-    print("  [PASS] the truth gate fails a bare checks module and a margin with "
-          "no truth, passes an argued exemption, and is n/a with no mechanism "
-          "description")
-
-
 if __name__ == "__main__":
     print(f"{'module':<34}{'code lines':>11}   truth checks")
     for row in size_table():
@@ -389,6 +276,11 @@ if __name__ == "__main__":
             lines = len(note.read_text(encoding="utf-8").splitlines())
             print(f"{note.name:<34}{lines:>11}")
     print("")
+    from layout_checks import (test_checks_modules_are_paired,
+                               test_every_margin_carries_a_truth,
+                               test_milestone_checks_carry_a_truth_check,
+                               test_modules_within_budget,
+                               test_the_truth_gate_has_teeth)
     try:
         test_modules_within_budget()
         test_checks_modules_are_paired()

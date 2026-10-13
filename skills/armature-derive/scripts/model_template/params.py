@@ -77,8 +77,8 @@ DRIVE = {
     "i_cont": 20.0,     # each driver's continuous, A_rms line
     "v_max": 56.0,      # each driver's overvoltage trip [V]
     "v_under": 40.0,    # each driver's undervoltage trip [V]
-    "v_bus": 48.0,      # the supply, a PSU behind a diode: it cannot sink [V]
-    "p_supply": 600.0,  # the supply's rating [W]
+    "v_bus": 48.0,      # the source's set point, a PSU behind a diode [V]
+    "p_source": 600.0,  # the source's rating [W]
     "c_bus": 10e-3,     # the bus capacitance, the bank's rating [F]
     "hotel": 5.0,       # the electronics' constant draw [W]
 }
@@ -88,12 +88,12 @@ DRIVE = {
 # margin searches each one as an axis (`Band`) with both ends among its
 # corners, so a worst case is stated at its worst band value and never at
 # nominal alone. The forearm's mass is a budget until CAD measures the part,
-# and +-10 % is what the budget is held to. The bus's two are the drive's: an
-# electrolytic bank is +-20 %, and the supply's set point +-2 %; the drive
-# margins search both, the least capacitance on the highest supply being where
-# regeneration lifts the bus furthest. A band is a PARAMS key or a DRIVE key,
-# and `params_checks.py` fails one that names neither or leaves its nominal
-# outside.
+# and +-10 % is what the budget is held to. The bus's two are DRIVE's, which
+# `drive(p)` reads at each band value: an electrolytic bank is +-20 %, and the
+# source's set point +-2 %; the least capacitance on the highest source is
+# where regeneration lifts the bus furthest. A band is a PARAMS key or a DRIVE
+# key, and `params_checks.py` fails one that names neither or leaves its
+# nominal outside.
 BANDS = {
     "m2": (0.72, 0.88),
     "c_bus": (8e-3, 12e-3),

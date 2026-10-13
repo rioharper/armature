@@ -133,7 +133,8 @@ evaluates `truth` at its worst point and its pre-polish best, and `run_all.py` f
 disagreement beyond `agree`. `layout.py` reads a margin from the source as it reads a check's
 name, as an assignment whose value calls `Margin` or `armature.Margin`.
 
-Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, and
+Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, whose
+`layout_checks.py` argues its `TRUTH_EXEMPT`, and
 **any directory with no `mechanism.py`**, where the gate reports `n/a` and passes, which is
 what lets the same file ship in the CAD part template unchanged. The engine is outside it
 too: it is not the project's code, and its own tests check it.

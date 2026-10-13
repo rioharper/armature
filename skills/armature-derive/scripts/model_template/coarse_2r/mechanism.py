@@ -7,7 +7,7 @@ spec's sketch and its mass budget are the whole of what it needs. Derive
 refines this same file in place, body by body, into the template's
 `mechanism.py`; the joints, sites and actuators around the bodies do not
 change, and neither do `drive.py` and `missions.py`, which read only
-`mechanism`, `truth` and `TOOL`.
+`mechanism`, `truth`, `TOOL` and `BANDS`.
 
 The template's own tests run it: `test_spec_stage.py` copies it, with this
 directory's `params.py`, beside the drive and the missions, and runs
@@ -21,9 +21,12 @@ import armature
 from armature import actuator, gravity, joint, site
 from armature.coarse import cylinder
 
-from params import PARAMS
+from params import BANDS as ALL_BANDS, PARAMS
 
 TOOL = "tip"
+
+# The mechanism's tolerance bands, those of PARAMS; DRIVE's are drive.py's.
+BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
 
 
 def mechanism(p):

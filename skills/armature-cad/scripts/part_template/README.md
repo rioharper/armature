@@ -36,7 +36,7 @@ What that buys, in order of value:
 | `part.py` | Template for `cad/parts/<PART-ID>.py`. Worked example: the plate-with-a-boss from SKILL.md. Copy and edit. |
 | `sweep/` | Template for a planning-stage interference sweep. Worked example: planar 2R arm folding into its base housing. Replace the envelopes and `CARRIERS` in `sweep/bodies.py`. |
 | `stubs.py` | COTS placeholders for when armature-librarian can't find a vendor STEP. Enforces datasheet provenance; its release gate `still_placeholder()` only sees stubs *this process built* — read its docstring before gating on it. |
-| `run_all.py`, `layout.py` | The runner and the code-line budget, the same files armature-derive's model template ships. |
+| `run_all.py`, `layout.py`, `layout_checks.py` | The runner and the code-line budget, the same files armature-derive's model template ships. |
 
 The files follow the plugin's `references/model-layout.md`: each module's
 self-tests live one file over in its `*_checks.py` (`part.py` →
