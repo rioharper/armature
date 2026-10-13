@@ -14,7 +14,7 @@ against the truth model where they are *used*, and there is nothing in a shape
 for a simulator to be asked about.
 """
 
-from params import BANDS, LOAD_CASES, PARAMS, PLANE_XY
+from params import BANDS, DRIVE, LOAD_CASES, PARAMS, PLANE_XY
 
 # The parameter block is data. Every constant in it reaches the truth model
 # through mechanism(p), which the engine validates when it compiles — a value
@@ -82,13 +82,14 @@ def test_every_band_is_a_parameter_and_holds_its_nominal():
     mechanism, at import; this check holds every band, searched or not, and
     runs where that import never happens (`run_all.py params`).
     """
-    unknown = sorted(set(BANDS) - set(PARAMS))
-    assert not unknown, (f"bands {unknown} name no parameter of PARAMS; the "
-                         f"parameters are {sorted(PARAMS)}")
+    known = {**PARAMS, **DRIVE}
+    unknown = sorted(set(BANDS) - set(known))
+    assert not unknown, (f"bands {unknown} name no parameter of PARAMS or "
+                         f"DRIVE; the parameters are {sorted(known)}")
     for name, (lo, hi) in BANDS.items():
         assert lo < hi, f"band {name!r} = ({lo}, {hi}) has its low above its high"
-        assert lo <= PARAMS[name] <= hi, (
-            f"band {name!r} = ({lo}, {hi}) leaves its nominal {PARAMS[name]} "
+        assert lo <= known[name] <= hi, (
+            f"band {name!r} = ({lo}, {hi}) leaves its nominal {known[name]} "
             f"outside; a band is a tolerance around the value the design uses")
     print(f"  [PASS] {len(BANDS)} tolerance band(s), each a parameter's and "
           f"holding its nominal: {sorted(BANDS)}")

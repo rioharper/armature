@@ -11,7 +11,9 @@ it runs where SymPy and SciPy do not:
 `run_all.py` discovers the checks below like any other, so the full run and
 `pytest` fail on a module over budget, on a milestone's checks module that
 carries no truth check and no argued exemption, or on a margin declared with
-no `truth=` in a module with no argued exemption. Running one milestone
+no `truth=` in a module with no argued exemption; the drive margins, declared
+by one `armature.drive.margins(...)` call, carry theirs, the resolution
+check, and the gate reads them so. Running one milestone
 (`run_all.py kinematics`) leaves them out: a file still being written is not
 red-barred mid-work. The same file ships in armature-cad's part template,
 where there is no mechanism description and the truth gate stands down.
@@ -42,6 +44,11 @@ TRUTH_PREFIX = "test_truth_"
 # TRUTH_EXEMPT why its claims need none. Read from the source like the prefix:
 # an assignment whose value calls `Margin` or `armature.Margin`.
 MARGIN = "Margin"
+# The drive margins (ADR 0006) are declared by one call that returns them all,
+# `armature.drive.margins(...)`, and each carries its truth, by construction:
+# the resolution check, its worst case re-run at 1 kHz and every event at half
+# its timestep. An assignment whose value calls `margins` is read as that.
+DRIVE_MARGINS = "margins"
 # What says a directory has a truth model: the mechanism description it is
 # compiled from. The truth model itself is the engine's, outside this tree.
 DESCRIPTION = "mechanism.py"
@@ -54,7 +61,8 @@ NOTES = HERE.parent / "derivation"
 # does not apply — a module that is not a checks module, or a directory with no
 # mechanism description at all. `bare` is the margins the module declares with
 # no truth, by name, or None in a directory with no mechanism description.
-Row = namedtuple("Row", "where lines exempt truth truth_exempt bare")
+# `drive` is the drive margins it declares, by name, whose truth is theirs.
+Row = namedtuple("Row", "where lines exempt truth truth_exempt bare drive")
 
 _NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
              tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER}
@@ -128,20 +136,33 @@ def truth_checks(source):
             and node.name.startswith(TRUTH_PREFIX)]
 
 
-def bare_margins(source):
-    """The module-level margins declared with no `truth=`, by the name each is
-    bound to: an assignment whose value calls `Margin` or `armature.Margin`
-    with no truth, by keyword or as the fifth argument, or with None."""
-    bare = []
+def _assigned_calls(source, name):
+    """Each module-level assignment whose value calls `name` (or `x.name`),
+    as (targets, call)."""
     for node in ast.parse(source).body:
         targets = (node.targets if isinstance(node, ast.Assign)
                    else [node.target] if isinstance(node, ast.AnnAssign)
                    else [])
         call = getattr(node, "value", None)
-        if not (targets and isinstance(call, ast.Call) and MARGIN == (
+        if targets and isinstance(call, ast.Call) and name == (
                 getattr(call.func, "id", None)
-                or getattr(call.func, "attr", None))):
-            continue
+                or getattr(call.func, "attr", None)):
+            yield targets, call
+
+
+def drive_margins(source):
+    """The module-level drive margins, by the name each set is bound to: an
+    assignment whose value calls `margins` or `armature.drive.margins`."""
+    return [ast.unparse(t) for targets, _ in
+            _assigned_calls(source, DRIVE_MARGINS) for t in targets]
+
+
+def bare_margins(source):
+    """The module-level margins declared with no `truth=`, by the name each is
+    bound to: an assignment whose value calls `Margin` or `armature.Margin`
+    with no truth, by keyword or as the fifth argument, or with None."""
+    bare = []
+    for targets, call in _assigned_calls(source, MARGIN):
         truth = [k.value for k in call.keywords if k.arg == "truth"] \
             or call.args[4:5]
         if not truth or (isinstance(truth[0], ast.Constant)
@@ -186,7 +207,8 @@ def size_table(root=HERE):
                                   "the reason this module's claims need no "
                                   "truth check"),
                         bare_margins(source) if (root / DESCRIPTION).is_file()
-                        else None))
+                        else None,
+                        drive_margins(source)))
     return rows
 
 
@@ -273,7 +295,10 @@ def test_every_margin_carries_a_truth():
         f"need none")
     excused = [f"{row.where}: {name}" for row in rows if row.truth_exempt
                for name in row.bare or []]
+    drive = [f"{row.where}: {name}" for row in rows for name in row.drive]
     print("  [PASS] every margin carries a truth"
+          + (f"; the drive margins' is the resolution check: "
+             f"{', '.join(drive)}" if drive else "")
           + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
 
 
@@ -316,6 +341,13 @@ def test_the_truth_gate_has_teeth():
         module.write_text(argued + margin.format(""), encoding="utf-8")
         assert not unconfirmed_margins(size_table(root)), \
             "an argued TRUTH_EXEMPT did not clear a margin"
+        module.write_text("D = armature.drive.margins(drive, missions)\n",
+                          encoding="utf-8")
+        assert not unconfirmed_margins(size_table(root)) and [
+            row.drive for row in size_table(root)
+            if row.where == "alpha.py"] == [["D"]], \
+            "the drive margins, which carry their resolution truth, were " \
+            "not read as such"
 
         checks.write_text(argued + bare, encoding="utf-8")
         assert not unchecked_claims(size_table(root)), \

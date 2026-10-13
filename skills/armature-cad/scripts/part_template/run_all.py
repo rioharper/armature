@@ -14,8 +14,10 @@ down in a package, is collected when its sibling checks module
 defines callables named `test_*`; each of those callables is one check.
 Nothing in this file lists modules or tests, so a part file added later is
 collected the moment its `<PART-ID>_checks.py` lands. A module-level
-`armature.Margin` is collected too, searched and held to passing as in the
-model template; run without the engine, as a part file is, there are none.
+`armature.Margin`, or a tuple of them, is collected too, searched and held
+to passing as in the model template, an UNCHECKED one failing unless
+DRIVE_EXEMPT argues it; run without the engine, as a part file is, there are
+none.
 
 During development run one module or package by name:
 
@@ -39,6 +41,11 @@ HERE = Path(__file__).resolve().parent
 # still runs — last, titled by its own name — so the cost of forgetting the
 # constant is a worse heading, never a check that silently doesn't run.
 DEFAULT_ORDER = float("inf")
+
+# A margin whose inputs are missing is UNCHECKED, and fails. A module lets one
+# stand by naming it in a module-level mapping of this name, margin name to
+# the reason, argued: `DRIVE_EXEMPT = {"elbow_motor: winding": "..."}`.
+UNCHECKED_EXEMPT = "DRIVE_EXEMPT"
 
 
 def is_model_module(stem):
@@ -81,12 +88,30 @@ def margin_type():
 
 def margins_in(module):
     """Every module-level `Margin` in `module`, in the order the file binds
-    them. Found by type, so one imported from another module is found here
-    too; `discover_milestones` keeps each margin once, where it is first
-    found in run order."""
+    them, and each in a module-level tuple or list of margins, as
+    `armature.drive.margins` returns them. Found by type, so one imported
+    from another module is found here too; `discover_milestones` keeps each
+    margin once, where it is first found in run order."""
     kind = margin_type()
-    return [obj for obj in vars(module).values()
-            if kind is not None and isinstance(obj, kind)]
+    found = []
+    for obj in vars(module).values():
+        if kind is None:
+            break
+        if isinstance(obj, kind):
+            found.append(obj)
+        elif (isinstance(obj, (tuple, list)) and obj
+              and all(isinstance(m, kind) for m in obj)):
+            found.extend(obj)
+    return found
+
+
+def exemptions_in(modules):
+    """The margins `modules` let stand UNCHECKED, by name, each with its
+    reason: their module-level DRIVE_EXEMPT mappings, merged."""
+    exempt = {}
+    for module in modules:
+        exempt.update(getattr(module, UNCHECKED_EXEMPT, None) or {})
+    return exempt
 
 
 _SEARCHED = {}
@@ -102,18 +127,50 @@ def searched(margin):
     return _SEARCHED[id(margin)][1]
 
 
-def margin_check(margin):
+def margin_check(margin, exempt=None):
     """The check a discovered margin runs as: search it, print its row, and
     fail where it does not pass, or where its truth disagrees beyond
-    `agree`. The margin rides on the check as `.margin`."""
+    `agree`. An UNCHECKED margin, whose inputs are missing, fails too,
+    unless `exempt` gives the reason it may stand: then its row and the
+    reason print. The margin rides on the check as `.margin`, the reason as
+    `.exempt`."""
     def check():
         worst = searched(margin)
+        if worst.unchecked:
+            assert exempt, (
+                f"a margin is UNCHECKED: {worst}. Give it the data it names, "
+                f"or argue in {UNCHECKED_EXEMPT} why it may stand unchecked")
+            print(f"  [EXEMPT] {worst}\n           because {exempt}")
+            return
         assert worst.passes, f"a margin fails: {worst}"
         assert worst.truth is None or worst.truth.agrees, (
             f"a margin's truth disagrees with it: {worst}")
         print(f"  [PASS] {worst}")
     check.__name__ = check.__qualname__ = f"margin[{margin.name}]"
-    check.margin = margin
+    check.margin, check.exempt = margin, exempt
+    return check
+
+
+def exemptions_check(exempt, margins):
+    """The check on a module's DRIVE_EXEMPT: each entry names one of the
+    module's margins that is UNCHECKED, with a reason. An entry for a
+    margin that has its data is stale, and one with no reason is a claim
+    nobody argued."""
+    def check():
+        named = {margin.name: margin for margin in margins}
+        unknown = sorted(n for n in exempt if n not in named)
+        assert not unknown, (f"{UNCHECKED_EXEMPT} names {unknown}, which are "
+                             f"no margins here; the margins are {sorted(named)}")
+        stale = sorted(n for n in exempt if not named[n].unchecked)
+        assert not stale, (f"{UNCHECKED_EXEMPT} exempts {stale}, which have "
+                           f"their data and are checked; remove the entries")
+        bare = sorted(n for n, why in exempt.items()
+                      if not (isinstance(why, str) and why.strip()))
+        assert not bare, (f"{UNCHECKED_EXEMPT} gives {bare} no reason; an "
+                          f"exemption is a non-empty string arguing it")
+        print(f"  [PASS] {UNCHECKED_EXEMPT}: {len(exempt)} margin(s) stand "
+              f"unchecked, each with its reason")
+    check.__name__ = check.__qualname__ = UNCHECKED_EXEMPT
     return check
 
 
@@ -130,7 +187,12 @@ def checks_for(module):
     for margin in (margin for m in modules for margin in margins_in(m)):
         if all(margin is not kept for kept in margins):
             margins.append(margin)
-    return checks + [margin_check(margin) for margin in margins]
+    exempt = exemptions_in(modules)
+    checks += [margin_check(margin, exempt.get(margin.name))
+               for margin in margins]
+    if any(hasattr(m, UNCHECKED_EXEMPT) for m in modules):
+        checks.append(exemptions_check(exempt, margins))
+    return checks
 
 
 def discover_milestones(names=None):
@@ -181,6 +243,14 @@ def discover_margins(names=None):
     return [(title, check.margin)
             for title, _module, checks in discover_milestones(names)
             for check in checks if hasattr(check, "margin")]
+
+
+def discover_exemptions(names=None):
+    """Every discovered margin let stand UNCHECKED, by name, with its
+    reason."""
+    return {check.margin.name: check.exempt
+            for _title, _module, checks in discover_milestones(names)
+            for check in checks if getattr(check, "exempt", None)}
 
 
 def _run(title, checks):

@@ -28,8 +28,12 @@ from sympy.physics.mechanics import dynamicsymbols
 import armature
 from armature import actuator, body, gravity, joint, site
 
-from params import BANDS, PARAMS
+from params import BANDS as ALL_BANDS, PARAMS
 
+# The mechanism's tolerance bands: those of PARAMS' parameters, which compile
+# into the truth model. A band on a DRIVE number is the drive margins' own
+# (`drive.py`), and the derivation never sees it.
+BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
 # Run order and heading for `run_all.py`. Milestone 0, beside the parameter
 # block it reads.
 MILESTONE = (0, "Milestone 0: the mechanism description")

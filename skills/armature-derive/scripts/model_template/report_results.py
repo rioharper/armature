@@ -1,6 +1,7 @@
 """
 report_results.py — prints what the milestone notes cite instead of pasting:
-the long symbolic results, the named configurations, and 03_results.md's tables.
+the long symbolic results, the named configurations, 03_results.md's tables,
+and the drive's margins and energy.
 
     uv run python report_results.py
 
@@ -29,7 +30,8 @@ from mechanism import COORDINATES, truth, vector
 from kinematics import J, T_EE, singular_values
 from dynamics.lagrangian import G_SYM, M_SYM
 from dynamics.statics import static_torques
-from run_all import discover_margins, searched
+from drive import energies
+from run_all import discover_exemptions, discover_margins, searched
 
 # For the reader, not for a check. Replace with your mechanism's landmarks.
 LOW = np.array([WORKSPACE[c][0] for c in COORDINATES])
@@ -70,13 +72,27 @@ for name, qv in NAMED.items():
 
 # Every margin the milestones declare, searched: the row a note cites, then
 # the worst of each Choice combination, so a note can say which load case
-# binds and by how much the others clear.
+# binds and by how much the others clear. The drive's are among them, one
+# row per check under the drive's heading; an UNCHECKED one names the data it
+# lacks and, where DRIVE_EXEMPT lets it stand, prints the reason.
 print("\nMargins: the worst case of each, searched (armature.search)")
+exempt = discover_exemptions()
 for title, margin in discover_margins():
     worst = searched(margin)
     print(f"  [{title}] {worst}")
+    if margin.name in exempt:
+        print(f"      exempt: {exempt[margin.name]}")
     if len(worst.cases) > 1:
         for case in sorted(worst.cases, key=lambda c: c.value):
             choices = ", ".join(f"{k} = {v}" for k, v in case.choices.items())
             print(f"      {choices:<24}{case.value:>12.6g} {worst.unit}")
+
+# What each written mission costs, at nominal: reported, never checked.
+print("\nDrive: each written mission's energy over one run, at nominal [J]")
+print(f"  {'mission':<16}{'source':>10}{'regenerated':>13}{'copper':>10}"
+      f"{'per session':>14}")
+for e in energies():
+    session = "" if e.per_session is None else f"{e.per_session:.4g}"
+    print(f"  {e.mission:<16}{e.source:>10.4g}{e.regenerated:>13.4g}"
+          f"{e.copper:>10.4g}{session:>14}")
 

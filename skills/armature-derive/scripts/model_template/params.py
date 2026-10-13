@@ -46,15 +46,58 @@ PARAMS = {
     "tau2": 6.0,    # elbow motor
 }
 
+# --- the drive's numbers (ADR 0006) ---
+# What `drive.py`'s `drive(p)` reads, kept apart from PARAMS because the
+# engine compiles PARAMS into the truth model and refuses a parameter it never
+# reads. Every constant carries its **basis** in its comment, as the datasheet
+# states it, and `drive.py` hands that basis to the engine as a keyword: a
+# torque constant per A_rms and one per A_peak are 22 % apart, and a
+# resistance line to line is twice a wye's per phase. A datum the datasheet
+# does not give is left out, not guessed: the margin that needs it then reads
+# UNCHECKED and fails, unless `drive.py`'s DRIVE_EXEMPT argues why it may not.
+#
+# Both motors are direct drive, so a motor's torque is its joint's and tau1,
+# tau2 above are their derated continuous torques: `drive_checks.py` holds
+# them to what each winding's thermal data supports.
+DRIVE = {
+    "kv1": 8.0,         # shoulder: rpm per volt, line-to-line peak back-EMF
+    "ke1": 88.4,        # shoulder: V_rms/krpm, line to line
+    "r1": 0.20,         # shoulder: ohm, line to line at 25 C, wye
+    "rth1": 1.2,        # shoulder: winding to ambient, K/W
+    "cth1": 300.0,      # shoulder: winding, J/K
+    "kv2": 20.0,        # elbow: rpm per volt, line-to-line peak back-EMF
+    "ke2": 35.4,        # elbow: V_rms/krpm, line to line
+    "r2": 0.25,         # elbow: ohm, line to line at 25 C, wye
+    "rth2": 1.2,        # elbow: winding to ambient, K/W
+    "cth2": 150.0,      # elbow: winding, J/K
+    "t_max": 120.0,     # winding limit, both motors [C]
+    "t_ambient": 40.0,  # the hottest ambient the spec allows [C]
+    "eta_driver": 0.95,  # each driver, constant, both directions of flow
+    "i_peak": 40.0,     # each driver's peak, A_peak line
+    "i_cont": 20.0,     # each driver's continuous, A_rms line
+    "v_max": 56.0,      # each driver's overvoltage trip [V]
+    "v_under": 40.0,    # each driver's undervoltage trip [V]
+    "v_bus": 48.0,      # the supply, a PSU behind a diode: it cannot sink [V]
+    "p_supply": 600.0,  # the supply's rating [W]
+    "c_bus": 10e-3,     # the bus capacitance, the bank's rating [F]
+    "hotel": 5.0,       # the electronics' constant draw [W]
+}
+
 # The **tolerance bands**: each parameter the design does not know to better
 # than a range, as (lo, hi) around its nominal, in the parameter's units. A
 # margin searches each one as an axis (`Band`) with both ends among its
 # corners, so a worst case is stated at its worst band value and never at
 # nominal alone. The forearm's mass is a budget until CAD measures the part,
-# and +-10 % is what the budget is held to. `params_checks.py` fails a band
-# that names no parameter or leaves its nominal outside.
+# and +-10 % is what the budget is held to. The bus's two are the drive's: an
+# electrolytic bank is +-20 %, and the supply's set point +-2 %; the drive
+# margins search both, the least capacitance on the highest supply being where
+# regeneration lifts the bus furthest. A band is a PARAMS key or a DRIVE key,
+# and `params_checks.py` fails one that names neither or leaves its nominal
+# outside.
 BANDS = {
     "m2": (0.72, 0.88),
+    "c_bus": (8e-3, 12e-3),
+    "v_bus": (47.0, 49.0),
 }
 
 # The **intended workspace**: the subset of the envelope the machine is

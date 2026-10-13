@@ -17,8 +17,8 @@ from armature import Budget
 from armature.sampler import DEFAULT_SEED
 
 from kinematics import J_num, fk_num
-from mechanism import COORDINATES, band_values, truth, vector
-from params import BANDS, LOAD_CASES, PLANE_XY, WORKSPACE
+from mechanism import BANDS, COORDINATES, band_values, truth, vector
+from params import LOAD_CASES, PLANE_XY, WORKSPACE
 from dynamics.statics import static_torques
 from run_all import searched
 from verification import (CASES, HOLDING, LIMITS, N, holding_torque,
