@@ -206,10 +206,16 @@ class Band(Interval):
     band's value overrides its parameter before the state is compiled, and
     the space checks, before anything compiles, that the parameter is one
     of the mechanism's and that its nominal lies within its band. `fn`
-    reads the value by axis name, as `p.m2`."""
-    param: str
+    reads the value by axis name, as `p.m2`.
 
-    def __init__(self, param, bands):
+    `of` says whose parameter it is: the `"mechanism"`'s, by default, which
+    is compiled, or another's, such as `"drive"` for the drive data's
+    (`armature.drive.margins` reads those), which the space leaves alone:
+    neither checked against the mechanism nor compiled into it."""
+    param: str
+    of: str
+
+    def __init__(self, param, bands, of="mechanism"):
         if param not in bands:
             raise ValueError(f"no band named {param!r}; the bands are "
                              f"{sorted(bands)}")
@@ -218,7 +224,11 @@ class Band(Interval):
         except (TypeError, ValueError):
             raise ValueError(f"band {param!r} is a (low, high) pair; got "
                              f"{bands[param]!r}") from None
+        if not (isinstance(of, str) and of):
+            raise TypeError(f"band {param!r}: of names whose parameter it is, "
+                            f"such as 'mechanism' or 'drive'; got {of!r}")
         object.__setattr__(self, "param", param)
+        object.__setattr__(self, "of", of)
         object.__setattr__(self, "lo", lo)
         object.__setattr__(self, "hi", hi)
         try:
@@ -226,8 +236,14 @@ class Band(Interval):
         except ValueError as err:
             raise ValueError(f"band {param!r}: {err}") from None
 
+    @property
+    def compiled(self):
+        """Whether the band is the mechanism's, compiled with the state."""
+        return self.of == "mechanism"
+
     def __repr__(self):
-        return f"Band({self.param!r}, ({self.lo!r}, {self.hi!r}))"
+        of = "" if self.compiled else f", of={self.of!r}"
+        return f"Band({self.param!r}, ({self.lo!r}, {self.hi!r}){of})"
 
 
 class Coordinates(_Axis):
@@ -349,8 +365,8 @@ class Space:
             raise ValueError(f"a space holds one Coordinates, which every "
                              f"band compiles into; got {mechanisms}")
         bands = [a for a in axes.values() if isinstance(a, Band)]
-        twice = sorted(p for p, k in Counter(b.param for b in bands).items()
-                       if k > 1)
+        twice = sorted(p for (_, p), k in Counter(
+            (b.of, b.param) for b in bands).items() if k > 1)
         if twice:
             raise ValueError(f"the bands {twice} appear twice; a parameter "
                              f"takes one value at a point")
@@ -358,7 +374,8 @@ class Space:
         if mechanisms:
             coordinates = axes[mechanisms[0]]
             for band in bands:
-                coordinates._check(band)
+                if band.compiled:
+                    coordinates._check(band)
             coordinates.dims  # compiles at nominal, fixing the axes
 
     @property
@@ -437,7 +454,11 @@ class Margin:
     the truth model, and `agree` is the absolute tolerance in `unit` it must
     match `fn` within; it is required with `truth`. The search evaluates
     `truth` at its worst point and its pre-polish best (`Worst.truth`).
-    `budget` defaults to `Budget()`."""
+    `budget` defaults to `Budget()`.
+
+    A margin whose inputs are missing is `unchecked`: a tuple naming each
+    missing input. It is never evaluated, and its search returns a `Worst`
+    marked UNCHECKED, which fails."""
     name: str
     fn: object
     unit: str
@@ -445,6 +466,7 @@ class Margin:
     truth: object = None
     agree: float = None
     budget: Budget = None
+    unchecked: tuple = None
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -461,6 +483,14 @@ class Margin:
                 raise ValueError(f"margin {self.name!r} has a truth, so it "
                                  f"needs agree=, the tolerance in "
                                  f"{self.unit} it must match within")
+        if self.unchecked is not None:
+            missing = self.unchecked
+            if isinstance(missing, str) or not missing or not all(
+                    isinstance(m, str) and m for m in missing):
+                raise TypeError(f"margin {self.name!r}: unchecked names each "
+                                f"missing input, a tuple of strings; got "
+                                f"{missing!r}")
+            object.__setattr__(self, "unchecked", tuple(missing))
         if self.budget is None:
             object.__setattr__(self, "budget", Budget())
         elif not isinstance(self.budget, Budget):
@@ -501,7 +531,10 @@ class Worst:
     every combination; a `Case` carries none. `truth`
     is the `Confirmed` record of the margin's truth at `at` and at
     `pre_polish_at`, or None for a margin without one. Print it for the
-    one-line row a note cites."""
+    one-line row a note cites.
+
+    An UNCHECKED margin's worst names its missing inputs in `unchecked`; its
+    value is nan, it fails, and nothing was evaluated."""
     margin: str
     unit: str
     value: float
@@ -516,8 +549,12 @@ class Worst:
     rejected: MappingProxyType
     coverage: float
     truth: Confirmed = None
+    unchecked: tuple = None
 
     def __str__(self):
+        if self.unchecked:
+            return (f"{self.margin}: UNCHECKED, FAILS; missing "
+                    + ", ".join(self.unchecked))
         text = (f"{self.margin}: {self.value:.7g} {self.unit} at "
                 f"{_written(self.at)}, "
                 f"{'passes' if self.passes else 'FAILS'}; pre-polish "
@@ -550,12 +587,19 @@ def search(margin, seed=DEFAULT_SEED):
     the pre-polish best, the `Point`s `fn` read there, and records the
     result in `Worst.truth`; those evaluations are not counted in `n`.
 
+    An UNCHECKED margin is not evaluated: its `Worst` names what is
+    missing, and fails.
+
     Raises when `fn` returns nan, naming the point, when a combination has
     no point `fn` could evaluate, giving the reasons, and when `truth`
     raises `Infeasible` at a point `fn` evaluated.
     """
     if not isinstance(margin, Margin):
         raise TypeError(f"search takes a Margin; got {margin!r}")
+    if margin.unchecked:
+        return Worst(margin.name, margin.unit, math.nan, {}, False, (),
+                     "UNCHECKED: nothing evaluated", 0, seed, math.nan, {},
+                     MappingProxyType({}), 0.0, None, margin.unchecked)
     space, budget = margin.over, margin.budget
     dims = space.dims
     run = _Run(margin, space)
@@ -651,7 +695,7 @@ class _Run:
             name, axis, unit = mechanism
             values[name] = axis.value(unit, {
                 a.param: values[n] for n, a in self.space.axes.items()
-                if isinstance(a, Band)})
+                if isinstance(a, Band) and a.compiled})
         return values
 
     def evaluate(self, fixed, u):

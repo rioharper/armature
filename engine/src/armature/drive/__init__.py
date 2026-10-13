@@ -24,6 +24,12 @@ state or from `after(segment, fraction)`, each actuator coasting, shorted,
 flux-braking or following a torque profile, with the bus stepped alongside;
 `trace(m, mission, rate, drive=..., capacitance=..., v_source=...)` runs it
 at its timestep and at half of it.
+
+`margins(drive, missions, over=space)` turns all of it into ADR 0005
+`Margin`s, one per check, searched over the move endpoints, event triggers,
+bands, missions and bus configurations, or, for the duty's thermal and
+energy checks, over the missions as written; `review(margins)` plots each
+worst case, and `energy(...)` reports what each mission costs.
 """
 
 from .bus import (AGREE, BrakeResistor, Bus, Charged, Drive, Source,
@@ -34,6 +40,7 @@ from .electrical import (Checked, Current, Curve, Driver, DriveError,
                          envelope, kt_from_kv)
 from .event import (EVENT_STEP, After, Event, Moved, Run, Simulated, after,
                     event)
+from .margins import TRUTH_AGREE, Energy, Reviewed, energy, margins, review
 from .mission import (CONFIRM_RATE, SEARCH_RATE, Duty, Follow, Hold, Limits,
                       Mission, Move, Trace, follow, hold, move, trace)
 from .thermal import Heated, Repeated, heat, repeat, rms_torque
@@ -49,3 +56,5 @@ __all__ += ["EVENT_STEP", "After", "Event", "Moved", "Run", "Simulated",
             "after", "event"]
 __all__ += ["AGREE", "BrakeResistor", "Bus", "Charged", "Drive", "Source",
             "charge"]
+__all__ += ["Energy", "Reviewed", "TRUTH_AGREE", "energy", "margins",
+            "review"]

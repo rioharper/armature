@@ -275,6 +275,38 @@ def test_bands_and_coordinates_are_checked(make, match):
         make()
 
 
+def test_a_band_of_another_is_neither_checked_nor_compiled():
+    """A drive band in a space with Coordinates: its parameter is not the
+    mechanism's, so it is read by name and never compiled."""
+    calls, seen = [], []
+
+    def fn(p):
+        seen.append(p.eta)
+        return p.eta
+
+    worst = search(margin(fn, budget=Budget(global_points=8, polish_starts=0),
+                          eta=Band("eta", {"eta": (0.8, 0.9)}, of="drive"),
+                          state=Coordinates(counted(calls), ARM)))
+    assert calls == [ARM["m2"]]
+    assert worst.value == 0.8 and min(seen) == 0.8
+    assert "of='drive'" in repr(Band("eta", {"eta": (0.8, 0.9)}, of="drive"))
+    Space(a=Band("m2", BANDS), b=Band("m2", BANDS, of="drive"))  # two owners
+
+
+def test_an_unchecked_margin_fails_naming_what_is_missing():
+    def fn(p):
+        raise AssertionError("an unchecked margin is never evaluated")
+
+    worst = search(Margin("winding", fn, "K", over=Space(),
+                          unchecked=("thermal", "i_continuous")))
+    assert worst.unchecked == ("thermal", "i_continuous")
+    assert not worst.passes and math.isnan(worst.value) and worst.n == 0
+    assert str(worst) == ("winding: UNCHECKED, FAILS; missing thermal, "
+                          "i_continuous")
+    with pytest.raises(TypeError, match="tuple of strings"):
+        Margin("winding", fn, "K", over=Space(), unchecked="thermal")
+
+
 def test_a_band_may_not_change_the_axes():
     def renamed(p):
         name = "a" if p["m"] < 1.05 else "b"
