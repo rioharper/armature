@@ -6,6 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "mujoco~=3.15.0",
     "numpy>=2.0",
+    "ruckig~=0.19.4",
     "scipy>=1.14",
     "sympy>=1.13",
 ]
