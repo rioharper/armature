@@ -90,8 +90,8 @@ def _efficiency(owner, name, value, inclusive=False):
 
 def _kind(owner, name, value, kind, optional=False):
     if not (isinstance(value, kind) or (optional and value is None)):
-        raise TypeError(f"{owner}'s {name} is a {kind.__name__}, which names "
-                        f"its basis; got {value!r}")
+        raise TypeError(f"{owner}'s {name} is a {kind.__name__}; got "
+                        f"{value!r}")
 
 
 def _among(owner, name, value, allowed):

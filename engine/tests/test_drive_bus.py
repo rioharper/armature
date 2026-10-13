@@ -107,6 +107,23 @@ def test_a_pulse_into_a_capacitor_with_no_sink_reads_the_energy_relation(
     assert charged.t[0] == 0.0 and charged.t[-1] == STOP
 
 
+def test_a_bus_may_start_away_from_its_source(stop):
+    """An event triggered partway through a mission starts from the bus as
+    it then is: from 30 V over a 24 V source that cannot sink, the stop's
+    return lands on the capacitor from 30 V."""
+    v0, c = 30.0, 0.01
+    charged = charge(stop, one(Source(v=24.0, sinks=False, p_max=500.0), c),
+                     v0=v0)
+    np.testing.assert_allclose(
+        charged.v, np.sqrt(v0 ** 2 + 2 * returned(charged.t) / c),
+        rtol=1e-12)
+    for name in ("t", "v", "source", "brake"):
+        assert not getattr(charged, name).flags.writeable
+    assert not charged.flux["motor"].flags.writeable
+    with pytest.raises(ValueError, match="v0"):
+        charge(stop, one(Source(v=24.0, sinks=False, p_max=1.0), c), v0=-1.0)
+
+
 def test_a_brake_clamps_at_its_threshold_and_takes_the_excess(stop):
     """On 10 mF from 24 V the stop would reach 102.8 V. A 48 V brake of 8 Ω
     takes 48²/8 = 288 W at its threshold, above the stop's peak return of
@@ -121,6 +138,7 @@ def test_a_brake_clamps_at_its_threshold_and_takes_the_excess(stop):
     excess = returned(STOP) - 0.5 * c * (threshold ** 2 - v0 ** 2)
     assert excess == pytest.approx(41.36, abs=1e-3)
     assert charged.brake_energy == pytest.approx(excess, rel=1e-9)
+    assert charged.brake_pulse == charged.brake_energy  # one pulse
     # below the threshold the brake is open, and the bus is the capacitor's
     below = charged.v < threshold - 1e-9
     assert np.all(charged.brake[:-1][below[:-1] & below[1:]] == 0.0)
@@ -128,6 +146,39 @@ def test_a_brake_clamps_at_its_threshold_and_takes_the_excess(stop):
         charged.v[below], np.sqrt(v0 ** 2 + 2 * returned(charged.t[below])
                                   / c), rtol=1e-12)
     assert charged.brake_peak <= J_WHEEL * ALPHA * W0
+
+
+class Pulses:
+    """A stand-in for a trace, as `charge` reads one: the direct-drive
+    motor returns P = τ·ω through 1 N·m at −P rad/s over [0, 1] s and
+    [2, 3] s, and carries nothing between, at 1 kHz."""
+    P = 50.0
+
+    def __init__(self):
+        self.t = np.arange(3001) / 1000.0
+        on = (self.t <= 1.0) | (self.t >= 2.0)
+        self._tau = np.where(on, 1.0, 0.0)
+        self._omega = np.where(on, -self.P, 0.0)
+        self.torque = {"motor": self._tau}
+        self.gear = {"motor": 1.0}
+
+    def output(self, actuator, n=None):
+        return self._tau, self._omega, np.zeros(self.t.shape)
+
+
+def test_a_brake_pulse_is_one_run_of_conduction():
+    """A brake at the source's own 24 V, which cannot sink, takes each
+    return as it comes, so it conducts twice. Each pulse is the return over
+    [0, 1] s plus half a millisecond's ramp, P·1.0005 less copper; the
+    energy is both."""
+    copper = R_TINY * (1.0 / KT) ** 2  # W, at 10 A while it carries
+    pulse = (Pulses.P - copper) * 1.0005
+    drive = one(Source(v=24.0, sinks=False, p_max=500.0), 0.01,
+                brake=BrakeResistor(threshold=24.0, r=1.0, energy=100.0,
+                                    power=50.0))
+    charged = charge(Pulses(), drive)
+    assert charged.brake_pulse == pytest.approx(pulse, rel=1e-9)
+    assert charged.brake_energy == pytest.approx(2 * pulse, rel=1e-9)
 
 
 # --- the source ---------------------------------------------------------------
@@ -156,10 +207,10 @@ def test_a_source_that_cannot_sink_never_takes_current_back(start, stop):
     np.testing.assert_allclose(  # each substep's mean draw
         drawing.source[:-1],
         RATE * (drawing.t[:-1] + drawing.t[1:]) / 2 + COPPER, rtol=1e-9)
-    assert drawing.energy == pytest.approx(
+    assert drawing.source_energy == pytest.approx(
         0.5 * J_WHEEL * W0 ** 2 + COPPER * STOP, rel=1e-9)
     assert np.all(returning.source == 0.0)
-    assert returning.energy == 0.0
+    assert returning.source_energy == 0.0
     np.testing.assert_allclose(
         returning.v, np.sqrt(v0 ** 2 + 2 * returned(returning.t) / c),
         rtol=1e-12)
@@ -175,7 +226,7 @@ def test_a_source_that_sinks_holds_the_bus_inside_its_band(stop):
     assert np.all((22.0 <= charged.v) & (charged.v <= 26.0))
     np.testing.assert_allclose(charged.v, 25.0, rtol=1e-12)
     assert np.all(charged.source[:-1] < 0)
-    assert charged.energy == pytest.approx(-returned(STOP), rel=1e-9)
+    assert charged.source_energy == pytest.approx(-returned(STOP), rel=1e-9)
 
 
 def test_a_sinking_source_past_its_limit_lets_the_bus_rise(stop):
@@ -195,6 +246,7 @@ def test_a_sinking_source_past_its_limit_lets_the_bus_rise(stop):
     assert charged.v[-1] == pytest.approx(
         math.sqrt(v0 ** 2 + 2 * (rise - drained) / c), rel=1e-9)
     assert np.min(charged.source) == pytest.approx(-sink, rel=1e-12)
+    assert charged.sink_peak == pytest.approx(sink, rel=1e-12)
 
 
 def test_a_source_past_its_limit_lets_the_bus_sag(start):
@@ -210,6 +262,10 @@ def test_a_source_past_its_limit_lets_the_bus_sag(start):
         math.sqrt(v0 ** 2 - 2 * deficit / c), rel=1e-9)
     assert charged.v[-1] == charged.minimum
     assert charged.source_peak == pytest.approx(limit, rel=1e-12)
+    # asked of it, past what it could give: the draw at the end
+    assert charged.source_demand == pytest.approx(RATE * STOP + COPPER,
+                                                  rel=1e-12)
+    assert charged.sink_peak == 0.0
 
 
 def test_a_hotel_load_draws_from_the_bus_all_along(stop):
@@ -473,7 +529,8 @@ def test_a_band_runs_at_the_point_it_is_given(stop):
 # --- the data, each error naming its field ------------------------------------
 @pytest.mark.parametrize("make, words", [
     (lambda: Source(v=24.0, sinks="yes", p_max=1.0), "sinks"),
-    (lambda: Source(v=(26.0, 22.0), sinks=True, p_max=1.0), "v band"),
+    (lambda: Source(v=(26.0, 22.0), sinks=True, p_max=1.0),
+     r"v band's low is above its high"),
     (lambda: Source(v=24.0, sinks=True, p_max=0.0), "p_max"),
     (lambda: BrakeResistor(threshold=30.0, r=-8.0, energy=1.0, power=1.0),
      "r"),
@@ -485,13 +542,8 @@ def test_a_band_runs_at_the_point_it_is_given(stop):
     (lambda: Bus(actuators=("motor",), source=Source(
         v=24.0, sinks=True, p_max=1.0), capacitance=1e-3, hotel=-1.0),
      "hotel"),
-    (lambda: one(Source(v=(22.0, 30.0), sinks=False, p_max=1.0), 1e-3,
-                 brake=BrakeResistor(threshold=30.0, r=8.0, energy=1.0,
-                                     power=1.0)), "threshold"),
-    (lambda: Drive(motors={"motor": motor()}, drivers={"motor": driver(
-        flux_brake=FluxBrake(onset=24.0, i_d=Current(1.0, per="A_peak")))},
-        bus=Bus(actuators=("motor",), source=Source(
-            v=24.0, sinks=False, p_max=1.0), capacitance=1e-3)), "onset"),
+    (lambda: Source(v=(22.0, 30.0), sinks=False, p_max=1.0,
+                    overvoltage=30.0), "overvoltage"),
     (lambda: Drive(motors={"motor": motor(), "spare": motor()},
                    drivers={"motor": driver()},
                    bus=Bus(actuators=("motor",), source=Source(

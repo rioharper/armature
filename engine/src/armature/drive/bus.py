@@ -35,26 +35,29 @@ clamps are:
   what arrives, and past that V rises until V²/R does. Its capacity in a
   substep is V²/R at the substep's starting voltage, never below the
   threshold: the one first-order term, and why the substep is refined. A
-  forward-Euler chopper overshoots by P·h/(C·V_th) instead, about the
-  probe's 30.2 V on 8 Ω at 0.05 ms, where this model holds 30.0 V.
+  forward-Euler chopper overshoots by P·h/(C·V_th) instead, which is how
+  ADR 0006's probe read 30.2 V where this model holds the threshold.
 - **each flux brake**, a driver's: above its `onset` it drives d-axis
   current into its own winding, absorbing up to i_d²·R_φ(T) in the
   power-invariant d-q convention, i_d = `FluxBrake.i_d.dq(wiring)`, which is
-  the spec's amplitude-invariant 1.5·I_d,peak²·R_φ. All of it is taken to
-  heat the winding, and none is lost in the driver, which errs high on heat
-  and low on absorption, both the safe side. Its heat, per actuator on the
-  trace's own times, is `heat`'s `power=` input for that motor.
+  the spec's amplitude-invariant 1.5·I_d,peak²·R_φ. R_φ is at the winding
+  temperature `charge` is given, by default the resistance's T₀, which on a
+  hot winding reads both the capacity and the heat low, so give it. All of
+  it is taken to heat the winding, and none is lost in the driver. Its heat,
+  per actuator on the trace's own times, is `heat`'s `power=` input for
+  that motor.
 
 Clamps at one level share what they take in proportion to their
-capacities. A brake threshold or a flux onset at or below the source's band
-would burn the source's own power, so the `Drive` refuses it. The bus
-starts at V_s. A draw no clamp can meet empties the capacitor to 0 V, where
-it stays until power returns: a minimum of 0 is a collapsed bus.
+capacities. A clamp below the source's voltage takes the source's own
+power, and the source and brake rows report it. The bus starts at V_s, or
+at `v0` for an event triggered partway through a mission. A draw no clamp
+can meet empties the capacitor to 0 V, where it stays until power returns:
+a minimum of 0 is a collapsed bus.
 
 The substep starts at the trace's longest sample interval and is halved
-until halving it again moves the peak V by less than `agree` (V, default
-`AGREE`, 0.01 V); `Charged` reports the substep it ran at, so halving that
-one moves the peak by less than `agree`. Within a substep each actuator's
+until halving it again moves the peak V by less than `agree` (V, by default
+`AGREE`); `Charged` reports the substep it ran at, so halving that one
+moves the peak by less than `agree`. Within a substep each actuator's
 power is its mean there, and the brake's capacity is V²/R at its start, so
 both converge as it shrinks; on a brake carrying twice its threshold
 capacity, the refined peak sits within 2·`agree` of the ODE's.
@@ -70,16 +73,20 @@ Units are SI: V, F, W, J, Ω, s.
 
 import math
 from dataclasses import dataclass
+from functools import partial
 from types import MappingProxyType
 from typing import NamedTuple
 
 import numpy as np
 
-from .electrical import (Driver, DriveError, Gearbox, Motor, _number,
+from ..state import _frozen
+from .electrical import (Driver, DriveError, Gearbox, Motor, _kind, _number,
                          _positive, electrical)
 
 AGREE = 0.01       # V: halving the substep moves the peak by less than this
 MAX_HALVINGS = 10  # the substep's refinement gives up past this many halvings
+SOURCE, BRAKE = ("source",), ("brake",)
+# the clamps' keys; a flux brake's is ("flux", actuator)
 
 
 def _band(owner, name, value):
@@ -95,8 +102,8 @@ def _band(owner, name, value):
     lo, hi = (_number(owner, f"{name} band's {end}", v)
               for end, v in (("low", lo), ("high", hi)))
     if lo > hi:
-        raise ValueError(f"{owner}'s {name} band has its low at or below its "
-                         f"high; got ({lo}, {hi})")
+        raise ValueError(f"{owner}'s {name} band's low is above its high; "
+                         f"got ({lo}, {hi})")
     return lo, hi
 
 
@@ -120,10 +127,12 @@ def _within(name, band, value):
 class Source:
     """The bus's source: its voltage `v`, a (lo, hi) band or a number (V);
     whether it `sinks`, as a pack does and a PSU behind a diode does not;
-    and `p_max` (W), the most it sources, or sinks."""
+    `p_max` (W), the most it sources, or sinks; and an optional
+    `overvoltage` (V), where it trips, one of the bus's trips."""
     v: tuple
     sinks: bool
     p_max: float
+    overvoltage: float = None
 
     def __post_init__(self):
         object.__setattr__(self, "v", _band("a source", "v", self.v))
@@ -132,6 +141,13 @@ class Source:
                             f"{self.sinks!r}")
         object.__setattr__(self, "p_max",
                            _number("a source", "p_max", self.p_max))
+        if self.overvoltage is not None:
+            trip = _number("a source", "overvoltage", self.overvoltage)
+            if not trip > self.v[1]:
+                raise ValueError(f"a source's overvoltage is above its v "
+                                 f"band; got {trip:g} V over "
+                                 f"{self.v[1]:g} V")
+            object.__setattr__(self, "overvoltage", trip)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -174,14 +190,10 @@ class Bus:
             raise ValueError(f"a bus names each actuator once; got "
                              f"{actuators!r}")
         object.__setattr__(self, "actuators", actuators)
-        if not isinstance(self.source, Source):
-            raise TypeError(f"a bus's source is a Source; got "
-                            f"{self.source!r}")
+        _kind("a bus", "source", self.source, Source)
         object.__setattr__(self, "capacitance",
                            _band("a bus", "capacitance", self.capacitance))
-        if not (self.brake is None or isinstance(self.brake, BrakeResistor)):
-            raise TypeError(f"a bus's brake is a BrakeResistor or None; got "
-                            f"{self.brake!r}")
+        _kind("a bus", "brake", self.brake, BrakeResistor, optional=True)
         object.__setattr__(self, "hotel", _number(
             "a bus", "hotel load", self.hotel, inclusive=True))
 
@@ -218,8 +230,7 @@ class Drive:
                                                    Driver))
         object.__setattr__(self, "gearboxes", _keyed(
             "gearboxes", self.gearboxes or {}, Gearbox))
-        if not isinstance(self.bus, Bus):
-            raise TypeError(f"a drive's bus is a Bus; got {self.bus!r}")
+        _kind("a drive", "bus", self.bus, Bus)
         on = set(self.bus.actuators)
         for name, keys in (("motors", self.motors), ("drivers", self.drivers),
                            ("gearboxes", self.gearboxes)):
@@ -233,18 +244,6 @@ class Drive:
             if missing:
                 raise ValueError(f"the bus carries {missing}, which have no "
                                  f"{name}")
-        top = self.bus.source.v[1]
-        if self.bus.brake is not None and not self.bus.brake.threshold > top:
-            raise ValueError(f"the brake resistor's threshold "
-                             f"{self.bus.brake.threshold:g} V is at or below "
-                             f"the source's {top:g} V, so it would burn the "
-                             f"source's power")
-        for a, d in self.drivers.items():
-            if d.flux_brake is not None and not d.flux_brake.onset > top:
-                raise ValueError(f"{a!r}'s flux brake onset "
-                                 f"{d.flux_brake.onset:g} V is at or below "
-                                 f"the source's {top:g} V, so it would burn "
-                                 f"the source's power")
 
 
 @dataclass(frozen=True)
@@ -257,10 +256,16 @@ class Charged:
     bus there; `peak` and `minimum` are its extremes. `source` and `brake`
     are the power (W) each took or gave over the substep starting at each
     time, the last value never held: the source's positive sourcing and
-    negative sinking, the brake's always ≥ 0. `brake_energy` (J) and
-    `brake_peak` (W) are the brake's, `source_peak` (W) the most the source
-    sourced, which reaches `p_max` where it ran out, and `energy` (J) the
-    net energy the source gave over the trace.
+    negative sinking, the brake's always ≥ 0.
+
+    The brake's `brake_energy` (J) is over the whole trace, its
+    `brake_pulse` (J) the most in one unbroken run of conduction, against
+    its pulse rating, and `brake_peak` (W) its most at once. The source's
+    `source_peak` (W) is the most it sourced, which stops at `p_max`, and
+    `source_demand` (W) the most the bus drew from it, the actuators' net
+    draw plus the hotel load, uncapped, so a source too small for the
+    mission reads above its `p_max` and not only as sag; `sink_peak` (W) is
+    the most it sank, and `source_energy` (J) the net energy it gave.
 
     `power` is each actuator's bus power (W, positive drawing) and `flux`
     each flux brake's heat (W, zero where its driver has none), both on the
@@ -275,20 +280,23 @@ class Charged:
     flux: MappingProxyType
     power: MappingProxyType
     brake_energy: float
+    brake_pulse: float
     brake_peak: float
     source_peak: float
-    energy: float
+    source_demand: float
+    sink_peak: float
+    source_energy: float
     capacitance: float
     v_source: float
     substep: float
     agree: float
 
 
-def charge(trace, drive, *, capacitance=None, v_source=None, agree=AGREE,
-           substep=None, temperature=None, gear=None):
+def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
+           agree=AGREE, substep=None, temperature=None, gear=None):
     """The bus of `drive` over `trace`, at `capacitance` (F) and `v_source`
     (V), each a point in its band, or the band's only value where it is
-    one: a `Charged`.
+    one: a `Charged`. The bus starts at `v0` (V), by default `v_source`.
 
     Each actuator's load comes from `trace.output(a)` and its bus power from
     `electrical`, its winding at `temperature[a]` (°C, a number or one per
@@ -303,6 +311,7 @@ def charge(trace, drive, *, capacitance=None, v_source=None, agree=AGREE,
     bus = drive.bus
     c = _within("capacitance", bus.capacitance, capacitance)
     v_s = _within("v_source", bus.source.v, v_source)
+    v0 = v_s if v0 is None else _positive(v0, "charge's v0")
     agree = _positive(agree, "charge's agree")
     t = np.asarray(trace.t, dtype=float)
     stray = sorted(set(getattr(trace, "torque", {})) - set(bus.actuators))
@@ -328,14 +337,14 @@ def charge(trace, drive, *, capacitance=None, v_source=None, agree=AGREE,
             i_d = driver.flux_brake.i_d.dq(motor.wiring)
             flux.append((a, driver.flux_brake.onset, i_d ** 2 * e.resistance))
     total = sum(power.values())
+    run = partial(_run, t, total, flux, bus, c, v_s, v0)
     if substep is not None:
-        result = _run(t, total, flux, bus, c, v_s,
-                      _positive(substep, "charge's substep"))
+        result = run(_positive(substep, "charge's substep"))
     else:
         h = float(np.max(np.diff(t)))
-        result = _run(t, total, flux, bus, c, v_s, h)
+        result = run(h)
         for _ in range(MAX_HALVINGS):
-            finer = _run(t, total, flux, bus, c, v_s, h / 2)
+            finer = run(h / 2)
             if abs(finer.peak - result.peak) < agree:
                 break
             h, result = h / 2, finer
@@ -351,16 +360,30 @@ def charge(trace, drive, *, capacitance=None, v_source=None, agree=AGREE,
         heat[a][:-1] = np.divide(energy, np.diff(t), out=np.zeros(len(energy)),
                                  where=np.diff(t) > 0)
     steps = np.diff(result.t)
-    src, brk = result.source, result.brake
+    sourced, braked = result.source, result.brake
+    taken = braked[:-1] * steps  # J, the brake's in each substep
     return Charged(
-        result.t, result.v, result.peak, float(np.min(result.v)), src, brk,
-        MappingProxyType(heat), MappingProxyType(power),
-        float(np.sum(brk[:-1] * steps)), float(np.max(brk)),
-        float(max(0.0, np.max(src))), float(np.sum(src[:-1] * steps)),
-        c, v_s, float(substep), agree)
+        _frozen(result.t), _frozen(result.v), result.peak,
+        float(np.min(result.v)), _frozen(sourced), _frozen(braked),
+        MappingProxyType({a: _frozen(h) for a, h in heat.items()}),
+        MappingProxyType({a: _frozen(p) for a, p in power.items()}),
+        float(np.sum(taken)), _largest_run(taken), float(np.max(braked)),
+        float(max(0.0, np.max(sourced))),
+        float(max(0.0, np.max(total + bus.hotel))),
+        float(max(0.0, -np.min(sourced))),
+        float(np.sum(sourced[:-1] * steps)), c, v_s, float(substep), agree)
 
 
-class _Ran(NamedTuple):
+def _largest_run(energies):
+    """The most energy in one unbroken run of nonzero entries."""
+    best = run = 0.0
+    for e in energies:
+        run = run + e if e > 0 else 0.0
+        best = max(best, run)
+    return float(best)
+
+
+class _Run(NamedTuple):
     """One run of the bus: substep ends `t` and voltages `v`, the source's
     and brake's power over each substep (W), and each flux brake's energy
     (J) over each of the trace's intervals."""
@@ -375,31 +398,36 @@ class _Ran(NamedTuple):
         return float(np.max(self.v))
 
 
-SOURCE, BRAKE = ("source",), ("brake",)  # clamp keys; a flux brake's is
-                                         # ("flux", actuator)
+class _Clamp(NamedTuple):
+    """A clamp: the voltage `level` it holds, its `key`, and whether it is a
+    `floor`, giving power to hold V up, or a ceiling, taking it to hold V
+    down."""
+    level: float
+    key: tuple
+    floor: bool
 
 
-def _run(t, power, flux, bus, c, v_s, h):
+def _run(t, power, flux, bus, c, v_s, v0, h):
     """The bus over sample times `t` with the actuators' total bus `power`
-    (W) at each, at substep `h`, from V_s."""
+    (W) at each, at substep `h`, from `v0`, its source at `v_s`."""
     half_c = 0.5 * c
     source, brake = bus.source, bus.brake
-    clamps = [(v_s, SOURCE, True)]  # (level V, key, a floor rather than a
-    if source.sinks:                # ceiling)
-        clamps.append((v_s, SOURCE, False))
+    clamps = [_Clamp(v_s, SOURCE, True)]
+    if source.sinks:
+        clamps.append(_Clamp(v_s, SOURCE, False))
     if brake is not None:
-        clamps.append((brake.threshold, BRAKE, False))
-    clamps += [(onset, ("flux", a), False) for a, onset, _ in flux]
+        clamps.append(_Clamp(brake.threshold, BRAKE, False))
+    clamps += [_Clamp(onset, ("flux", a), False) for a, onset, _ in flux]
     levels = [(half_c * level ** 2,
-               [key for lv, key, floor in clamps if lv == level and floor],
-               [key for lv, key, floor in clamps if lv == level and not floor])
-              for level in sorted({lv for lv, _, _ in clamps})]
-    capacity = {("flux", a): cap for a, _, cap in flux}
+               [k.key for k in clamps if k.level == level and k.floor],
+               [k.key for k in clamps if k.level == level and not k.floor])
+              for level in sorted({k.level for k in clamps})]
+    flux_capacity = {("flux", a): values for a, _, values in flux}
     heat = {a: np.zeros(len(t) - 1) for a, _, _ in flux}
 
-    energy, v = half_c * v_s ** 2, v_s
-    times, volts, sourced, braked = [float(t[0])], [v_s], [], []
-    cap = {SOURCE: source.p_max}
+    energy, v = half_c * v0 ** 2, v0
+    times, volts, sourced, braked = [float(t[0])], [v0], [], []
+    cap = {SOURCE: source.p_max}  # W: each clamp's capacity this substep
     for k in range(len(t) - 1):
         span = float(t[k + 1] - t[k])
         if span == 0:
@@ -407,7 +435,7 @@ def _run(t, power, flux, bus, c, v_s, h):
         m = max(1, math.ceil(span / h - 1e-9))
         step = span / m
         p0, p1 = float(power[k]), float(power[k + 1])
-        for key, values in capacity.items():
+        for key, values in flux_capacity.items():
             cap[key] = float(values[k])
         for j in range(m):
             if brake is not None:
@@ -422,7 +450,7 @@ def _run(t, power, flux, bus, c, v_s, h):
             braked.append(flows.get(BRAKE, 0.0) / step)
             for a in heat:
                 heat[a][k] += flows.get(("flux", a), 0.0)
-    return _Ran(np.array(times), np.array(volts), np.append(sourced, 0.0),
+    return _Run(np.array(times), np.array(volts), np.append(sourced, 0.0),
                 np.append(braked, 0.0), heat)
 
 
