@@ -417,12 +417,12 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
 
 
 def _largest_run(energies):
-    """The most energy in one unbroken run of nonzero entries."""
-    best = run = 0.0
-    for e in energies:
-        run = run + e if e > 0 else 0.0
-        best = max(best, run)
-    return float(best)
+    """The most energy in one unbroken run of nonzero entries, each run
+    summed in order."""
+    on = np.concatenate(([False], np.asarray(energies) > 0, [False]))
+    edges = np.flatnonzero(on[1:] != on[:-1]).reshape(-1, 2)
+    return float(max((np.add.accumulate(energies[a:b])[-1]
+                      for a, b in edges), default=0.0))
 
 
 class _Run(NamedTuple):
