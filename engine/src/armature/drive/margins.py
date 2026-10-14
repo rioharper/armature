@@ -9,7 +9,8 @@ check, each searched by `armature.search`:
   `Thermal`, its RMS torque against its continuous rating; and the driver's
   RMS current against its continuous rating, where it gives one;
 - **per bus**, its peak voltage against the lowest trip on it (each
-  driver's `max_voltage`, the source's `overvoltage`); its minimum against
+  driver's `max_voltage`, the source's `overvoltage`, each of the bus's
+  `ratings`), its row naming the part that binds; its minimum against
   the highest undervoltage trip; the brake resistor's pulse energy and its
   continuous power, where there is one; and the source's power.
 
@@ -118,7 +119,8 @@ def margins(drive, missions, over=None, *, model=None, params=None,
             out.append(Margin(
                 check.name, _Slack(evaluator, check, False), check.unit,
                 over=space, truth=_Slack(evaluator, check, True),
-                agree=agree * check.limit, budget=budget))
+                agree=agree * check.limit, budget=budget,
+                against=check.against))
     return tuple(out)
 
 
@@ -139,7 +141,8 @@ class _Check:
     """One margin's identity: its `name`, `unit`, `kind` (peak or duty),
     what it reads (`what`), its `actuator` or None for the bus, the `limit`
     (in `unit`) its truth's tolerance is a fraction of, the plot that
-    reviews it, and the inputs it is `missing`, if any."""
+    reviews it, the inputs it is `missing`, if any, and what its row says
+    it is held `against`, if anything."""
     name: str
     unit: str
     kind: str
@@ -148,6 +151,7 @@ class _Check:
     limit: float
     plot: str
     missing: tuple = None
+    against: str = None
 
 
 @dataclass(frozen=True)
@@ -395,7 +399,8 @@ class _Setup:
                                   driver.i_peak.per, PEAK, "peak current", a,
                                   driver.i_peak.value, "torque-speed"))
             out.append(_Check("bus: peak V", "V", PEAK, "peak V", None,
-                              _trip(first), "bus"))
+                              _trip(first), "bus",
+                              against=_against(self.nominal)))
             out.append(_Check("bus: minimum V", "V", PEAK, "minimum V", None,
                               _undervoltage(first) or first.bus.source.v[0],
                               "bus"))
@@ -743,11 +748,37 @@ def _undervoltage(d):
 
 
 def _trip(d):
-    """The lowest overvoltage trip on the bus of `d`."""
-    trips = [d.drivers[a].max_voltage for a in d.bus.actuators]
-    if d.bus.source.overvoltage is not None:
-        trips.append(d.bus.source.overvoltage)
-    return min(trips)
+    """The lowest overvoltage trip on the bus of `d` (V)."""
+    return _lowest(d)[0]
+
+
+def _lowest(d):
+    """The lowest overvoltage trip on the bus of `d` and what binds there:
+    (V, its parts, named), every driver there named as one."""
+    drivers = {f"{a}'s driver": d.drivers[a].max_voltage
+               for a in d.bus.actuators}
+    trips = dict(d.bus.ratings)
+    source = d.bus.source
+    if source.overvoltage is not None:
+        trips["the source's overvoltage"] = source.overvoltage
+    low = min([*drivers.values(), *trips.values()])
+    parts = [n for n, v in trips.items() if v == low]
+    tied = [n for n, v in drivers.items() if v == low]
+    if len(tied) == len(drivers) > 1:
+        tied = ["every driver"]
+    return low, parts + tied
+
+
+def _against(nominal):
+    """What the peak V is held under, the lowest trip at nominal, named for
+    its row: once where every bus configuration shares it, each named
+    otherwise."""
+    named = {c: "{} ({:g} V)".format(", ".join(parts), low)
+             for c, (low, parts) in ((c, _lowest(d))
+                                     for c, d in nominal.items())}
+    if len(set(named.values())) == 1:
+        return next(iter(named.values()))
+    return ", ".join(f"{text} on {c}" for c, text in named.items())
 
 
 def _first_brake(nominal):
@@ -866,7 +897,9 @@ def _bus(plt, setup, check, ran, worst):
     if ran.sagged is not c:
         volts.plot(ran.sagged.t, ran.sagged.v, color="tab:purple", lw=1,
                    label="V(t), windings hot")
-    volts.axhline(_trip(d), color="tab:red", lw=1, label="lowest trip")
+    trip, parts = _lowest(d)
+    volts.axhline(trip, color="tab:red", lw=1,
+                  label=f"lowest trip: {', '.join(parts)}")
     volts.axhline(_undervoltage(d), color="tab:red", ls="--", lw=1,
                   label="undervoltage trip")
     if d.bus.brake is not None:

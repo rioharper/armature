@@ -26,6 +26,10 @@ from armature.drive import (Bus, Current, Drive, Driver, Duty, Energy,
                             Gearbox, Kt, Limits, Mission, Motor, Resistance,
                             Source, Thermal, after, charge, electrical, energy,
                             event, follow, hold, margins, move, review, trace)
+from test_drive_bus import ALPHA, J_WHEEL, STOP, W0, returned
+from test_drive_bus import driver as plain_driver
+from test_drive_bus import flywheel as spinning
+from test_drive_bus import motor as tiny_motor
 from test_drive_mission import (MGL, SWING, pendulum, swing_q, swing_qd,
                                 swing_qdd)
 from test_fixture_2r_arm import PARAMS as ARM
@@ -191,6 +195,55 @@ def test_the_least_capacitance_and_the_most_efficient_gearbox_peak_the_bus(
     assert worst.at["capacitance"] == 220e-6
     assert worst.at["eta"] == 0.95
     assert worst.truth.agrees
+
+
+# --- the lowest trip on the bus ----------------------------------------------
+STOPPED = Mission("stop", [follow(
+    lambda t: {"spin": W0 * t - 0.5 * ALPHA * t * t}, STOP,
+    qd=lambda t: {"spin": W0 - ALPHA * t}, qdd=lambda t: {"spin": -ALPHA})])
+C_STOP = 0.2  # F: the stop's 50 J lifts 24 V to 32.8 V
+
+
+def stopping(**bus):
+    """The flywheel's one motor, on 200 V drivers, a 24 V source that cannot
+    sink, and C_STOP."""
+    kwargs = dict(source=Source(v=24.0, sinks=False, p_max=500.0),
+                  capacitance=C_STOP)
+    kwargs.update(bus)
+    return Drive(motors={"motor": tiny_motor()},
+                 drivers={"motor": plain_driver()},
+                 bus=Bus(actuators=("motor",), **kwargs))
+
+
+@pytest.fixture(scope="module")
+def free_wheel():
+    return armature.compile(spinning, {"J": J_WHEEL})
+
+
+def test_a_rating_no_driver_carries_is_the_lowest_trip(free_wheel):
+    """A 40 V power board under the 200 V drivers: the stop lands on the
+    capacitor alone, so the peak is √(V₀² + 2E/C) and the board takes the
+    slack, which the row names."""
+    ms = named(margins(stopping(ratings={"power board": 40.0,
+                                         "capacitor bank": 63.0}),
+                       [STOPPED], model=free_wheel))
+    worst = search(ms["bus: peak V"])
+    peak = math.sqrt(24.0 ** 2 + 2 * returned(STOP) / C_STOP)
+    assert worst.value == pytest.approx(40.0 - peak, rel=1e-9)
+    assert str(worst).startswith(
+        f"bus: peak V: {worst.value:.7g} V against power board (40 V) at ")
+
+
+def test_each_bus_configuration_names_its_own_lowest_trip(free_wheel):
+    ms = named(margins({"boarded": stopping(ratings={"power board": 40.0}),
+                        "bare": stopping(source=Source(
+                            v=24.0, sinks=False, p_max=500.0,
+                            overvoltage=150.0))},
+                       [STOPPED], model=free_wheel))
+    worst = search(ms["bus: peak V"])
+    assert worst.at["drive"] == "boarded"
+    assert ("against power board (40 V) on boarded, the source's "
+            "overvoltage (150 V) on bare at ") in str(worst)
 
 
 def test_a_drive_band_names_a_drive_parameter():

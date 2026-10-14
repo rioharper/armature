@@ -170,13 +170,16 @@ class BrakeResistor:
 class Bus:
     """The shared DC bus: the `actuators` on it, by name; its `source`; its
     `capacitance` (F), a (lo, hi) band or a number; an optional `brake`
-    resistor; and a constant `hotel` load (W). Flux braking is each driver's
-    own, from its `Driver.flux_brake`."""
+    resistor; a constant `hotel` load (W); and the voltage `ratings` (V) of
+    the parts on it that no driver carries, by name, such as `{"power
+    board": 44.0}`, each one of the bus's trips. Flux braking is each
+    driver's own, from its `Driver.flux_brake`."""
     actuators: tuple
     source: Source
     capacitance: tuple
     brake: BrakeResistor = None
     hotel: float = 0.0
+    ratings: MappingProxyType = None
 
     def __post_init__(self):
         if isinstance(self.actuators, str) or not hasattr(
@@ -197,6 +200,19 @@ class Bus:
         _kind("a bus", "brake", self.brake, BrakeResistor, optional=True)
         object.__setattr__(self, "hotel", _number(
             "a bus", "hotel load", self.hotel, inclusive=True))
+        ratings = self.ratings if self.ratings is not None else {}
+        if not hasattr(ratings, "items") or not all(
+                isinstance(k, str) and k for k in ratings):
+            raise TypeError(f"a bus's ratings map each part's name to its "
+                            f"voltage rating; got {self.ratings!r}")
+        for name, value in ratings.items():
+            rating = _number("a bus", f"rating {name!r}", value)
+            if not rating > self.source.v[1]:
+                raise ValueError(f"a bus's rating {name!r} lies above its "
+                                 f"source's v band; got {rating:g} V over "
+                                 f"{self.source.v[1]:g} V")
+        object.__setattr__(self, "ratings", MappingProxyType(
+            {k: float(v) for k, v in ratings.items()}))
 
 
 def _keyed(name, value, kind):

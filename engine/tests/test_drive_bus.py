@@ -544,6 +544,12 @@ def test_a_band_runs_at_the_point_it_is_given(stop):
      "hotel"),
     (lambda: Source(v=(22.0, 30.0), sinks=False, p_max=1.0,
                     overvoltage=30.0), "overvoltage"),
+    (lambda: Bus(actuators=("motor",), source=Source(
+        v=(22.0, 30.0), sinks=True, p_max=1.0), capacitance=1e-3,
+        ratings={"power board": 30.0}), r"rating 'power board'.*above"),
+    (lambda: Bus(actuators=("motor",), source=Source(
+        v=24.0, sinks=True, p_max=1.0), capacitance=1e-3, ratings=44.0),
+     "ratings"),
     (lambda: Drive(motors={"motor": motor(), "spare": motor()},
                    drivers={"motor": driver()},
                    bus=Bus(actuators=("motor",), source=Source(
