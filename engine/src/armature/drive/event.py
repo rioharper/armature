@@ -63,14 +63,16 @@ electrical model, is held over the step and integrated with the clamps
 exactly, as `charge` integrates a substep. The bus starts where the mission
 left it (`trace` charges the segments before the event), or at V_s.
 
-Every event is run twice, at its timestep and at half of it; `trace`
-carries the first in its samples and reports both as a `Simulated`.
+Every event is run at its timestep and at half of it; `trace` carries the
+first in its samples and reports both as a `Simulated`, whose run at half
+the timestep runs when it is first read.
 """
 
 import copy
 import math
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
+from functools import cached_property
 from types import MappingProxyType
 from typing import NamedTuple
 
@@ -175,11 +177,17 @@ class Moved(NamedTuple):
 @dataclass(frozen=True)
 class Simulated:
     """Mission segment `segment`, an event, run at its timestep (`run`,
-    whose samples the mission's trace carries) and at half of it
-    (`half`)."""
+    whose samples the mission's trace carries) and at half of it (`half`),
+    which runs when it is first read: nothing but the resolution check
+    reads it, and it costs twice the run."""
     segment: int
     run: Run
-    half: Run
+    halved: Callable = field(repr=False, compare=False)
+
+    @cached_property
+    def half(self):
+        """The event run at half its timestep, a `Run`."""
+        return self.halved()
 
     @property
     def moved(self):

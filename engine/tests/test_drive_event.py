@@ -19,6 +19,7 @@ and the mechanics, never from the event module:
   from the anchors.
 """
 
+import importlib
 import math
 
 import numpy as np
@@ -40,6 +41,7 @@ from test_fixture_wheel_leg import CARRIED
 from test_fixture_wheel_leg import PARAMS as WHEEL_LEG
 from test_fixture_wheel_leg import wheel_leg
 
+MISSION = importlib.import_module("armature.drive.mission")
 SQ3 = math.sqrt(3)
 KT = 0.1  # N·m/A in d-q, as 0.1·√3 N·m/A_rms reads in a wye; Ke the same
 V_S = 24.0
@@ -119,6 +121,35 @@ def test_a_shorted_flywheel_decays_as_its_damping_from_the_constants(
     assert moved.torque["motor"] < 1e-4 * np.max(np.abs(t.torque["motor"]))
     assert moved.v < AGREE
     assert not t.driven["motor"].any()  # a short's driver is off
+
+
+def test_an_events_half_run_runs_when_it_is_first_read(monkeypatch):
+    """A trace's samples and its bus read the event at its timestep alone;
+    the run at half of it, the resolution check, runs when `half` is first
+    read, once, and is the event run at half its timestep."""
+    simulations = []
+    real = MISSION._simulate
+
+    def spy(*args):
+        simulations.append(args)
+        return real(*args)
+    monkeypatch.setattr(MISSION, "_simulate", spy)
+    m = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    d = drive(["motor"], 0.5)
+
+    def shorted(timestep):
+        return Mission("short", [event(spun(m, 20.0), {"motor": "short"},
+                                       0.1, timestep=timestep)])
+
+    simulated, = trace(m, shorted(1e-3), 1000.0, drive=d).events
+    assert len(simulations) == 1
+    half = simulated.half
+    assert len(simulations) == 2 and simulated.half is half
+    assert half.timestep == 5e-4
+    fine = trace(m, shorted(5e-4), 2000.0, drive=d)
+    np.testing.assert_array_equal(half.trace.speed["motor"],
+                                  fine.speed["motor"])
+    np.testing.assert_array_equal(half.v, fine.events[0].run.v)
 
 
 def test_a_short_puts_nothing_on_the_bus():
