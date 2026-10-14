@@ -246,10 +246,12 @@ def _fails(checks, match):
 
 def test_an_unchecked_winding_fails_through_discovery_unless_exempt():
     """Drop both windings' thermal data and run_all's discovery fails the
-    press's winding margins as UNCHECKED; exempt them in DRIVE_EXEMPT and
-    the same discovery passes, printing each exemption and its reason."""
+    press's winding margins as UNCHECKED, saying FAILS; exempt them in
+    DRIVE_EXEMPT and the same discovery passes, printing each exemption as
+    the data it lacks and its reason, and never FAILS, which beside
+    [EXEMPT] reads as a contradiction."""
     bare = {k: v for k, v in DRIVE.items() if not k.startswith(("rth", "cth"))}
-    _fails(_discovered(params=bare), "UNCHECKED")
+    _fails(_discovered(params=bare), "UNCHECKED, FAILS; missing ")
     why = "no datasheet thermal data yet; the bench run measures it"
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
@@ -257,11 +259,13 @@ def test_an_unchecked_winding_fails_through_discovery_unless_exempt():
                                  bare):
             check()
     for a in MOTORS:
-        assert f"[EXEMPT] {a}: winding: UNCHECKED" in out.getvalue(), \
-            out.getvalue()
-    assert out.getvalue().count(f"because {why}") == len(MOTORS)
+        assert (f"[EXEMPT] {a}: winding: UNCHECKED (missing "
+                in out.getvalue()), out.getvalue()
+    assert out.getvalue().count(f") because {why}") == len(MOTORS)
+    assert "FAILS" not in out.getvalue(), out.getvalue()
     print("  [PASS] an UNCHECKED winding fails through run_all's discovery, "
-          "and passes, printed with its reason, once DRIVE_EXEMPT argues it")
+          "and passes, printed with what it lacks and its reason, once "
+          "DRIVE_EXEMPT argues it")
 
 
 def test_drive_exempt_refuses_what_it_cannot_argue():

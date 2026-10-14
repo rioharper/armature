@@ -31,7 +31,8 @@ from kinematics import J, T_EE, singular_values
 from dynamics.lagrangian import G_SYM, M_SYM
 from dynamics.statics import static_torques
 from drive import energies
-from run_all import discover_exemptions, discover_margins, searched
+from run_all import (discover_exemptions, discover_margins, exempt_row,
+                     searched)
 
 # For the reader, not for a check. Replace with your mechanism's landmarks.
 LOW = np.array([WORKSPACE[c][0] for c in COORDINATES])
@@ -74,14 +75,14 @@ for name, qv in NAMED.items():
 # the worst of each Choice combination, so a note can say which load case
 # binds and by how much the others clear. The drive's are among them, one
 # row per check under the drive's heading; an UNCHECKED one names the data it
-# lacks and, where DRIVE_EXEMPT lets it stand, prints the reason.
+# lacks and, where DRIVE_EXEMPT lets it stand, prints the reason in place of
+# FAILS, as run_all.py does.
 print("\nMargins: the worst case of each, searched (armature.search)")
 exempt = discover_exemptions()
 for title, margin in discover_margins():
     worst = searched(margin)
-    print(f"  [{title}] {worst}")
-    if margin.name in exempt:
-        print(f"      exempt: {exempt[margin.name]}")
+    print(f"  [{title}] [EXEMPT] {exempt_row(worst, exempt[margin.name])}"
+          if margin.name in exempt else f"  [{title}] {worst}")
     if len(worst.cases) > 1:
         for case in sorted(worst.cases, key=lambda c: c.value):
             choices = ", ".join(f"{k} = {v}" for k, v in case.choices.items())

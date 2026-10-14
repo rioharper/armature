@@ -28,7 +28,7 @@ A module-level tuple of margins is found too, which is how `drive.py`
 declares the drive margins (`armature.drive.margins`). A margin whose inputs
 are missing is UNCHECKED: its check prints the inputs it lacks and fails,
 unless the module's DRIVE_EXEMPT names it with an argued reason, which then
-prints beside its row.
+prints in its row in place of FAILS.
 
 During development run one milestone by name — a module or a package:
 
@@ -139,12 +139,20 @@ def searched(margin):
     return _SEARCHED[id(margin)][1]
 
 
+def exempt_row(worst, exempt):
+    """The row an UNCHECKED `worst` prints where `exempt` lets it stand: the
+    inputs it lacks and the reason, never the FAILS of its own row, which
+    beside [EXEMPT] reads as a contradiction."""
+    return (f"{worst.margin}: UNCHECKED (missing "
+            f"{', '.join(worst.unchecked)}) because {exempt}")
+
+
 def margin_check(margin, exempt=None):
     """The check a discovered margin runs as: search it, print its row, and
     fail where it does not pass, or where its truth disagrees beyond
     `agree`. An UNCHECKED margin, whose inputs are missing, fails too,
-    unless `exempt` gives the reason it may stand: then its row and the
-    reason print. The margin rides on the check as `.margin`, the reason as
+    unless `exempt` gives the reason it may stand: then its `exempt_row`,
+    the inputs it lacks and the reason, prints. The margin rides on the check as `.margin`, the reason as
     `.exempt`."""
     def check():
         worst = searched(margin)
@@ -152,7 +160,7 @@ def margin_check(margin, exempt=None):
             assert exempt, (
                 f"a margin is UNCHECKED: {worst}. Give it the data it names, "
                 f"or argue in {UNCHECKED_EXEMPT} why it may stand unchecked")
-            print(f"  [EXEMPT] {worst}\n           because {exempt}")
+            print(f"  [EXEMPT] {exempt_row(worst, exempt)}")
             return
         assert worst.passes, f"a margin fails: {worst}"
         assert worst.truth is None or worst.truth.agrees, (
