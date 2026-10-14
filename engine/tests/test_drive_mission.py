@@ -198,20 +198,22 @@ def test_a_clipped_move_stops_at_the_nearer_face(m):
     assert t.q["shoulder"][-1] == math.pi
 
 
-def test_a_clipped_move_on_a_face_heading_out_stays_put(m):
+def test_a_clipped_move_on_a_face_heading_out_is_infeasible(m):
+    """Clipped to nothing, it would be a trace of one sample, which no bus
+    can be charged over: the search counts it as rejected instead."""
     start = m.at(q={"elbow": 2.6})
-    t = trace(m, Mission("out", [move(start, direction=(0.0, 1.0),
+    with pytest.raises(Infeasible, match="'elbow'"):
+        trace(m, Mission("out", [move(start, direction=(0.0, 1.0),
                                       distance=1.0, limits=LIMITS,
                                       clip=True)]), SEARCH_RATE)
-    assert t.duration == 0.0
-    assert np.all(t.q["elbow"] == 2.6)
 
 
 @pytest.mark.parametrize("clip", [False, True])
 def test_a_searched_move_past_the_envelope_is_rejected_or_clipped(clip):
     """Up to 3 rad from anywhere inside within's box leaves it from most
-    starts: rejected under the coordinate it left by, or clipped and none
-    rejected. Either way the search runs to its worst."""
+    starts: rejected under the coordinate it left by, or clipped, when only
+    a corner of the space, on a face heading out, is rejected. Either way
+    the search runs to its worst."""
     within = {"shoulder": (-1.0, 1.0), "elbow": (-1.0, 1.0)}
 
     def travel(p):
@@ -224,12 +226,12 @@ def test_a_searched_move_past_the_envelope_is_rejected_or_clipped(clip):
         state=Coordinates(arm, ARM, within=within),
         direction=Direction("xy"), distance=Interval(0.0, 3.0)),
         budget=Budget(global_points=32, polish_starts=0)))
-    if clip:
-        assert not worst.rejected
-    else:
-        assert set(worst.rejected) == {
-            "a move out of the envelope along 'shoulder'",
-            "a move out of the envelope along 'elbow'"}
+    assert set(worst.rejected) == {
+        "a move out of the envelope along 'shoulder'",
+        "a move out of the envelope along 'elbow'"}
+    rejected = sum(worst.rejected.values())
+    corners = 2 ** 4  # two coordinates, a direction, a distance
+    assert rejected <= corners if clip else rejected > corners
     assert worst.value < 0
 
 

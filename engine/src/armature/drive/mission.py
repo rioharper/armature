@@ -161,7 +161,7 @@ class Move:
             end = _posture(m, self.end, "a move's end")
         else:
             unit = _direction(m, self.direction)
-            distance = (_to_face(box, start, unit, self.distance)
+            distance = (_clipped(box, start, unit, self.distance)
                         if self.clip else self.distance)
             end = {n: start[n] + distance * unit[n] for n in names}
         end = _inside(box, end)
@@ -219,17 +219,20 @@ def _envelope(m, names, within):
     return out
 
 
-def _to_face(box, start, unit, distance):
+def _clipped(box, start, unit, distance):
     """`distance`, or the distance from `start` along `unit` to the first
-    face of `box` it meets where that is nearer, and 0 where `start` is on
-    a face it heads out of."""
+    face of `box` it meets where that is nearer. Raises `Infeasible`,
+    naming the face's coordinate, where `start` is on a face it heads out
+    of: a move of nothing is a trace of one sample."""
     for n, u in unit.items():
         lo, hi = box[n]
-        if u > 0:
-            distance = min(distance, (hi - start[n]) / u)
-        elif u < 0:
-            distance = min(distance, (lo - start[n]) / u)
-    return max(distance, 0.0)
+        face = hi if u > 0 else lo if u < 0 else None
+        if face is None or (face - start[n]) / u >= distance:
+            continue
+        distance = (face - start[n]) / u
+        if distance <= 0:
+            raise Infeasible(f"a move out of the envelope along {n!r}")
+    return distance
 
 
 def _inside(box, posture):
@@ -350,7 +353,8 @@ def move(start, end=None, direction=None, distance=None, *, limits,
     the coordinate, so a search counts the point as rejected; one that ends
     within `FACE_TOL` of a face, by rounding, ends on it. With `clip`, a
     move along a direction is shortened to the first face it meets
-    instead, to nothing where it starts on a face heading out."""
+    instead, and one that starts on a face heading out raises
+    `Infeasible`."""
     if (end is None) == (direction is None):
         raise ValueError("a move goes to an end, or along a direction for a "
                          "distance; give one of the two")
