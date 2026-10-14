@@ -12,7 +12,11 @@ and the mechanics, never from the event module:
 - a flux-braking flywheel regenerates (E − R_φ·i_max)·i_max, raising the
   bus by ½C(V² − V₀²) to the onset, where the flux brake takes it;
 - fixture 3, held by its motors at the torques `inverse` gives, presses
-  its wheel on the floor with the weight of everything the wheel carries.
+  its wheel on the floor with the weight of everything the wheel carries;
+- fixture 2's platform on four shorted winches, stopped partway through a
+  move, loses exactly the energy the shorts dissipate, its rotors'
+  ½J_m·ω_m² counted, and each winch turns at its cable's rate, worked here
+  from the anchors.
 """
 
 import math
@@ -22,12 +26,16 @@ import pytest
 from ruckig import InputParameter, Ruckig, Synchronization, Trajectory
 
 import armature
-from armature import actuator, body, gravity, joint
+from armature import actuator, body, gravity, joint, lock
 from armature.drive import (AGREE, Bus, Current, Drive, Driver, FluxBrake,
                             Gearbox, Kt, Limits, Mission, Motor, Resistance,
                             Simulated, Source, after, charge, electrical,
                             event, follow, hold, move, trace)
+from armature.elements import Cable
 from test_drive_mission import (AMPLITUDE, J_TOTAL, MGL, SWING, pendulum)
+from test_fixture_cable_platform import ANCHORS, ATTACH, G, HOME
+from test_fixture_cable_platform import params as hung_at
+from test_fixture_cable_platform import platform
 from test_fixture_wheel_leg import CARRIED
 from test_fixture_wheel_leg import PARAMS as WHEEL_LEG
 from test_fixture_wheel_leg import wheel_leg
@@ -358,6 +366,116 @@ def test_an_event_with_a_resting_contact_reports_it():
     assert np.max(np.abs(t.qd["x"])) < 1e-3
 
 
+# --- a cable robot, through its transmission -----------------------------------
+WINCHES = ("w1", "w2", "w3", "w4")
+SLIDES = ("hang:x", "hang:y", "hang:z")
+N_W, R_W, J_W = 5.0, 0.03, 5.6e-5  # belt ratio, drum radius (m), rotor
+                                   # inertia (kg·m²): Plumb's winches
+K_W = N_W / R_W                    # motor rad/s per m/s of cable
+KT_W, R_W_PHI = 0.03, 1.0          # N·m/A and Ω in d-q: a short's 25 N·s/m
+                                   # on each cable
+
+
+def unhung(p):
+    """Fixture 2's platform with its cables taken off, for winches to carry
+    through a seam."""
+    return [e for e in platform(p) if not isinstance(e, Cable)]
+
+
+LEVEL_ON_WINCHES = armature.reduce(
+    unhung, *(lock(f"hang:{c}", 0.0, assumption="A5")
+              for c in ("rx", "ry", "rz")), name="level, on winches")
+
+
+def cables(point):
+    """Each cable's unit vector from its attachment toward its anchor, and
+    its length."""
+    span = ANCHORS - (np.asarray(point) + ATTACH)
+    length = np.linalg.norm(span, axis=1)
+    return span / length[:, None], length
+
+
+def winch_rates(state):
+    """The cables' unit vectors, the platform's velocity, and each winch's
+    ω̇_m at q̈ = 0, K(l̇² − |v|²)/l."""
+    point = np.array([state.q[s] for s in SLIDES])
+    v = np.array([state.qd[s] for s in SLIDES])
+    u, length = cables(point)
+    pay = -u @ v  # each cable's l̇
+    return u, v, K_W * (pay ** 2 - v @ v) / length
+
+
+def winches(state, *, t, p):
+    """ω_m = K·u·v: a winch turns positive reeling in."""
+    u, _, bias = winch_rates(state)
+    return {w: (dict(zip(SLIDES, K_W * u[i])), bias[i], J_W)
+            for i, w in enumerate(WINCHES)}
+
+
+def least_tensions(state, qdd, loads, *, t, p):
+    """The least-norm tensions that carry the platform, as each winch's
+    motor torque with its rotor's own J_m·ω̇_m."""
+    u, v, bias = winch_rates(state)
+    a = np.array([qdd[s] for s in SLIDES])
+    pull = np.linalg.pinv(u.T) @ (p["m"] * (a + (0.0, 0.0, G)))
+    out = {}
+    for i, w in enumerate(WINCHES):
+        rotor = J_W * (K_W * u[i] @ a + bias[i])
+        out[w] = (pull[i] / K_W + rotor, K_W * u[i] @ v, rotor)
+    return out
+
+
+def on_winches(p):
+    m = armature.compile(LEVEL_ON_WINCHES, p)
+    start = dict(zip(SLIDES, HOME))
+    across = move(start, end={**start, "hang:x": 2.8, "hang:z": 1.5},
+                  limits=Limits(v=1.0, a=3.0, j=30.0, along="path"))
+    return m, across
+
+
+def test_an_estop_stops_a_cable_robot_on_its_shorted_winches():
+    """A move across the room, its winches shorted halfway: the platform's
+    energy, ½m|v|² + m·g·z and each rotor's ½J_m·ω_m², falls by what the
+    shorts dissipate, ∫Σ c·ω_m² with c = Kt·Ke/R_φ, to first order in the
+    step. Each winch turns at K·u·v and brakes at −c·ω_m, at the platform's
+    own samples; a short puts nothing on the bus."""
+    p = hung_at(HOME, 2.0)
+    m, across = on_winches(p)
+    assert m.coordinates == SLIDES and not m.actuators
+    stop = event(after(across, 0.5), {w: "short" for w in WINCHES}, 0.3)
+    t = trace(m, Mission("e-stop", [across, stop], actuation=least_tensions,
+                         transmission=winches), 1000.0,
+              drive=drive(WINCHES, R_W_PHI, kt=KT_W),
+              gear={w: N_W for w in WINCHES})
+    simulated, = t.events
+    c = KT_W * KT_W / R_W_PHI
+    first = simulated.run.trace
+    assert np.linalg.norm([first.qd[s][0] for s in SLIDES]) > 0.5
+
+    gaps = []
+    for run in (simulated.run, simulated.half):
+        tr = run.trace
+        point = np.stack([tr.q[s] for s in SLIDES], axis=1)
+        v = np.stack([tr.qd[s] for s in SLIDES], axis=1)
+        for i, w in enumerate(WINCHES):
+            u = np.array([cables(x)[0][i] for x in point])
+            np.testing.assert_allclose(tr.speed[w],
+                                       K_W * np.sum(u * v, axis=1),
+                                       rtol=1e-12, atol=1e-9)
+            np.testing.assert_allclose(tr.torque[w], -c * tr.speed[w],
+                                       rtol=1e-12, atol=1e-12)
+        assert np.all(run.v == V_S)
+        rotors = sum(0.5 * J_W * tr.speed[w] ** 2 for w in WINCHES)
+        e = (0.5 * p["m"] * np.sum(v * v, axis=1)
+             + p["m"] * G * tr.q["hang:z"] + rotors)
+        dissipated = np.trapezoid(sum(c * tr.speed[w] ** 2
+                                      for w in WINCHES), tr.t)
+        gaps.append(abs(e[0] - e[-1] - dissipated) / dissipated)
+    assert gaps[0] < 5e-4  # 1.5e-2 without the rotors' ω̇ at q̈ = 0, 0.15
+                           # without their inertia
+    assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
+
+
 # --- what an event needs ------------------------------------------------------
 def test_an_event_names_what_it_is_missing():
     m = armature.compile(pendulum, SWING)
@@ -387,3 +505,29 @@ def test_an_event_names_what_it_is_missing():
               1e3, drive=d)
     with pytest.raises(ValueError, match="fraction"):
         after(first, 1.5)
+
+
+def test_an_event_under_a_seam_names_what_it_is_missing():
+    p = hung_at(HOME, 2.0)
+    m, across = on_winches(p)
+    stop = event(after(across, 0.5), {w: "short" for w in WINCHES}, 0.1)
+    d = drive(WINCHES, R_W_PHI, kt=KT_W)
+    gear = {w: N_W for w in WINCHES}
+    with pytest.raises(ValueError, match="transmission="):
+        trace(m, Mission("x", [across, stop], actuation=least_tensions),
+              1e3, drive=d, gear=gear)
+    with pytest.raises(KeyError, match="gear"):
+        trace(m, Mission("x", [across, stop], actuation=least_tensions,
+                         transmission=winches), 1e3, drive=d)
+    with pytest.raises(ValueError, match="actuation="):
+        Mission("x", [across], transmission=winches)
+    with pytest.raises(KeyError, match="hang:rx"):
+        trace(m, Mission("x", [across, stop], actuation=least_tensions,
+                         transmission=lambda state, *, t, p: {
+                             w: ({"hang:rx": 1.0}, 0.0, 0.0)
+                             for w in WINCHES}), 1e3, drive=d, gear=gear)
+    floating = armature.compile(unhung, p)
+    with pytest.raises(ValueError, match="open chain"):
+        trace(floating, Mission("x", [event(floating.at(), {
+            w: "short" for w in WINCHES}, 0.1)], actuation=least_tensions,
+            transmission=winches), 1e3, drive=d, gear=gear)
