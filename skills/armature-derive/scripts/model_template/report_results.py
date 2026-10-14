@@ -1,7 +1,7 @@
 """
 report_results.py — prints what the milestone notes cite instead of pasting:
 the long symbolic results, the named configurations, 03_results.md's tables,
-and the drive's margins and energy.
+and the drive's margins, energy and capacitance needed.
 
     uv run python report_results.py
 
@@ -30,7 +30,7 @@ from mechanism import COORDINATES, truth, vector
 from kinematics import J, T_EE, singular_values
 from dynamics.lagrangian import G_SYM, M_SYM
 from dynamics.statics import static_torques
-from drive import energies
+from drive import capacitances, energies
 from run_all import discover_exemptions, discover_margins, searched
 
 # For the reader, not for a check. Replace with your mechanism's landmarks.
@@ -77,8 +77,9 @@ for name, qv in NAMED.items():
 # lacks and, where DRIVE_EXEMPT lets it stand, prints the reason.
 print("\nMargins: the worst case of each, searched (armature.search)")
 exempt = discover_exemptions()
+worsts = {}
 for title, margin in discover_margins():
-    worst = searched(margin)
+    worst = worsts[margin.name] = searched(margin)
     print(f"  [{title}] {worst}")
     if margin.name in exempt:
         print(f"      exempt: {exempt[margin.name]}")
@@ -96,3 +97,14 @@ for e in energies():
     print(f"  {e.mission:<16}{e.source:>10.4g}{e.regenerated:>13.4g}"
           f"{e.copper:>10.4g}{session:>14}")
 
+# The least capacitance each worst case of the bus's peak V needs to stay
+# under its lowest trip, the number a spec buys against: reported, never
+# checked. Closed form where nothing sinks below the trip; bisected otherwise.
+print("\nDrive: the capacitance each worst case of the bus's peak V needs")
+print(f"  {'mission':<16}{'bus':<12}{'C [mF]':>10}  {'under':<26}"
+      f"{'found by':<13}{'brake pulse [J]':>15}")
+for n in capacitances(worsts):
+    pulse = "" if n.brake_pulse is None else f"{n.brake_pulse:.4g}"
+    found = "closed form" if n.exact else "bisection"
+    print(f"  {n.mission:<16}{n.drive or '':<12}{n.capacitance * 1e3:>10.4g}"
+          f"  {n.against:<26}{found:<13}{pulse:>15}")

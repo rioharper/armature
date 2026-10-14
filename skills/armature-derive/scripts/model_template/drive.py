@@ -12,8 +12,8 @@ Self-tests in drive_checks.py.
 
 from armature import Band, Budget, Space
 from armature.drive import (Bus, Current, Drive, Driver, Ke, Motor,
-                            Resistance, Source, Thermal, energy, kt_from_kv,
-                            margins)
+                            Resistance, Source, Thermal, capacitance_needed,
+                            energy, kt_from_kv, margins)
 
 from params import BANDS, DRIVE
 from missions import MISSIONS, SPACE
@@ -94,3 +94,10 @@ def energies():
     """Each written mission's energy at nominal, by `armature.drive.energy`:
     reported in report_results.py, never checked."""
     return energy(drive, MISSIONS, OVER, params=DRIVE)
+
+
+def capacitances(worsts=None):
+    """The least capacitance each worst case of the bus's peak V needs, by
+    `armature.drive.capacitance_needed`, from the margins' `worsts` where
+    given: reported in report_results.py, never checked."""
+    return capacitance_needed(DRIVE_MARGINS, worsts)

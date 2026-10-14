@@ -61,8 +61,10 @@ winding with neither a `Thermal` nor a continuous rating, or duty margins
 with no mission as written. Its search returns a `Worst` naming them, and
 fails.
 
-`energy(...)` reports each written mission's energy, which no margin
-checks. `review(margins)` plots each margin's worst case into `review/`.
+`energy(...)` reports each written mission's energy, and
+`capacitance_needed(margins)` the least capacitance each worst case of the
+bus's peak V needs, which no margin checks. `review(margins)` plots each
+margin's worst case into `review/`.
 """
 
 import math
@@ -471,9 +473,11 @@ class _Setup:
                       c.kt * c.i_continuous, "torque-speed", missing)
 
     # --- one evaluation ------------------------------------------------------
-    def run(self, values, rate, confirm=False, nominal=False):
+    def run(self, values, rate, confirm=False, nominal=False,
+            capacitance=None):
         """The mission at a point's `values`, traced at `rate`, through the
-        electrical model and the bus: a `_Ran`."""
+        electrical model and the bus: a `_Ran`; at `capacitance` (F), where
+        given, even off the bus's band."""
         mechanism = {} if nominal else {
             b.param: float(values[n]) for n, b in self.mechanism_bands.items()}
         drive_values = {} if nominal else {
@@ -485,6 +489,8 @@ class _Setup:
             m = self._compiled(mechanism)
         config = values.get("drive") if self.configured else None
         d = self._drive(config, drive_values)
+        if capacitance is not None:
+            d = replace(d, bus=replace(d.bus, capacitance=capacitance))
         if set(d.bus.actuators) != set(self.actuators):
             raise ValueError(f"drive(p) carries {list(d.bus.actuators)} at "
                              f"{drive_values}; at nominal it carries "
