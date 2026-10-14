@@ -30,7 +30,9 @@ mission's `transmission(state, *, t, p)`.
 `Margin`s, one per check, searched over the move endpoints, event triggers,
 bands, missions and bus configurations, or, for the duty's thermal and
 energy checks, over the missions as written; `review(margins)` plots each
-worst case, and `energy(...)` reports what each mission costs.
+worst case, `energy(...)` reports what each mission costs, and
+`capacitance_needed(margins)` the least capacitance each worst case of the
+bus's peak V needs.
 """
 
 from .bus import (AGREE, BrakeResistor, Bus, Charged, Drive, Source,
@@ -42,6 +44,7 @@ from .electrical import (Checked, Current, Curve, Driver, DriveError,
 from .event import (EVENT_STEP, After, Event, Moved, Run, Simulated, after,
                     event)
 from .margins import TRUTH_AGREE, Energy, Reviewed, energy, margins, review
+from .needed import Needed, capacitance_needed
 from .mission import (CONFIRM_RATE, SEARCH_RATE, Duty, Follow, Hold, Limits,
                       Mission, Move, Trace, follow, hold, move, trace)
 from .thermal import Heated, Repeated, heat, repeat, rms_torque
@@ -59,3 +62,4 @@ __all__ += ["AGREE", "BrakeResistor", "Bus", "Charged", "Drive", "Source",
             "charge"]
 __all__ += ["Energy", "Reviewed", "TRUTH_AGREE", "energy", "margins",
             "review"]
+__all__ += ["Needed", "capacitance_needed"]

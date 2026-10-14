@@ -15,6 +15,7 @@ module:
 """
 
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -22,11 +23,16 @@ from PIL import Image
 
 import armature
 from armature import Band, Budget, Direction, Interval, Space, search
-from armature.drive import (Bus, Current, Drive, Driver, Duty, Energy,
-                            FluxBrake, Gearbox, Kt, Limits, Mission, Motor,
-                            Resistance, Source, Thermal, after, charge,
+from armature.drive import (CONFIRM_RATE, BrakeResistor, Bus, Current, Drive,
+                            Driver, Duty, Energy, FluxBrake, Gearbox, Kt, Limits,
+                            Mission, Motor, Needed, Resistance, Source,
+                            Thermal, after, capacitance_needed, charge,
                             electrical, energy, event, follow, hold, margins,
                             move, review, trace)
+from test_drive_bus import ALPHA, J_WHEEL, STOP, W0, returned
+from test_drive_bus import driver as plain_driver
+from test_drive_bus import flywheel as spinning
+from test_drive_bus import motor as tiny_motor
 from test_drive_mission import (MGL, SWING, pendulum, swing_q, swing_qd,
                                 swing_qdd)
 from test_fixture_2r_arm import PARAMS as ARM
@@ -192,6 +198,97 @@ def test_the_least_capacitance_and_the_most_efficient_gearbox_peak_the_bus(
     assert worst.at["capacitance"] == 220e-6
     assert worst.at["eta"] == 0.95
     assert worst.truth.agrees
+
+
+# --- the lowest trip on the bus ----------------------------------------------
+STOPPED = Mission("stop", [follow(
+    lambda t: {"spin": W0 * t - 0.5 * ALPHA * t * t}, STOP,
+    qd=lambda t: {"spin": W0 - ALPHA * t}, qdd=lambda t: {"spin": -ALPHA})])
+C_STOP = 0.2  # F: the stop's 50 J lifts 24 V to 32.8 V
+
+
+def stopping(undervoltage=10.0, **bus):
+    """The flywheel's one motor, on 200 V drivers, a 24 V source that cannot
+    sink, and C_STOP."""
+    kwargs = dict(source=Source(v=24.0, sinks=False, p_max=500.0),
+                  capacitance=C_STOP)
+    kwargs.update(bus)
+    return Drive(motors={"motor": tiny_motor()},
+                 drivers={"motor": plain_driver(undervoltage=undervoltage)},
+                 bus=Bus(actuators=("motor",), **kwargs))
+
+
+@pytest.fixture(scope="module")
+def free_wheel():
+    return armature.compile(spinning, {"J": J_WHEEL})
+
+
+def test_a_rating_no_driver_carries_is_the_lowest_trip(free_wheel):
+    """A 40 V power board under the 200 V drivers: the stop lands on the
+    capacitor alone, so the peak is √(V₀² + 2E/C) and the board takes the
+    slack, which the row names."""
+    ms = named(margins(stopping(ratings={"power board": 40.0,
+                                         "capacitor bank": 63.0}),
+                       [STOPPED], model=free_wheel))
+    worst = search(ms["bus: peak V"])
+    peak = math.sqrt(24.0 ** 2 + 2 * returned(STOP) / C_STOP)
+    assert worst.value == pytest.approx(40.0 - peak, rel=1e-9)
+    assert str(worst).startswith(
+        f"bus: peak V: {worst.value:.7g} V against power board (40 V) at ")
+
+
+def test_each_bus_configuration_names_its_own_lowest_trip(free_wheel):
+    ms = named(margins({"boarded": stopping(ratings={"power board": 40.0}),
+                        "bare": stopping(source=Source(
+                            v=24.0, sinks=False, p_max=500.0,
+                            overvoltage=150.0))},
+                       [STOPPED], model=free_wheel))
+    worst = search(ms["bus: peak V"])
+    assert worst.at["drive"] == "boarded"
+    assert ("against power board (40 V) on boarded, the source's "
+            "overvoltage (150 V) on bare at ") in str(worst)
+
+
+# --- a bus configuration with no source --------------------------------------
+UNMATED = dict(source=None, v0=24.0)
+
+
+def test_a_bus_with_no_source_has_no_minimum_or_source_power_margin(
+        free_wheel):
+    """Its peak is the stop's return on the capacitor alone, from v0."""
+    ms = named(margins(stopping(**UNMATED), [STOPPED], model=free_wheel))
+    assert "bus: minimum V" not in ms and "bus: source power" not in ms
+    peak = math.sqrt(24.0 ** 2 + 2 * returned(STOP) / C_STOP)
+    assert search(ms["bus: peak V"]).value == pytest.approx(200.0 - peak,
+                                                            rel=1e-9)
+
+
+def test_a_configuration_with_no_source_is_absent_from_the_source_margins(
+        free_wheel):
+    """Its hotel load drains the bus to nothing, which fails neither
+    margin: each is the mated pack's alone."""
+    ms = named(margins({"mated": stopping(hotel=200.0),
+                        "unmated": stopping(hotel=200.0, **UNMATED)},
+                       [STOPPED], model=free_wheel))
+    for name in ("bus: minimum V", "bus: source power"):
+        worst = search(ms[name])
+        cases = {c.choices["drive"]: c.value for c in worst.cases}
+        assert cases["unmated"] == math.inf
+        assert worst.at["drive"] == "mated" and math.isfinite(worst.value)
+
+
+def test_a_drained_bus_reads_its_envelope_at_its_drivers_trip(free_wheel):
+    """With no source, 200 W of hotel load drains the bus to 0 V, and the
+    driver is off below its 20 V trip: the envelope reads V_min there, as it
+    does where a sinking source holds the bus at 20 V."""
+    drained = stopping(undervoltage=20.0, hotel=200.0, **UNMATED)
+    assert charge(trace(free_wheel, STOPPED, 200.0), drained).minimum == 0
+    held = stopping(undervoltage=20.0, source=Source(v=20.0, sinks=True,
+                                                     p_max=1e4))
+    name = "motor: envelope at V_min"
+    worst = [search(named(margins(d, [STOPPED], model=free_wheel))[name])
+             for d in (drained, held)]
+    assert worst[0].value == pytest.approx(worst[1].value, rel=1e-12)
 
 
 def test_a_drive_band_names_a_drive_parameter():
@@ -402,6 +499,72 @@ def test_a_holds_energy_is_its_copper_loss_through_the_driver():
     assert report.per_session == pytest.approx(report.source * 60, rel=1e-12)
 
 
+# --- the capacitance a bus needs, reported -----------------------------------
+def needed(d, free_wheel, **kwargs):
+    found = capacitance_needed(margins(d, [STOPPED], model=free_wheel),
+                               **kwargs)
+    assert all(isinstance(n, Needed) for n in found)
+    return found
+
+
+def test_the_no_sink_pulse_inverts_exactly(free_wheel):
+    """Nothing sinks below the 40 V board, so √(V₀² + 2E/C) = 40 V gives
+    C = 2E/(40² − V₀²) in closed form, from v0 and from a source that
+    cannot sink alike."""
+    for bus in (UNMATED, {}):
+        n, = needed(stopping(ratings={"power board": 40.0}, **bus),
+                    free_wheel)
+        assert n.capacitance == pytest.approx(
+            2 * returned(STOP) / (40.0 ** 2 - 24.0 ** 2), rel=1e-12)
+        assert n.exact and n.trip == 40.0
+        assert n.against == "power board (40 V)"
+        assert n.mission == "stop" and n.drive is None
+        assert n.brake_energy is None and n.brake_pulse is None
+
+
+def test_a_sink_below_the_trip_is_bisected(free_wheel):
+    """A pack that sinks 50 W at 24 V takes the stop's return, 100(1 − t) W,
+    up to 50 W: the capacitor takes the rest until t = 0.5 s, then gives it
+    back, so the peak is √(V₀² + 2E/C), E the return less 50 W over the
+    first 0.5 s. Bisected, since a sink acts below the trip, to within its
+    tolerance, from the end that holds."""
+    sink = 50.0
+    hand = 2 * (returned(0.5) - sink * 0.5) / (40.0 ** 2 - 24.0 ** 2)
+    for each in (1e-3, 1e-4):
+        n, = needed(stopping(source=Source(v=24.0, sinks=True, p_max=sink),
+                             ratings={"power board": 40.0}), free_wheel,
+                    tolerance=each)
+        assert not n.exact
+        assert n.capacitance == pytest.approx(hand, rel=2 * each)
+        assert n.capacitance >= hand * (1 - 1e-6)
+
+
+def test_the_brakes_energy_is_reported_at_the_capacitance(free_wheel):
+    """A 30 V brake under the 40 V board: at the least capacitance the bus
+    reaches 40 V with the brake conducting from 30 V, so it takes part of
+    the stop's 50 J, in one pulse, and the capacitance is less than the
+    capacitor alone would need."""
+    brake = BrakeResistor(threshold=30.0, r=30.0 ** 2 / 20.0, energy=100.0,
+                          power=100.0)
+    n, = needed(stopping(brake=brake, ratings={"power board": 40.0}),
+                free_wheel)
+    assert not n.exact
+    assert 0 < n.brake_pulse == pytest.approx(n.brake_energy)
+    assert n.brake_energy < returned(STOP)
+    assert n.capacitance < 2 * returned(STOP) / (40.0 ** 2 - 24.0 ** 2)
+
+
+def test_each_searched_worst_case_gets_its_capacitance(free_wheel):
+    """One per bus configuration, each against its own lowest trip."""
+    found = needed({"boarded": stopping(ratings={"power board": 40.0}),
+                    "bare": stopping()}, free_wheel)
+    by = {n.drive: n for n in found}
+    for name, trip in (("boarded", 40.0), ("bare", 200.0)):
+        assert by[name].trip == trip
+        assert by[name].capacitance == pytest.approx(
+            2 * returned(STOP) / (trip ** 2 - 24.0 ** 2), rel=1e-12)
+
+
 # --- an event's trigger, searched --------------------------------------------
 def flywheel(p):
     return [armature.body("wheel", mass=1.0, com=(0, 0, 0),
@@ -451,6 +614,42 @@ def test_an_e_stops_trigger_is_searched():
     assert worst.at["fraction"] > 0.5
     assert worst.at["drive"] == "plain"
     assert worst.truth.agrees  # at half the event's timestep
+
+
+def test_an_event_runs_on_a_bus_with_no_source():
+    """The e-stop's bus starts where the spin left it, from v0, with nothing
+    to hold it up while the spin draws."""
+    d = Drive(motors={"motor": motor()}, drivers={"motor": driver()},
+              gearboxes={"motor": Gearbox(forward=1.0)},
+              bus=Bus(actuators=("motor",), source=None, v0=24.0,
+                      capacitance=1e-2))
+    m = armature.compile(flywheel, {"J": 0.01})
+    t = trace(m, estop_at(0.5), 200.0, drive=d, capacitance=1e-2,
+              v_source=24.0)
+    charged = charge(t, d)
+    assert charged.v[0] == 24.0 and charged.minimum < 24.0
+    assert not np.any(charged.source)
+
+
+def test_an_events_capacitance_is_bisected_with_the_event_rerun():
+    """The e-stop's motion depends on the bus, so each capacitance tried
+    re-runs it, at the truth's half timestep: the one reported holds the
+    peak under the 30 V board, and one a tolerance less does not."""
+    d = on_a_bus(["motor"], eta=1.0, capacitance=1e-4, sinks=False)
+    d = replace(d, bus=replace(d.bus, ratings={"power board": 30.0}))
+    m = armature.compile(flywheel, {"J": 0.01})
+    n, = capacitance_needed(margins(d, [estop_at(0.5)], model=m))
+    assert not n.exact and n.capacitance > 0
+
+    def peak(c):
+        halved = Mission("e-stop", [SPIN, event(after(SPIN, 0.5),
+                                                {"motor": -0.2}, 0.02,
+                                                timestep=5e-4)])
+        at = replace(d, bus=replace(d.bus, capacitance=c))
+        return charge(trace(m, halved, CONFIRM_RATE, drive=at,
+                            capacitance=c, v_source=24.0), at).peak
+
+    assert peak(n.capacitance) <= 30.0 < peak(n.capacitance / 1.002)
 
 
 # --- the review --------------------------------------------------------------

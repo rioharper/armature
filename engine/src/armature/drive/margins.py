@@ -11,9 +11,16 @@ check, each searched by `armature.search`:
   where the driver has a flux brake, the power the actuator returns to the
   bus against that brake's capacity, i_d²·R_φ, while the driver is on;
 - **per bus**, its peak voltage against the lowest trip on it (each
-  driver's `max_voltage`, the source's `overvoltage`); its minimum against
+  driver's `max_voltage`, the source's `overvoltage`, each of the bus's
+  `ratings`), its row naming the part that binds; its minimum against
   the highest undervoltage trip; the brake resistor's pulse energy and its
   continuous power, where there is one; and the source's power.
+
+A bus configuration with no source has no minimum-voltage or source-power
+margin: its slack on each is +∞, and where no configuration has a source
+neither is checked. Its hotel load still drains it, so its envelope reads
+V_min no lower than each driver's undervoltage trip, below which the driver
+is off.
 
 `drive` is a `Drive`; or the project's `drive(p)`, called with `params`
 and each drive band's value in, `Band(name, BANDS, of="drive")`; or a
@@ -30,8 +37,9 @@ What each margin searches:
 - The **peak** margins (envelope, peak current, regeneration, the bus's
   peak and minimum voltage, the brake's pulse, the source's power) search
   every axis of `over`, every mission, every bus configuration, and the
-  bus's own bands, its capacitance and its source's voltage, as the
-  `Interval` axes `"capacitance"` and `"v_source"`.
+  bus's own bands, its capacitance and its source's voltage (with no
+  source, the voltage it starts at), as the `Interval` axes
+  `"capacitance"` and `"v_source"`.
 - The **duty** margins (winding temperature or RMS torque, RMS current,
   the brake's power) run each mission as written, over its duty, searching
   only the bands and the bus configurations. A searched mission is never
@@ -57,8 +65,10 @@ winding with neither a `Thermal` nor a continuous rating, or duty margins
 with no mission as written. Its search returns a `Worst` naming them, and
 fails.
 
-`energy(...)` reports each written mission's energy, which no margin
-checks. `review(margins)` plots each margin's worst case into `review/`.
+`energy(...)` reports each written mission's energy, and
+`capacitance_needed(margins)` the least capacitance each worst case of the
+bus's peak V needs, which no margin checks. `review(margins)` plots each
+margin's worst case into `review/`.
 """
 
 import math
@@ -73,7 +83,7 @@ import numpy as np
 from ..compiler import Compiled, compile
 from ..search import (Band, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Point, Space, search)
-from .bus import Drive, _flux_capacity, charge
+from .bus import Drive, _flux_capacity, _v_source, charge
 from .electrical import (_amps, _bound, _current_limit, _efficiencies, _hot,
                          _resolve, electrical)
 from .event import Event
@@ -121,7 +131,8 @@ def margins(drive, missions, over=None, *, model=None, params=None,
             out.append(Margin(
                 check.name, _Slack(evaluator, check, False), check.unit,
                 over=space, truth=_Slack(evaluator, check, True),
-                agree=agree * check.limit, budget=budget))
+                agree=agree * check.limit, budget=budget,
+                against=check.against))
     return tuple(out)
 
 
@@ -142,7 +153,8 @@ class _Check:
     """One margin's identity: its `name`, `unit`, `kind` (peak or duty),
     what it reads (`what`), its `actuator` or None for the bus, the `limit`
     (in `unit`) its truth's tolerance is a fraction of, the plot that
-    reviews it, and the inputs it is `missing`, if any."""
+    reviews it, the inputs it is `missing`, if any, and what its row says
+    it is held `against`, if anything."""
     name: str
     unit: str
     kind: str
@@ -151,6 +163,7 @@ class _Check:
     limit: float
     plot: str
     missing: tuple = None
+    against: str = None
 
 
 @dataclass(frozen=True)
@@ -315,7 +328,10 @@ class _Setup:
                                  f"actuators")
         self.capacitance = _union(d.bus.capacitance
                                   for d in self.nominal.values())
-        self.v_source = _union(d.bus.source.v for d in self.nominal.values())
+        self.v_source = _union(_v_source(d.bus)
+                               for d in self.nominal.values())
+        self.sourced = [d for d in self.nominal.values()
+                        if d.bus.source is not None]
         self.compiled_gear = {a: g for a, (_, g, _)
                               in _actuators(self.model).items()}
 
@@ -408,16 +424,21 @@ class _Setup:
                         _flux_capacity(b.drivers[a], b.motors[a], r),
                         "regeneration"))
             out.append(_Check("bus: peak V", "V", PEAK, "peak V", None,
-                              _trip(first), "bus"))
-            out.append(_Check("bus: minimum V", "V", PEAK, "minimum V", None,
-                              _undervoltage(first) or first.bus.source.v[0],
-                              "bus"))
+                              _trip(first), "bus",
+                              against=_against(self.nominal)))
+            if self.sourced:
+                held = self.sourced[0]
+                out.append(_Check("bus: minimum V", "V", PEAK, "minimum V",
+                                  None, _undervoltage(held)
+                                  or held.bus.source.v[0], "bus"))
             if self.braked:
                 brake = _first_brake(self.nominal)
                 out.append(_Check("bus: brake pulse energy", "J", PEAK,
                                   "brake pulse", None, brake.energy, "bus"))
-            out.append(_Check("bus: source power", "W", PEAK, "source power",
-                              None, first.bus.source.p_max, "bus"))
+            if self.sourced:
+                out.append(_Check("bus: source power", "W", PEAK,
+                                  "source power", None,
+                                  self.sourced[0].bus.source.p_max, "bus"))
             return out
         missing = None if self.written else (WRITTEN,)
         for a in self.actuators:
@@ -466,9 +487,11 @@ class _Setup:
                       c.kt * c.i_continuous, "torque-speed", missing)
 
     # --- one evaluation ------------------------------------------------------
-    def run(self, values, rate, confirm=False, nominal=False):
+    def run(self, values, rate, confirm=False, nominal=False,
+            capacitance=None):
         """The mission at a point's `values`, traced at `rate`, through the
-        electrical model and the bus: a `_Ran`."""
+        electrical model and the bus: a `_Ran`; at `capacitance` (F), where
+        given, even off the bus's band."""
         mechanism = {} if nominal else {
             b.param: float(values[n]) for n, b in self.mechanism_bands.items()}
         drive_values = {} if nominal else {
@@ -480,16 +503,18 @@ class _Setup:
             m = self._compiled(mechanism)
         config = values.get("drive") if self.configured else None
         d = self._drive(config, drive_values)
+        if capacitance is not None:
+            d = replace(d, bus=replace(d.bus, capacitance=capacitance))
         if set(d.bus.actuators) != set(self.actuators):
             raise ValueError(f"drive(p) carries {list(d.bus.actuators)} at "
                              f"{drive_values}; at nominal it carries "
                              f"{list(self.actuators)}")
         if nominal:
             cap = sum(d.bus.capacitance) / 2
-            v_s = sum(d.bus.source.v) / 2
+            v_s = sum(_v_source(d.bus)) / 2
         else:
             cap = _clip(values.get("capacitance"), d.bus.capacitance)
-            v_s = _clip(values.get("v_source"), d.bus.source.v)
+            v_s = _clip(values.get("v_source"), _v_source(d.bus))
         name = values["mission"]
         mission = self.missions[name]
         if not isinstance(mission, Mission):
@@ -574,6 +599,8 @@ class _Setup:
             return float(np.min(np.where(on, left, capacity)))
         if what == "peak V":
             return _trip(d) - c.peak
+        if what in ("minimum V", "source power") and d.bus.source is None:
+            return math.inf
         if what == "minimum V":
             return ran.sagged.minimum - _undervoltage(d)
         if what == "brake pulse":
@@ -614,7 +641,8 @@ class _Setup:
 
     def _envelope(self, a, ran):
         """`a`'s envelope slack (N·m at the output, the envelope's own scale
-        Kt·N·η) and its `Envelope` at V_min with the winding hot. Each
+        Kt·N·η) and its `Envelope` at V_min with the winding hot, on a bus
+        with no source no lower than the driver's undervoltage trip. Each
         sample's d-q current must lie within the current limit and within
         the voltage limit |R·i + E| ≤ k_mod·V_min; its slack is the nearer
         of the two bounds."""
@@ -624,6 +652,8 @@ class _Setup:
         c = _resolve(motor, n, box)
         e, r = ran.loads[a], ran.r_hot[a]
         v_min = ran.v_min
+        if d.bus.source is None:  # drained below its trip, the driver is off
+            v_min = max(v_min, driver.undervoltage)
         i_max = _current_limit(c, motor, driver)
         v_max = c.k_mod * v_min
         back = c.ke * e.omega
@@ -764,11 +794,37 @@ def _undervoltage(d):
 
 
 def _trip(d):
-    """The lowest overvoltage trip on the bus of `d`."""
-    trips = [d.drivers[a].max_voltage for a in d.bus.actuators]
-    if d.bus.source.overvoltage is not None:
-        trips.append(d.bus.source.overvoltage)
-    return min(trips)
+    """The lowest overvoltage trip on the bus of `d` (V)."""
+    return _lowest(d)[0]
+
+
+def _lowest(d):
+    """The lowest overvoltage trip on the bus of `d` and what binds there:
+    (V, its parts, named), every driver there named as one."""
+    drivers = {f"{a}'s driver": d.drivers[a].max_voltage
+               for a in d.bus.actuators}
+    trips = dict(d.bus.ratings)
+    source = d.bus.source
+    if source is not None and source.overvoltage is not None:
+        trips["the source's overvoltage"] = source.overvoltage
+    low = min([*drivers.values(), *trips.values()])
+    parts = [n for n, v in trips.items() if v == low]
+    tied = [n for n, v in drivers.items() if v == low]
+    if len(tied) == len(drivers) > 1:
+        tied = ["every driver"]
+    return low, parts + tied
+
+
+def _against(nominal):
+    """What the peak V is held under, the lowest trip at nominal, named for
+    its row: once where every bus configuration shares it, each named
+    otherwise."""
+    named = {c: "{} ({:g} V)".format(", ".join(parts), low)
+             for c, (low, parts) in ((c, _lowest(d))
+                                     for c, d in nominal.items())}
+    if len(set(named.values())) == 1:
+        return next(iter(named.values()))
+    return ", ".join(f"{text} on {c}" for c, text in named.items())
 
 
 def _first_brake(nominal):
@@ -864,12 +920,12 @@ def _torque_speed(plt, setup, check, ran, worst):
     figure, axis = plt.subplots(figsize=(6.4, 4.8))
     tau, omega, _ = ran.trace.output(a, setup.gear_of(a))
     _, bound = setup._envelope(a, ran)
-    v_min = ran.v_min
     if bound is not None:
         speeds = np.linspace(-bound.no_load_speed, bound.no_load_speed, 401)
         limit = bound.torque(speeds)
         axis.plot(speeds, limit, color="black", lw=1,
-                  label=f"envelope at V_min = {v_min:.4g} V, winding hot")
+                  label=f"envelope at V_min = {bound.v_bus:.4g} V, "
+                        f"winding hot")
         axis.plot(speeds, -limit, color="black", lw=1)
     axis.scatter(omega, tau, s=4, color="tab:blue", label="samples")
     axis.axhline(0, color="grey", lw=0.5)
@@ -890,7 +946,9 @@ def _bus(plt, setup, check, ran, worst):
     if ran.sagged is not c:
         volts.plot(ran.sagged.t, ran.sagged.v, color="tab:purple", lw=1,
                    label="V(t), windings hot")
-    volts.axhline(_trip(d), color="tab:red", lw=1, label="lowest trip")
+    trip, parts = _lowest(d)
+    volts.axhline(trip, color="tab:red", lw=1,
+                  label=f"lowest trip: {', '.join(parts)}")
     volts.axhline(_undervoltage(d), color="tab:red", ls="--", lw=1,
                   label="undervoltage trip")
     if d.bus.brake is not None:
@@ -901,15 +959,17 @@ def _bus(plt, setup, check, ran, worst):
     for k, onset in enumerate(onsets):
         volts.axhline(onset, color="tab:green", ls=":", lw=1,
                       label="flux-brake onset" if k == 0 else None)
-    volts.axhline(c.v_source, color="grey", lw=0.5, label="source")
+    volts.axhline(c.v_source, color="grey", lw=0.5,
+                  label="start" if d.bus.source is None else "source")
     volts.set_ylabel("V")
     first = "bus: V(t) against its trips"
     volts.set_title(first, fontsize=9)
     volts.legend(fontsize=7)
     power.step(c.t, c.source, where="post", lw=1, label="source")
     power.step(c.t, c.brake, where="post", lw=1, label="brake")
-    power.axhline(d.bus.source.p_max, color="tab:red", lw=1,
-                  label="source p_max")
+    if d.bus.source is not None:
+        power.axhline(d.bus.source.p_max, color="tab:red", lw=1,
+                      label="source p_max")
     power.set_xlabel("t (s)")
     power.set_ylabel("W")
     second = "bus: source and brake power"

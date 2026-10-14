@@ -458,7 +458,10 @@ class Margin:
 
     A margin whose inputs are missing is `unchecked`: a tuple naming each
     missing input. It is never evaluated, and its search returns a `Worst`
-    marked UNCHECKED, which fails."""
+    marked UNCHECKED, which fails.
+
+    `against`, optional, names the limit for the row, where the name alone
+    does not: "power board (44 V)"."""
     name: str
     fn: object
     unit: str
@@ -467,6 +470,7 @@ class Margin:
     agree: float = None
     budget: Budget = None
     unchecked: tuple = None
+    against: str = None
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -491,6 +495,9 @@ class Margin:
                                 f"missing input, a tuple of strings; got "
                                 f"{missing!r}")
             object.__setattr__(self, "unchecked", tuple(missing))
+        if self.against is not None and not isinstance(self.against, str):
+            raise TypeError(f"margin {self.name!r}: against names the "
+                            f"limit, a string; got {self.against!r}")
         if self.budget is None:
             object.__setattr__(self, "budget", Budget())
         elif not isinstance(self.budget, Budget):
@@ -534,7 +541,8 @@ class Worst:
     one-line row a note cites.
 
     An UNCHECKED margin's worst names its missing inputs in `unchecked`; its
-    value is nan, it fails, and nothing was evaluated."""
+    value is nan, it fails, and nothing was evaluated. `against` is the
+    margin's, printed after the value."""
     margin: str
     unit: str
     value: float
@@ -550,12 +558,14 @@ class Worst:
     coverage: float
     truth: Confirmed = None
     unchecked: tuple = None
+    against: str = None
 
     def __str__(self):
         if self.unchecked:
             return (f"{self.margin}: UNCHECKED, FAILS; missing "
                     + ", ".join(self.unchecked))
-        text = (f"{self.margin}: {self.value:.7g} {self.unit} at "
+        held = f" against {self.against}" if self.against else ""
+        text = (f"{self.margin}: {self.value:.7g} {self.unit}{held} at "
                 f"{_written(self.at)}, "
                 f"{'passes' if self.passes else 'FAILS'}; pre-polish "
                 f"{self.pre_polish:.7g}; coverage {self.coverage:.1%}; "
@@ -599,7 +609,8 @@ def search(margin, seed=DEFAULT_SEED):
     if margin.unchecked:
         return Worst(margin.name, margin.unit, math.nan, {}, False, (),
                      "UNCHECKED: nothing evaluated", 0, seed, math.nan, {},
-                     MappingProxyType({}), 0.0, None, margin.unchecked)
+                     MappingProxyType({}), 0.0, None, margin.unchecked,
+                     margin.against)
     space, budget = margin.over, margin.budget
     dims = space.dims
     run = _Run(margin, space)
@@ -633,7 +644,8 @@ def search(margin, seed=DEFAULT_SEED):
                  worst.value >= 0, tuple(cases), method, run.n, seed, pre[0],
                  pre[1], MappingProxyType(dict(run.rejected)),
                  run.covered / run.counted if run.counted else 0.0,
-                 _confirm(margin, (worst.value, worst.at, point), pre))
+                 _confirm(margin, (worst.value, worst.at, point), pre),
+                 against=margin.against)
 
 
 def _confirm(margin, worst, pre):

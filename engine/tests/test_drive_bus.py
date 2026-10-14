@@ -526,6 +526,35 @@ def test_a_band_runs_at_the_point_it_is_given(stop):
         charge(stop, drive, capacitance=1e-3, v_source=26.0)
 
 
+# --- a bus with no source -----------------------------------------------------
+def test_a_bus_with_no_source_floats_from_where_it_starts(stop):
+    """Nothing sources or sinks, so the stop's return lands on the
+    capacitor from v0 and the hotel load drains it all along:
+    V = √(V₀² + 2(E − P·t)/C)."""
+    v0, c, hotel = 30.0, 0.01, 20.0
+    charged = charge(stop, one(None, c, v0=v0, hotel=hotel))
+    np.testing.assert_allclose(
+        charged.v,
+        np.sqrt(v0 ** 2 + 2 * (returned(charged.t) - hotel * charged.t) / c),
+        rtol=1e-12)
+    assert not np.any(charged.source) and charged.source_energy == 0
+    assert charged.v_source == v0
+
+
+def test_a_bus_with_no_source_starts_at_a_point_in_its_band(stop):
+    charged = charge(stop, one(None, 0.01, v0=(26.0, 30.0)), v_source=28.0)
+    assert charged.v[0] == 28.0
+    with pytest.raises(ValueError, match="v_source="):
+        charge(stop, one(None, 0.01, v0=(26.0, 30.0)))
+
+
+def test_a_hotel_load_drains_a_bus_with_no_source_to_nothing(stop):
+    """200 W outdraws the stop's return, 100 W at most, from the start: the
+    bus empties and stays empty."""
+    charged = charge(stop, one(None, 0.01, v0=30.0, hotel=200.0))
+    assert charged.minimum == 0.0 and charged.v[-1] == 0.0
+
+
 # --- the data, each error naming its field ------------------------------------
 @pytest.mark.parametrize("make, words", [
     (lambda: Source(v=24.0, sinks="yes", p_max=1.0), "sinks"),
@@ -544,6 +573,20 @@ def test_a_band_runs_at_the_point_it_is_given(stop):
      "hotel"),
     (lambda: Source(v=(22.0, 30.0), sinks=False, p_max=1.0,
                     overvoltage=30.0), "overvoltage"),
+    (lambda: Bus(actuators=("motor",), source=Source(
+        v=(22.0, 30.0), sinks=True, p_max=1.0), capacitance=1e-3,
+        ratings={"power board": 30.0}), r"rating 'power board'.*above"),
+    (lambda: Bus(actuators=("motor",), source=Source(
+        v=24.0, sinks=True, p_max=1.0), capacitance=1e-3, ratings=44.0),
+     "ratings"),
+    (lambda: Bus(actuators=("motor",), source=None, capacitance=1e-3),
+     r"no source.*v0"),
+    (lambda: Bus(actuators=("motor",), source=Source(
+        v=24.0, sinks=True, p_max=1.0), capacitance=1e-3, v0=24.0),
+     r"source.*v0"),
+    (lambda: Bus(actuators=("motor",), source=None, v0=(26.0, 33.6),
+                 capacitance=1e-3, ratings={"power board": 33.6}),
+     r"rating 'power board'.*above"),
     (lambda: Drive(motors={"motor": motor(), "spare": motor()},
                    drivers={"motor": driver()},
                    bus=Bus(actuators=("motor",), source=Source(

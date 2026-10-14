@@ -50,7 +50,7 @@ from ruckig import InputParameter, Result, Ruckig, Synchronization, Trajectory
 
 from ..search import Infeasible
 from ..state import Placement, State, placement
-from .bus import Drive, _within, charge
+from .bus import Drive, _v_source, _within, charge
 from .electrical import _positive
 from .event import After, Event, Run, Simulated, _simulate
 from .thermal import rms_torque
@@ -733,7 +733,7 @@ def _event_bus(m, mission, drive, capacitance, v_source):
         raise TypeError(f"mission {mission.name!r} has an event, whose modes "
                         f"run on drive data; give trace drive=Drive(...)")
     return (_within("capacitance", drive.bus.capacitance, capacitance),
-            _within("v_source", drive.bus.source.v, v_source))
+            _within("v_source", _v_source(drive.bus), v_source))
 
 
 def _event_start(m, mission, i, event, before, profiles):
