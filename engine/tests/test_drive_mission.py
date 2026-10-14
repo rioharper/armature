@@ -400,7 +400,7 @@ def test_the_actuation_seam_replaces_inverse(monkeypatch):
         raise AssertionError("inverse called under an actuation seam")
     monkeypatch.setattr(armature.State, "inverse", refused)
 
-    def winch(state, qdd, loads):
+    def winch(state, qdd, loads, *, t, p):
         if loads:
             return {"winch": (loads["tip"][1], 0.0)}
         return {"winch": (state.q["pivot"], qdd["pivot"])}
@@ -430,7 +430,7 @@ def test_the_actuation_seam_replaces_inverse(monkeypatch):
 def test_an_actuation_seam_may_name_its_rotors_share():
     """A seam that returns (torque, speed, rotor) gives the rotor's share
     of its torque, which `output` takes out before the gear of ratio n."""
-    def winch(state, qdd, loads):
+    def winch(state, qdd, loads, *, t, p):
         return {"winch": (3.0, 20.0, 0.5)}
 
     m = armature.compile(pendulum, SWING)
@@ -439,6 +439,23 @@ def test_an_actuation_seam_may_name_its_rotors_share():
     assert np.all(t.rotor["winch"] == 0.5)
     tau, omega, _ = t.output("winch", n=4.0)
     assert np.all(tau == 4.0 * (3.0 - 0.5)) and np.all(omega == 5.0)
+
+
+def test_the_actuation_seam_is_given_each_samples_time_and_the_params():
+    """The seam reads its time and its params rather than closing over
+    them: the mission's time at each sample, holds included, and the params
+    the mechanism was compiled with, a band's value among them."""
+    def winch(state, qdd, loads, *, t, p):
+        return {"winch": (t, p["m"])}
+
+    heavier = {**SWING, "m": 1.7}
+    m = armature.compile(pendulum, heavier)
+    t = trace(m, Mission("seam", [
+        follow(swing_q, PERIOD, qd=swing_qd, qdd=swing_qdd),
+        hold(None, 0.5)], actuation=winch), SEARCH_RATE)
+    np.testing.assert_array_equal(t.torque["winch"], t.t)
+    assert np.all(t.speed["winch"] == 1.7)
+    assert t.t[-1] == pytest.approx(PERIOD + 0.5)
 
 
 # --- a closed chain ----------------------------------------------------------

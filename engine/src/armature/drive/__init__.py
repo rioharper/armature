@@ -9,8 +9,8 @@ A mission is named segments run in order, with a duty cycle:
 `Mission(name, [move(start, end=..., limits=Limits(v, a, j)),
 hold(posture, duration, loads=...), follow(q, duration)], duty=Duty(period,
 session))`. `trace(m, mission, rate)` samples it, through `m.at` and
-`State.inverse` or the mission's own `actuation`, into each actuator's motor
-torque and speed.
+`State.inverse` or the mission's own `actuation(state, qdd, loads, *, t,
+p)`, into each actuator's motor torque and speed.
 
 The actuators share one bus, `Drive(motors=..., drivers=..., gearboxes=...,
 bus=Bus(actuators, source=Source(v, sinks, p_max), capacitance, brake=
@@ -23,7 +23,8 @@ An `event(start, modes, duration)` is a segment forward-simulated from a
 state or from `after(segment, fraction)`, each actuator coasting, shorted,
 flux-braking or following a torque profile, with the bus stepped alongside;
 `trace(m, mission, rate, drive=..., capacitance=..., v_source=...)` runs it
-at its timestep and at half of it.
+at its timestep and at half of it; under an actuation seam, through the
+mission's `transmission(state, *, t, p)`.
 
 `margins(drive, missions, over=space)` turns all of it into ADR 0005
 `Margin`s, one per check, searched over the move endpoints, event triggers,

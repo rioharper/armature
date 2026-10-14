@@ -25,17 +25,19 @@ prescribed swing.
 search, `CONFIRM_RATE` (1 kHz) for the confirmation. At each sample
 `m.at(q, qd)` then `inverse(qdd, loads)` gives every actuator's motor torque,
 and its speed is its gear times its joint's rate. A mission that gives an
-`actuation(state, qdd, loads)` is traced through it in place of `inverse`:
-the seam for a mechanism whose allocation is not the engine's least
-squares, such as a cable robot's positive tensions, since the engine's
-`actuator` drives joints only.
+`actuation(state, qdd, loads, *, t, p)` is traced through it in place of
+`inverse`: the seam for a mechanism whose allocation is not the engine's
+least squares, such as a cable robot's positive tensions, since the
+engine's `actuator` drives joints only.
 
 Segments run without jumps: each starts where the one before it ended, or
 the trace raises, naming both. An **event** (`event.py`) is simulated, not
 prescribed: from a state, or from `after(segment, fraction)`, where the
 segment just before it stops at that fraction, rates and all, and the event
 takes over. `trace` runs the segments in order, so an event starts from the
-state, and the bus, the segments before it left.
+state, and the bus, the segments before it left. Under an actuation seam,
+an event runs through the mission's `transmission`, the map from the
+mechanism's rates to each actuator's speed.
 """
 
 import math
@@ -419,19 +421,35 @@ class Mission:
     of None runs it once.
 
     `actuation`, when given, replaces `inverse`: it is called at each sample
-    as `actuation(state, qdd, loads)`, with the `State` from `m.at`, the
-    independent accelerations by dof and the segment's loads, and returns
+    as `actuation(state, qdd, loads, *, t, p)`, with the `State` from
+    `m.at`, the independent accelerations by dof, the segment's loads, the
+    sample's time in the mission (s, as `Trace.t` gives it) and the params
+    `m` was compiled with, a band's value among them. It returns
     `{actuator: (torque, speed)}`, motor side, as `inverse`'s are, the same
     actuators at every sample. Its actuators need not be the engine's. An
     actuator may add a third number, `(torque, speed, rotor)`: the rotor's
     own inertia torque J_m·ω̇_m within its torque, which `Trace.output`
     takes out before the gear; without it, the rotor's share is zero. An
-    event simulates the engine's own actuators, so a mission with one has
-    no actuation."""
+    allocation with no solution, such as a tension law gone infeasible,
+    raises `Infeasible`: the drive margins have no torque to read there, so
+    a search counts the point under its reason and never reports it as the
+    worst. Whether the allocation holds is then a margin of its own.
+
+    `transmission` runs an event under the seam, whose modes set each
+    actuator's torque, so the event needs the map the other way. It is
+    called at each of the event's steps as `transmission(state, *, t, p)`
+    and returns `{actuator: (rates, bias, inertia)}`, the seam's actuators:
+    `rates` maps each dof to the motor's speed per unit of its rate, the g
+    in ω_m = g·q̇, whose transpose takes the motor torque to the mechanism;
+    `bias` is ω̇_m at q̈ = 0 (rad/s²); `inertia` is the rotor's J_m (kg·m²).
+    For a cable robot, g is a winch's N/r_drum times its cable's unit
+    vector. The transmission is bilateral, so a cable it pushes on is one
+    gone slack, which the event does not model: check the torques' sign."""
     name: str
     segments: tuple
     duty: Duty = None
     actuation: Callable = None
+    transmission: Callable = None
 
     def __post_init__(self):
         segments = tuple(self.segments)
@@ -447,7 +465,16 @@ class Mission:
                             f"Duty(period, session); got {self.duty!r}")
         if self.actuation is not None and not callable(self.actuation):
             raise TypeError(f"mission {self.name!r}: actuation is a callable "
-                            f"(state, qdd, loads); got {self.actuation!r}")
+                            f"(state, qdd, loads, *, t, p); got "
+                            f"{self.actuation!r}")
+        if self.transmission is not None and not callable(self.transmission):
+            raise TypeError(f"mission {self.name!r}: transmission is a "
+                            f"callable (state, *, t, p); got "
+                            f"{self.transmission!r}")
+        if self.transmission is not None and self.actuation is None:
+            raise ValueError(f"mission {self.name!r}: a transmission maps an "
+                             f"actuation seam's actuators, and it has none; "
+                             f"give it actuation=")
         object.__setattr__(self, "segments", segments)
 
 
@@ -542,7 +569,7 @@ class Trace:
 
 
 def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
-          temperature=None):
+          temperature=None, gear=None):
     """`mission` on the compiled mechanism `m`, sampled at `rate` (Hz): a
     `Trace` of each actuator's motor torque and speed.
 
@@ -551,7 +578,9 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
     `v_source` (V), points in its bands as `charge` takes them, and each
     winding at `temperature[a]` (°C, a number; by default its resistance's
     T₀). Its bus starts where the segments before it left it, charged as
-    `charge` would, or at `v_source` where it is first. Without events these
+    `charge` would, or at `v_source` where it is first. Under an actuation
+    seam an event runs through the mission's transmission, each actuator at
+    the ratio `gear[a]` gives, as `charge` takes it. Without events these
     are not read.
 
     Raises where a segment starts more than `CONTINUITY` from where the one
@@ -577,9 +606,11 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
                 v0 = float(charge(_assemble(
                     m, mission, rate, times, which, starts, profiles,
                     actuators, rows, driven), drive, capacitance=point[0],
-                    v_source=point[1], temperature=temperature).v[-1])
+                    v_source=point[1], temperature=temperature,
+                    gear=gear).v[-1])
+            seam = _transmission(m, mission, begun, gear)
             runs = [_simulate(m, start, segment, drive, actuators,
-                              temperature, *point, v0, step)
+                              temperature, *point, v0, step, seam)
                     for step in (segment.timestep, segment.timestep / 2)]
             end = runs[0].rows[-1][0]
             profile = _Profile("event", segment.duration,
@@ -615,7 +646,7 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
         if isinstance(following, Event):
             local = np.append(local, starts[-1])  # the event's start, this
                                                   # side
-        _sample(m, mission, profile, local - begun, actuators, rows)
+        _sample(m, mission, profile, local, begun, actuators, rows)
         times += list(local)
         which += [i] * len(local)
         driven += [None] * len(local)
@@ -647,19 +678,21 @@ def _grid(begun, ends, rate, last):
     return np.append(times, ends)
 
 
-def _sample(m, mission, profile, local, actuators, rows):
-    """Append to `rows` the samples of `profile` at its `local` times."""
-    kept = None
-    for time in local:
-        if profile.constant and kept is not None:
+def _sample(m, mission, profile, times, begun, actuators, rows):
+    """Append to `rows` the samples of `profile`, begun at `begun`, at the
+    mission's `times`."""
+    kept, seam = None, mission.actuation is not None
+    p = _params(m) if seam else None
+    for time in times:
+        if profile.constant and kept is not None and not seam:
             rows.append(kept)
             continue
-        q, qd, qdd = profile.sample(min(max(float(time), 0.0),
+        q, qd, qdd = profile.sample(min(max(float(time - begun), 0.0),
                                         profile.duration))
         state = m.at(q=q, qd=qd)
         loads = profile.loads or {}
-        if mission.actuation is not None:
-            out = _seam(mission, state, qdd, loads)
+        if seam:
+            out = _seam(mission, state, qdd, loads, float(time), p)
             residual = None
         else:
             inv = state.inverse(qdd=qdd, loads=loads)
@@ -683,20 +716,22 @@ def _truncated(profile, fraction):
 
 
 def _event_bus(m, mission, drive, capacitance, v_source):
-    """The bus point an event runs at, (C, V_s), after checking the drive
-    carries every actuator."""
-    if mission.actuation is not None:
-        raise ValueError(f"mission {mission.name!r}: an event simulates the "
-                         f"engine's own actuators, and an actuation seam "
-                         f"replaces them; give the event its own mission")
+    """The bus point an event runs at, (C, V_s), after checking the mission
+    can run one."""
+    if mission.actuation is not None and mission.transmission is None:
+        raise ValueError(f"mission {mission.name!r}: an event moves the "
+                         f"mechanism by its actuators' torques, and an "
+                         f"actuation seam maps the other way; give the "
+                         f"mission transmission=(state, *, t, p), each "
+                         f"actuator's speed per rate")
+    if mission.transmission is not None and (m._free or m.dependent):
+        raise ValueError(f"mission {mission.name!r}: an event through a "
+                         f"transmission runs on an open chain of scalar "
+                         f"coordinates; lock a floating body's turns so "
+                         f"its point is three slides")
     if not isinstance(drive, Drive):
         raise TypeError(f"mission {mission.name!r} has an event, whose modes "
                         f"run on drive data; give trace drive=Drive(...)")
-    off = [a for a in m.actuators if a not in drive.bus.actuators]
-    if off:
-        raise ValueError(f"the drive's bus does not carry {off}; an event "
-                         f"runs every actuator on its motor and driver, so "
-                         f"add them to Bus(actuators=...)")
     return (_within("capacitance", drive.bus.capacitance, capacitance),
             _within("v_source", drive.bus.source.v, v_source))
 
@@ -733,11 +768,25 @@ def _event_start(m, mission, i, event, before, profiles):
     return state
 
 
+def _transmission(m, mission, begun, gear):
+    """An event's seam as `_simulate` takes it, the event begun at `begun`
+    (s): (transmission(state, t), gear), or None without one."""
+    if mission.transmission is None:
+        return None
+    p = _params(m)
+
+    def transmission(state, t):
+        return mission.transmission(state, t=begun + t, p=p)
+    return transmission, dict(gear or {})
+
+
 def _event_run(m, mission, i, event, step, run, actuators):
     """A `Run` of event `i` at `step`, its trace the event's alone."""
     profile = _Profile("event", event.duration, None, None, None, None,
                        False)
-    alone = _assemble(m, Mission(f"{mission.name}, event {i}", [event]),
+    alone = _assemble(m, Mission(f"{mission.name}, event {i}", [event],
+                                 actuation=mission.actuation,
+                                 transmission=mission.transmission),
                       1 / step, list(run.t), [0] * len(run.t),
                       [0.0, event.duration], [profile], actuators, run.rows,
                       run.driven)
@@ -756,9 +805,14 @@ class _Profile:
         self.loads, self.constant = loads, constant
 
 
-def _seam(mission, state, qdd, loads):
+def _params(m):
+    """The params `m` was compiled with, a band's value among them."""
+    return MappingProxyType(dict(m._source[1]) if m._source else {})
+
+
+def _seam(mission, state, qdd, loads, t, p):
     out = mission.actuation(state, MappingProxyType(dict(qdd)),
-                            MappingProxyType(dict(loads)))
+                            MappingProxyType(dict(loads)), t=t, p=p)
     try:
         rows = {a: tuple(float(x) for x in v) for a, v in dict(out).items()}
     except (TypeError, ValueError):
@@ -802,7 +856,7 @@ def _assemble(m, mission, rate, times, which, starts, profiles, actuators,
                 else _frozen(np.array([row[3] for row in rows])))
     on = {a: _frozen(np.array([True if d is None else d[a] for d in driven]))
           for a in names}
-    method = (f"actuation(state, qdd, loads) at {rate:g} Hz"
+    method = (f"actuation(state, qdd, loads, t, p) at {rate:g} Hz"
               if mission.actuation is not None else
               f"m.at(q, qd), then State.inverse(qdd, loads), at {rate:g} Hz")
     if any(isinstance(s, Event) for s in mission.segments):

@@ -540,7 +540,7 @@ class _Setup:
         events = any(isinstance(s, Event) for s in mission.segments)
         if events:
             return trace(m, mission, rate, drive=d, capacitance=cap,
-                         v_source=v_s)
+                         v_source=v_s, gear=self.gear)
         if name not in self.written:
             return trace(m, mission, rate)
         key = (name, rate, tuple(sorted(mechanism.items())), confirm)

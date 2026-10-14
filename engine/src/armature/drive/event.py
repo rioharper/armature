@@ -48,6 +48,14 @@ reflects through a lossless gear, crosses the gearbox unscaled: the current
 read back is off by (1 − η_b)·J_m·ω̇_m/Kt. A self-locking gearbox, η_b = 0,
 does not back-drive at all; lock its joint for the event instead.
 
+Under a mission's actuation seam the actuators are its `transmission`'s,
+which drive no joint: each motor turns at ω_m = g·q̇ and pushes the
+mechanism with gᵀ·τ, the same modes setting τ. Its rotor adds J_m·g·gᵀ to
+the mechanism's inertia and a short's damping c·g·gᵀ acts implicitly over
+the step, both through a generalised force that gives MuJoCo's
+unconstrained acceleration their effect. A joint limit or a contact sees
+the mechanism's own inertia alone.
+
 The bus is stepped with the mechanics, since a coasting motor's diodes and
 a braking driver's flux brake both act on the bus voltage as it is: each
 step, every actuator's bus power at the step's start, through the
@@ -222,7 +230,13 @@ class _Simulation(NamedTuple):
 
 
 def _actuated(m, ev, drive, actuators, temperature):
-    """Each actuator's `_Actuated`, checked against the drive data."""
+    """Each actuator's `_Actuated`, checked against the drive data; one
+    driven through a transmission has no joint, and its dof is None."""
+    off = [a for a in actuators if a not in drive.bus.actuators]
+    if off:
+        raise ValueError(f"the drive's bus does not carry {off}; an event "
+                         f"runs every actuator on its motor and driver, so "
+                         f"add them to Bus(actuators=...)")
     modes = dict(ev.modes)
     missing = [a for a in actuators if a not in modes]
     unknown = sorted(set(modes) - set(actuators))
@@ -252,7 +266,8 @@ def _actuated(m, ev, drive, actuators, temperature):
             raise ValueError(f"{a!r}'s driver has no flux brake; give it "
                              f"Driver(flux_brake=FluxBrake(...)), or brake "
                              f"it with 'short'")
-        dof = int(model.jnt_dofadr[model.joint(joint).id])
+        dof = (None if joint is None
+               else int(model.jnt_dofadr[model.joint(joint).id]))
         r = float(_hot(c, temperature.get(a)))
         flux = None
         if mode not in PASSIVE and driver.flux_brake is not None:
@@ -286,12 +301,81 @@ def _current(act, e, v):
     return False, -sign * act.i_max
 
 
+def _transmitted(m, transmission, state, t):
+    """The transmission at `state`, `t` into the event: for each actuator,
+    (g, ω̇ at q̈ = 0, J_m), g its motor speed per rate of each of `m.dofs`,
+    as an array."""
+    out = transmission(state, t)
+    try:
+        rows = {a: (dict(g), float(bias), float(j_m))
+                for a, (g, bias, j_m) in dict(out).items()}
+    except (TypeError, ValueError):
+        rows = None
+    if not rows:
+        raise TypeError(f"a transmission returns {{actuator: (rates, bias, "
+                        f"inertia)}}, rates a mapping by dof; got {out!r}")
+    known = set(m.dofs)
+    out = {}
+    for a, (g, bias, j_m) in rows.items():
+        unknown = sorted(set(g) - known)
+        if unknown:
+            raise KeyError(f"the transmission's {a!r} turns with {unknown}, "
+                           f"which are not among the dofs {list(m.dofs)}")
+        out[a] = (np.array([float(g.get(d, 0.0)) for d in m.dofs]), bias,
+                  j_m)
+    return out
+
+
+def _through(model, data, acts, through, t, v, step, torque):
+    """The generalised force, added to what MuJoCo applies, that gives the
+    mechanism the acceleration it has with each transmitted actuator's
+    torque on it through gᵀ, its rotor's J_m·g·gᵀ added to its inertia and
+    a short's c·g·gᵀ damping it implicitly over `step`; each actuator's
+    torque goes into `torque`. Constraints see the mechanism's own inertia
+    alone."""
+    extra, force = np.zeros((model.nv, model.nv)), np.zeros(model.nv)
+    for a in acts:
+        if a.dof is not None:
+            continue
+        g, bias, j_m = through[a.name]
+        damping = 0.0
+        if callable(a.mode):
+            tau = float(a.mode(t))
+        else:
+            e = a.c.ke * float(g @ data.qvel)
+            damped, offset = _current(a, e, v)
+            tau = a.c.kt * (offset - (e / a.r if damped else 0.0)) / a.eta
+            if damped:
+                damping = a.c.kt * a.c.ke / (a.r * a.eta)
+        torque[a.name] = tau
+        extra += (j_m + step * damping) * np.outer(g, g)
+        force += g * (tau - j_m * bias)
+    mujoco.mj_fwdActuation(model, data)
+    mujoco.mj_fwdAcceleration(model, data)  # qfrc_smooth, loads included
+    smooth = data.qfrc_smooth.copy()
+    mass = np.zeros((model.nv, model.nv))
+    mujoco.mj_fullM(model, data, mass)
+    accel = np.linalg.solve(mass + extra, smooth + force)
+    return mass @ accel - smooth
+
+
 def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
-              v_source, v0, timestep):
+              v_source, v0, timestep, seam=None):
     """`ev` run from the `State` `start` at `timestep`, the bus of `drive`
-    at `capacitance` and `v_source` from `v0`: a `_Simulation`."""
+    at `capacitance` and `v_source` from `v0`: a `_Simulation`. Under a
+    `seam`, (transmission(state, t), gear), the actuators are the
+    transmission's, at the gear of each, in place of `actuators`."""
     steps = max(1, math.ceil(ev.duration / timestep - 1e-9))
     step = ev.duration / steps
+    if seam is not None:
+        transmission, gear = seam
+        names = tuple(_transmitted(m, transmission, start, 0.0))
+        missing = [a for a in names if a not in gear]
+        if missing:
+            raise KeyError(f"{missing} have no gear in the compiled model; "
+                           f"an event runs them on their motors, so give "
+                           f"their ratio, trace(..., gear={{...}})")
+        actuators = {a: (None, float(gear[a]), 0.0) for a in names}
     acts = _actuated(m, ev, drive, actuators, temperature)
     bus = drive.bus
 
@@ -319,6 +403,8 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
         v = math.sqrt(energy / half_c)
         damping, push, torque = base.copy(), np.zeros(model.nv), {}
         for a in acts:
+            if a.dof is None:
+                continue  # through the transmission, below
             if callable(a.mode):
                 torque[a.name] = float(a.mode(t))
                 push[a.dof] += a.n * torque[a.name]
@@ -339,6 +425,17 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
             rates = np.linalg.solve(turned, rates)
             drift = tangent(m, data, rates)[1]
         data.qfrc_applied[:] = _load_force(model, data, ev.loads) + push
+        qd = dict(zip(m.dofs, (float(x) for x in rates)))
+        state = State(m, MappingProxyType(q), MappingProxyType(qd))
+        if seam is not None:
+            through = _transmitted(m, transmission, state, t)
+            if tuple(through) != names:
+                raise ValueError(f"the transmission gave {list(through)} at "
+                                 f"t = {t:g} s into the event, and "
+                                 f"{list(names)} at its start; the actuators "
+                                 f"are the same at every step")
+            data.qfrc_applied[:] += _through(model, data, acts, through, t,
+                                             v, step, torque)
         mujoco.mj_step2(model, data)  # qacc is the continuous one, here
         if not (np.all(np.isfinite(data.qpos))
                 and np.all(np.isfinite(data.qvel))):
@@ -348,11 +445,15 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
         accel = data.qacc.copy()
         if free:
             accel = np.linalg.solve(turned, accel - drift)
-        qd = dict(zip(m.dofs, (float(x) for x in rates)))
-        state = State(m, MappingProxyType(q), MappingProxyType(qd))
-        out = {a.name: (torque[a.name], a.n * float(rates[a.dof]),
-                        a.j_m * a.n * float(data.qacc[a.dof]))
-               for a in acts}
+        out = {}
+        for a in acts:
+            if a.dof is None:
+                g, bias, j_m = through[a.name]
+                out[a.name] = (torque[a.name], float(g @ rates),
+                               j_m * (float(g @ data.qacc) + bias))
+                continue
+            out[a.name] = (torque[a.name], a.n * float(rates[a.dof]),
+                           a.j_m * a.n * float(data.qacc[a.dof]))
         rows.append((state, {m.dofs[i]: float(accel[i]) for i in independent},
                      out, 0.0))
         volts.append(v)
