@@ -43,6 +43,7 @@ mechanism's rates to each actuator's speed.
 import math
 from collections.abc import Callable, Mapping
 from dataclasses import KW_ONLY, dataclass
+from functools import partial
 from types import MappingProxyType
 
 import numpy as np
@@ -515,7 +516,8 @@ class Trace:
     ones applied. `driven` says, for each actuator at each sample, whether
     its driver is on, so its flux brake can act: off where an event coasts
     or shorts it, on everywhere else. `events` reports each event as a
-    `Simulated`, run at its timestep and at half of it.
+    `Simulated`, run at its timestep and at half of it, the second run
+    when it is first read.
     """
     mission: str
     rate: float
@@ -609,9 +611,9 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
                     v_source=point[1], temperature=temperature,
                     gear=gear).v[-1])
             seam = _transmission(m, mission, begun, gear)
-            runs = [_simulate(m, start, segment, drive, actuators,
-                              temperature, *point, v0, step, seam)
-                    for step in (segment.timestep, segment.timestep / 2)]
+            run = partial(_simulate, m, start, segment, drive, actuators,
+                          temperature, *point, v0)
+            runs = [run(segment.timestep, seam)]
             end = runs[0].rows[-1][0]
             profile = _Profile("event", segment.duration,
                                _posture(m, start, "an event's start"),
@@ -623,10 +625,12 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
             which += [i] * len(runs[0].t)
             rows += runs[0].rows
             driven += runs[0].driven
-            simulated.append(Simulated(i, *(
-                _event_run(m, mission, i, segment, step, run, actuators)
-                for step, run in zip((segment.timestep,
-                                      segment.timestep / 2), runs))))
+            half = segment.timestep / 2  # run when the check reads it
+            simulated.append(Simulated(
+                i, _event_run(m, mission, i, segment, segment.timestep,
+                              runs[0], actuators),
+                partial(_event_halved, m, mission, i, segment, half,
+                        partial(run, half, seam), actuators)))
             before = profile.end
             continue
         profile = segment._profile(m, before)
@@ -791,6 +795,11 @@ def _event_run(m, mission, i, event, step, run, actuators):
                       [0.0, event.duration], [profile], actuators, run.rows,
                       run.driven)
     return Run(step, alone, run.v, run.contacts)
+
+
+def _event_halved(m, mission, i, event, step, simulate, actuators):
+    """A `Run` of event `i` at `step`, simulated by `simulate()` only now."""
+    return _event_run(m, mission, i, event, step, simulate(), actuators)
 
 
 class _Profile:

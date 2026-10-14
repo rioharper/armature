@@ -417,12 +417,12 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
 
 
 def _largest_run(energies):
-    """The most energy in one unbroken run of nonzero entries."""
-    best = run = 0.0
-    for e in energies:
-        run = run + e if e > 0 else 0.0
-        best = max(best, run)
-    return float(best)
+    """The most energy in one unbroken run of nonzero entries, each run
+    summed in order."""
+    on = np.concatenate(([False], np.asarray(energies) > 0, [False]))
+    edges = np.flatnonzero(on[1:] != on[:-1]).reshape(-1, 2)
+    return float(max((np.add.accumulate(energies[a:b])[-1]
+                      for a, b in edges), default=0.0))
 
 
 class _Run(NamedTuple):
@@ -449,43 +449,175 @@ class _Clamp(NamedTuple):
     floor: bool
 
 
+class _Substeps(NamedTuple):
+    """The substeps of a run, end to end: each one's sample `interval` k,
+    its index `j` among the `m` that interval splits into, its `step` (s)
+    and its `end` (s)."""
+    interval: np.ndarray
+    j: np.ndarray
+    m: np.ndarray
+    step: np.ndarray
+    end: np.ndarray
+
+
+def _substeps(t, h):
+    """Each interval of the sample times `t` split into the fewest equal
+    substeps no longer than `h`; an interval of no length has none."""
+    span = np.diff(t)
+    kept = np.flatnonzero(span != 0)
+    m = np.maximum(1, np.ceil(span[kept] / h - 1e-9)).astype(int)
+    j = np.arange(int(np.sum(m))) - np.repeat(np.cumsum(m) - m, m)
+    k, count = np.repeat(kept, m), np.repeat(m, m)
+    step = np.repeat(span[kept] / m, m)
+    end = np.where(j == count - 1, t[k + 1], t[k] + (j + 1) * step)
+    return _Substeps(k, j, count, step, end)
+
+
 def _run(t, power, flux, bus, c, v_s, v0, h):
     """The bus over sample times `t` with the actuators' total bus `power`
-    (W) at each, at substep `h`, from `v0`, its source at `v_s`."""
+    (W) at each, at substep `h`, from `v0`, its source at `v_s`.
+
+    Where the bus floats clear of every level, or is held at one, its
+    substeps are taken together (`_together`), with the same arithmetic as
+    `_substep`'s, so the run is the same to the bit. A substep that reaches
+    a level or leaves one, or that floats above a conducting brake, whose
+    capacity moves with V, is solved alone by `_substep`."""
     half_c = 0.5 * c
     brake = bus.brake
     levels = _levels(bus, c, v_s, [(a, onset) for a, onset, _ in flux])
-    flux_capacity = {("flux", a): values for a, _, values in flux}
-    heat = {a: np.zeros(len(t) - 1) for a, _, _ in flux}
+    grid = _substeps(t, h)
+    k, n = grid.interval, len(grid.interval)
+    p0, p1 = power[k], power[k + 1]
+    rate = -(p0 + (p1 - p0) * (grid.j + 0.5) / grid.m + bus.hotel)
+    # W: each clamp's capacity at each substep; the brake's is set as it
+    # runs, from V
+    caps = {("flux", a): np.asarray(values, dtype=float)[k]
+            for a, _, values in flux}
+    if bus.source is not None:
+        caps[SOURCE] = np.full(n, bus.source.p_max)
+    # J: what each clamp took from the bus over each substep, a floor's
+    # negative
+    flows = {key: np.zeros(n) for key in (SOURCE, BRAKE, *caps)}
+    energy = np.empty(n)
 
-    energy, v = half_c * v0 ** 2, v0
-    times, volts, sourced, braked = [float(t[0])], [v0], [], []
-    # W: each clamp's capacity this substep
-    cap = {} if bus.source is None else {SOURCE: bus.source.p_max}
-    for k in range(len(t) - 1):
-        span = float(t[k + 1] - t[k])
-        if span == 0:
-            continue
-        m = max(1, math.ceil(span / h - 1e-9))
-        step = span / m
-        p0, p1 = float(power[k]), float(power[k + 1])
-        for key, values in flux_capacity.items():
-            cap[key] = float(values[k])
-        for j in range(m):
+    e, v, i = half_c * v0 ** 2, v0, 0
+    window, wait = WINDOW, 0
+    while i < n:
+        taken = 0
+        if i > 0 and wait == 0:  # the first runs from v0 itself, alone
+            taken = _together(e, v, i, min(n, i + window), levels, rate,
+                              grid.step, caps, brake, energy, flows)
+            window = 2 * window if i + taken == min(n, i + window) else WINDOW
+            wait = 0 if taken >= SPARSE else WAIT
+        if taken:
+            i += taken
+            e = float(energy[i - 1])
+        else:
+            cap = {key: float(values[i]) for key, values in caps.items()}
             if brake is not None:
                 cap[BRAKE] = _brake_capacity(brake, v)
-            drawn = p0 + (p1 - p0) * (j + 0.5) / m + bus.hotel
-            energy, flows = _substep(energy, -drawn, step, levels, cap)
-            v = math.sqrt(energy / half_c)
-            times.append(float(t[k + 1]) if j == m - 1
-                         else float(t[k]) + (j + 1) * step)
-            volts.append(v)
-            sourced.append(-flows.get(SOURCE, 0.0) / step)
-            braked.append(flows.get(BRAKE, 0.0) / step)
-            for a in heat:
-                heat[a][k] += flows.get(("flux", a), 0.0)
-    return _Run(np.array(times), np.array(volts), np.append(sourced, 0.0),
-                np.append(braked, 0.0), heat)
+            e, flowed = _substep(e, float(rate[i]), float(grid.step[i]),
+                                 levels, cap)
+            energy[i] = e
+            for key, flow in flowed.items():
+                flows[key][i] = flow
+            i += 1
+            wait = max(0, wait - 1)
+        v = math.sqrt(e / half_c)
+
+    heat = {}
+    for a, _, _ in flux:
+        heat[a] = np.zeros(len(t) - 1)
+        np.add.at(heat[a], k, flows[("flux", a)])  # in substep order
+    return _Run(np.concatenate(([float(t[0])], grid.end)),
+                np.concatenate(([v0], np.sqrt(energy / half_c))),
+                np.append(-flows[SOURCE] / grid.step, 0.0),
+                np.append(flows[BRAKE] / grid.step, 0.0), heat)
+
+
+WINDOW = 64  # substeps `_run` first tries to take together; doubled while
+             # it takes them all
+SPARSE, WAIT = 8, 16  # where fewer than SPARSE are taken together, the next
+                      # WAIT substeps are solved alone first
+
+
+def _together(e, v, lo, hi, levels, rate, step, caps, brake, energy, flows):
+    """Substeps `lo` to `hi` from energy `e` (J) at voltage `v`, as many as
+    `_substep` takes without solving a crossing: while the bus floats
+    between two levels and ends each substep clear of them, or while it is
+    held at one by its clamps. Writes their energies and flows into
+    `energy` and `flows`, each by `_substep`'s own arithmetic in its order,
+    and returns how many it took, 0 where the first needs solving alone."""
+    at = next((i for i, (level, _, _) in enumerate(levels) if level == e),
+              None)
+    below = sum(1 for level, _, _ in levels if level < e) - 1
+    above = below + 1 + (at is not None)
+    gives = [f for _, fs, _ in levels[above:] for f in fs]
+    takes = [c for _, _, cs in levels[:below + 1] for c in cs]
+    if at is None and BRAKE in takes:
+        return 0  # the brake conducts, at V²/R from each substep's V
+    span = step[lo:hi]
+    cap = {key: values[lo:hi] for key, values in caps.items()}
+    if brake is not None:  # held, V is the same at every substep
+        cap[BRAKE] = np.full(hi - lo, _brake_capacity(brake, v))
+    net = rate[lo:hi] + _sum(cap[f] for f in gives) - _sum(
+        cap[c] for c in takes)
+    if at is None:
+        ends = np.add.accumulate(np.concatenate(([e], net * span)))[1:]
+        top = levels[above][0] if above < len(levels) else math.inf
+        bottom = levels[below][0] if below >= 0 else 0.0
+        clear = TOUCH * max([e, *(level for level, _, _ in levels)])
+        near = (((net > 0) & (ends >= top - clear))
+                | ((net < 0) & (ends <= bottom + clear)))
+        taken = int(np.argmax(near)) if near.any() else len(net)
+    else:
+        _, floors, ceilings = levels[at]
+        up = net - _sum(cap[key] for key in ceilings)
+        down = net + _sum(cap[key] for key in floors)
+        held = (up <= 0) & (0 <= down)
+        taken = int(np.argmin(held)) if not held.all() else len(net)
+        ends = np.full(taken, e)
+    if not taken:
+        return 0
+    out = slice(lo, lo + taken)
+    energy[out] = ends[:taken]
+    span = span[:taken]
+    for key in gives:
+        flows[key][out] = 0.0 - cap[key][:taken] * span
+    for key in takes:
+        flows[key][out] = 0.0 + cap[key][:taken] * span
+    if at is not None:  # what the level's clamps took up, shared
+        net, amount = net[:taken], net[:taken] * span
+        for keys, sharing in ((ceilings, net > 0), (floors, net < 0)):
+            total = _sum(cap[key][:taken] for key in keys)
+            for key in keys:
+                with np.errstate(divide="ignore", invalid="ignore"):
+                    part = np.where(total > 0,
+                                    amount * cap[key][:taken] / total, 0.0)
+                flows[key][out] = np.where(sharing, 0.0 + part,
+                                           flows[key][out])
+    return taken
+
+
+TOUCH = 1e-9  # a substep ending within this fraction of a level's energy
+              # is solved alone, where it may cross it
+
+
+def _sum(terms):
+    """Python's `sum` of floats, elementwise over arrays: since 3.12 it
+    compensates (Neumaier's), so where three or more clamps are summed a
+    plain `+` would differ from `_substep`'s in the last bit. Of fewer,
+    the plain sum is the same."""
+    terms = list(terms)
+    if len(terms) <= 2:
+        return sum(terms)
+    total, carry = 0.0, 0.0
+    for x in terms:
+        t = total + x
+        carry = carry + np.where(np.abs(total) >= np.abs(x),
+                                 (total - t) + x, (x - t) + total)
+        total = t
+    return np.where((carry != 0) & np.isfinite(carry), total + carry, total)
 
 
 def _flux_capacity(driver, motor, resistance):

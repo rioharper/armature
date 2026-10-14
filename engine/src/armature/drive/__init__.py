@@ -23,8 +23,8 @@ An `event(start, modes, duration)` is a segment forward-simulated from a
 state or from `after(segment, fraction)`, each actuator coasting, shorted,
 flux-braking or following a torque profile, with the bus stepped alongside;
 `trace(m, mission, rate, drive=..., capacitance=..., v_source=...)` runs it
-at its timestep and at half of it; under an actuation seam, through the
-mission's `transmission(state, *, t, p)`.
+at its timestep, and at half of it when that run is first read; under an
+actuation seam, through the mission's `transmission(state, *, t, p)`.
 
 `margins(drive, missions, over=space)` turns all of it into ADR 0005
 `Margin`s, one per check, searched over the move endpoints, event triggers,
