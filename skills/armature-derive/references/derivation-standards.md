@@ -73,7 +73,6 @@ The **peak** margins search every axis: the moves, the event triggers, the bands
 - **A rating on the bus that no driver carries**, such as a power board's or a capacitor bank's voltage. The lowest trip the engine sees is the drivers' `max_voltage` and the source's `overvoltage`; a lower rating is a margin the project writes on `charge(...).peak`.
 - **Past a trip the bus model keeps regenerating**, so a peak above the lowest trip is a failure whose value is arithmetic, not a prediction.
 - **An allocation the engine does not make** (cable tensions). Use the mission's `actuation(state, qdd, loads)` seam, which gets no time and no params: close over what it needs. Raise `Infeasible` where the allocation has no solution.
-- **A searched move stays inside the envelope only if the mission keeps it there.** Clip its distance to the envelope's face, pass `within=` to its `Coordinates`, and give the joint ranges a margin past it.
 - **A motion from the project's own simulation** enters as `follow(q, duration)`. Keep the q(t) behind every sizing number, not only its summary.
 
 ## The assumption table
