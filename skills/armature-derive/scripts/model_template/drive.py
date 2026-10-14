@@ -28,10 +28,14 @@ MILESTONE = (4, "Drive: the actuators and the bus, over the missions")
 MOTORS = {"shoulder_motor": "1", "elbow_motor": "2"}
 
 # Each margin's search, per mission. ADR 0005's default spends 64 Sobol
-# points per dimension and three polishes; every corner is evaluated either
-# way, and a drive margin's evaluation traces a whole mission, so this
-# spends less beside them.
-BUDGET = Budget(global_points=64, polish_starts=2, polish_evals=40)
+# points per dimension, 512 over the peak margins' six, and three polishes
+# of 100 evaluations per dimension; every corner is evaluated either way.
+# A drive margin's evaluation traces a whole mission, 20–30 ms here, so the
+# default takes 150 s, five times the rest of run_all.py, and is cut (#100,
+# measured on one machine): 64 points and three polishes of 100 find every
+# margin's worst at the default's own value, to seven digits, in 26 s. Two
+# polishes of 40 did not: the elbow's envelope read 12.56 N·m for 12.42.
+BUDGET = Budget(global_points=64, polish_starts=3, polish_evals=100)
 
 
 def thermal(p, k):
