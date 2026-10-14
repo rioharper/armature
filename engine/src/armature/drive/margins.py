@@ -6,8 +6,10 @@ check, each searched by `armature.search`:
 - **per actuator**, every (τ, ω) sample inside the torque–speed envelope at
   the bus's lowest voltage, with the winding hot; the driver's peak current;
   the winding's temperature over the duty, or, where the motor publishes no
-  `Thermal`, its RMS torque against its continuous rating; and the driver's
-  RMS current against its continuous rating, where it gives one;
+  `Thermal`, its RMS torque against its continuous rating; the driver's
+  RMS current against its continuous rating, where it gives one; and,
+  where the driver has a flux brake, the power the actuator returns to the
+  bus against that brake's capacity, i_d²·R_φ, while the driver is on;
 - **per bus**, its peak voltage against the lowest trip on it (each
   driver's `max_voltage`, the source's `overvoltage`); its minimum against
   the highest undervoltage trip; the brake resistor's pulse energy and its
@@ -25,11 +27,11 @@ are the `Choice` axis `"mission"`.
 
 What each margin searches:
 
-- The **peak** margins (envelope, peak current, the bus's peak and minimum
-  voltage, the brake's pulse, the source's power) search every axis of
-  `over`, every mission, every bus configuration, and the bus's own bands,
-  its capacitance and its source's voltage, as the `Interval` axes
-  `"capacitance"` and `"v_source"`.
+- The **peak** margins (envelope, peak current, regeneration, the bus's
+  peak and minimum voltage, the brake's pulse, the source's power) search
+  every axis of `over`, every mission, every bus configuration, and the
+  bus's own bands, its capacitance and its source's voltage, as the
+  `Interval` axes `"capacitance"` and `"v_source"`.
 - The **duty** margins (winding temperature or RMS torque, RMS current,
   the brake's power) run each mission as written, over its duty, searching
   only the bands and the bus configurations. A searched mission is never
@@ -40,10 +42,11 @@ mission traced at `rate`, each actuator through the electrical model, and
 the bus charged. The margins of one space read the same Sobol set, so the
 evaluations are cached by point and each runs once. Where a motor has a
 `Thermal`, the bus is charged twice: with every winding at its resistance's
-T₀, which returns the most regeneration, for the peak voltage and the
-brake; and with each winding at its `t_max`, which draws the most, for the
-minimum voltage, the source's power, the flux brakes' heat and the
-envelope, whose V_min it is. The envelope reads the winding hot too.
+T₀, which returns the most regeneration, for the peak voltage, the brake
+and each actuator's regeneration, whose flux brake then takes least; and
+with each winding at its `t_max`, which draws the most, for the minimum
+voltage, the source's power, the flux brakes' heat and the envelope,
+whose V_min it is. The envelope reads the winding hot too.
 
 Each margin's `truth` re-runs its point at `confirm` (1 kHz) with each
 event at half its timestep, and must agree within `agree` of the limit the
@@ -70,7 +73,7 @@ import numpy as np
 from ..compiler import Compiled, compile
 from ..search import (Band, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Point, Space, search)
-from .bus import Drive, charge
+from .bus import Drive, _flux_capacity, charge
 from .electrical import (_amps, _bound, _current_limit, _efficiencies, _hot,
                          _resolve, electrical)
 from .event import Event
@@ -394,6 +397,16 @@ class _Setup:
                 out.append(_Check(f"{a}: driver peak current",
                                   driver.i_peak.per, PEAK, "peak current", a,
                                   driver.i_peak.value, "torque-speed"))
+                braked = [d for d in self.nominal.values()
+                          if d.drivers[a].flux_brake is not None]
+                if braked:
+                    b = braked[0]
+                    r = _resolve(b.motors[a], n, b.gearboxes.get(a)).r
+                    out.append(_Check(
+                        f"{a}: regeneration against its flux brake", "W",
+                        PEAK, "regeneration", a,
+                        _flux_capacity(b.drivers[a], b.motors[a], r),
+                        "regeneration"))
             out.append(_Check("bus: peak V", "V", PEAK, "peak V", None,
                               _trip(first), "bus"))
             out.append(_Check("bus: minimum V", "V", PEAK, "minimum V", None,
@@ -551,6 +564,14 @@ class _Setup:
             limit = driver.i_peak.dq(wiring)
             return (limit - float(np.max(np.abs(e.current)))) / _amps(
                 per, wiring)
+        if what == "regeneration":
+            if driver.flux_brake is None:
+                return math.inf
+            capacity = _flux_capacity(driver, motor, e.resistance)
+            left = capacity - np.maximum(-e.bus, 0.0)
+            # an off driver returns nothing through its bridge, nor brakes
+            on = (ran.trace.driven or {}).get(a, True)
+            return float(np.min(np.where(on, left, capacity)))
         if what == "peak V":
             return _trip(d) - c.peak
         if what == "minimum V":
@@ -781,6 +802,8 @@ def review(margins, directory="review", worsts=None):
 
     - an actuator's envelope, current and RMS-torque margins: its (τ, ω)
       samples over its envelope at V_min, the winding hot;
+    - an actuator's regeneration margin: the power it returns to the bus
+      over t against its flux brake's capacity, the winding at T₀;
     - the bus's margins: V(t) against its trip lines, and the source's and
       brake's power;
     - a winding temperature margin: T(t) over the last cycle against the
@@ -817,7 +840,8 @@ def review(margins, directory="review", worsts=None):
         evaluator, check = margin.fn.evaluator, margin.fn.check
         ran = evaluator.ran(evaluator.point(worst.at), True)
         draw = {"torque-speed": _torque_speed, "bus": _bus,
-                "winding": _winding}[check.plot]
+                "winding": _winding,
+                "regeneration": _regeneration}[check.plot]
         panels = draw(plt, evaluator.setup, check, ran, worst)
         path = directory / f"{_slug(margin.name)}.png"
         figure = plt.gcf()
@@ -892,6 +916,24 @@ def _bus(plt, setup, check, ran, worst):
     power.set_title(second, fontsize=9)
     power.legend(fontsize=7)
     return [first, second]
+
+
+def _regeneration(plt, setup, check, ran, worst):
+    a = check.actuator
+    d, e = ran.drive, ran.loads[a]
+    t = ran.trace.t
+    figure, axis = plt.subplots(figsize=(6.4, 4.8))
+    axis.plot(t, np.maximum(-e.bus, 0.0), color="tab:blue", lw=1,
+              label="returned to the bus")
+    axis.plot(t, _flux_capacity(d.drivers[a], d.motors[a], e.resistance)
+              * (ran.trace.driven or {}).get(a, 1.0), color="tab:red", lw=1,
+              label="flux brake capacity, i_d²·R_φ at T₀")
+    axis.set_xlabel("t (s)")
+    axis.set_ylabel("W")
+    title = f"{a}: power returned to the bus against its flux brake"
+    axis.set_title(title, fontsize=9)
+    axis.legend(fontsize=7)
+    return [title]
 
 
 def _winding(plt, setup, check, ran, worst):
