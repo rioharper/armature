@@ -23,9 +23,10 @@ from PIL import Image
 import armature
 from armature import Band, Budget, Direction, Interval, Space, search
 from armature.drive import (Bus, Current, Drive, Driver, Duty, Energy,
-                            Gearbox, Kt, Limits, Mission, Motor, Resistance,
-                            Source, Thermal, after, charge, electrical, energy,
-                            event, follow, hold, margins, move, review, trace)
+                            FluxBrake, Gearbox, Kt, Limits, Mission, Motor,
+                            Resistance, Source, Thermal, after, charge,
+                            electrical, energy, event, follow, hold, margins,
+                            move, review, trace)
 from test_drive_mission import (MGL, SWING, pendulum, swing_q, swing_qd,
                                 swing_qdd)
 from test_fixture_2r_arm import PARAMS as ARM
@@ -309,6 +310,84 @@ def test_duty_margins_without_a_mission_as_written_are_unchecked():
     ms = pendulum_margins(motor(thermal=THERMAL), missions=[wave])
     assert ms["motor: winding temperature"].unchecked == (
         "a mission as written, with its duty",)
+
+
+# --- regeneration against a flux brake ---------------------------------------
+I_D = 10.0  # A_peak, the flux brake's d-axis current
+REGEN = "motor: regeneration against its flux brake"
+
+
+def flux_braked(**extra):
+    return driver(flux_brake=FluxBrake(onset=30.0,
+                                       i_d=Current(I_D, per="A_peak")),
+                  **extra)
+
+
+def swing_regenerated(m, rate=200.0):
+    """The most the swinging motor returns to the bus (W), from the trace
+    and the electrical model directly, its winding at T₀."""
+    tau, omega, rotor = trace(m, SWING_MISSION, rate).output("motor")
+    e = electrical(tau, omega, SWING["N"], warm_motor(), Gearbox(forward=0.9),
+                   flux_braked(), rotor=rotor)
+    return float(np.max(-e.bus))
+
+
+def warm_motor():
+    """A copper winding with a thermal RC: hot, its R_φ is higher."""
+    return Motor(kt=Kt(KT * SQ3, per="A_rms", side="motor"),
+                 r=Resistance(R, between="phase"), wiring="wye",
+                 thermal=THERMAL)
+
+
+def test_a_flux_braked_driver_takes_its_own_regeneration():
+    """The swing returns power on each downswing; the driver's flux brake
+    absorbs i_d²·R_φ in d-q, 1.5·I_d,peak²·R_φ in a wye, with the winding at
+    T₀, where R_φ is least and the regeneration most. A driver without a
+    flux brake has no such margin."""
+    m = armature.compile(pendulum, SWING)
+    d = on_a_bus(["motor"], motors={"motor": warm_motor()},
+                 drivers={"motor": flux_braked()})
+    margin = named(margins(d, [SWING_MISSION], model=m))[REGEN]
+    assert margin.unit == "W"
+    worst = search(margin)
+    capacity = 1.5 * I_D ** 2 * R
+    regenerated = swing_regenerated(m)
+    assert regenerated > 1.0
+    assert worst.value == pytest.approx(capacity - regenerated, rel=1e-9)
+    assert worst.truth.agrees
+    assert worst.truth.agree == pytest.approx(0.01 * capacity)
+    plain = on_a_bus(["motor"], motors={"motor": warm_motor()})
+    assert not any("flux brake" in name for name in named(
+        margins(plain, [SWING_MISSION], model=m)))
+    # a bus configuration whose driver has none has nothing to exceed
+    both = search(named(margins({"braked": d, "plain": plain},
+                                [SWING_MISSION], model=m))[REGEN])
+    cases = {c.choices["drive"]: c.value for c in both.cases}
+    assert cases == {"braked": worst.value, "plain": math.inf}
+
+
+def test_a_shorted_driver_neither_regenerates_nor_brakes():
+    """The flywheel spins up, motoring, and is shorted partway: its driver is
+    off, so nothing it does then is read against its flux brake, and with
+    no regeneration while driven the whole capacity is left."""
+    d = on_a_bus(["motor"], eta=1.0, drivers={"motor": flux_braked()})
+    spin = Mission("shorted", [SPIN, event(after(SPIN, 0.3),
+                                           {"motor": "short"}, 0.02,
+                                           timestep=1e-3)])
+    m = armature.compile(flywheel, {"J": 0.01})
+    worst = search(named(margins(d, [spin], model=m))[REGEN])
+    assert worst.value == pytest.approx(1.5 * I_D ** 2 * R, rel=1e-12)
+
+
+def test_the_review_plots_the_regeneration_against_the_brake(tmp_path):
+    d = on_a_bus(["motor"], drivers={"motor": flux_braked()})
+    margin = named(margins(d, [SWING_MISSION],
+                           model=armature.compile(pendulum, SWING)))[REGEN]
+    reviewed, = review([margin], tmp_path)
+    assert reviewed.panels == (
+        "motor: power returned to the bus against its flux brake",)
+    with Image.open(reviewed.path) as png:
+        assert png.text["Panels"] == reviewed.panels[0]
 
 
 # --- energy, reported --------------------------------------------------------
