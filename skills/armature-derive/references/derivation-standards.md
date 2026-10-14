@@ -74,7 +74,6 @@ The **peak** margins search every axis: the moves, the event triggers, the bands
 - **Past a trip the bus model keeps regenerating**, so a peak above the lowest trip is a failure whose value is arithmetic, not a prediction.
 - **One actuator's regeneration against its own flux brake.** The bus's peak voltage saturates at the clamp and cannot rank regeneration events. Write the per-actuator margin from `trace` and `electrical`: the winch paying out on a cable robot is the case that needs it.
 - **An allocation the engine does not make** (cable tensions). Use the mission's `actuation(state, qdd, loads)` seam, which gets no time and no params: close over what it needs. Raise `Infeasible` where the allocation has no solution.
-- **A searched move stays inside the envelope only if the mission keeps it there.** Clip its distance to the envelope's face, pass `within=` to its `Coordinates`, and give the joint ranges a margin past it.
 - **A motion from the project's own simulation** enters as `follow(q, duration)`. Keep the q(t) behind every sizing number, not only its summary.
 
 ## The assumption table

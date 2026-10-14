@@ -17,7 +17,8 @@ from scipy.integrate import quad
 
 import armature
 from armature import actuator, body, gravity, joint
-from armature import Coordinates, Direction, Interval
+from armature import (Budget, Coordinates, Direction, Infeasible, Interval,
+                      Margin, Space, search)
 from armature.drive import (CONFIRM_RATE, SEARCH_RATE, Duty, Limits, Mission,
                             follow, hold, move, trace)
 from test_fixture_2r_arm import PARAMS as ARM
@@ -143,6 +144,98 @@ def test_limits_name_what_they_bound():
         Limits(v=1.0, a=1.0, j=1.0, along="axis")
     with pytest.raises(ValueError, match="path"):
         Limits(v={"shoulder": 1.0}, a=1.0, j=1.0, along="path")
+
+
+# --- the envelope ------------------------------------------------------------
+# The arm's elbow ranges over (−2.6, 2.6); 2.6000000000000005 is one ulp past.
+PAST = math.nextafter(2.6, 3.0)
+
+
+@pytest.mark.parametrize("sense", [1.0, -1.0])
+@pytest.mark.parametrize("along", ["coordinate", "path"])
+def test_a_move_ending_on_a_face_to_an_ulp_ends_on_it(m, sense, along):
+    """2.0 + 0.6000000000000005 is 2.6000000000000005 exactly: the rounding a
+    distance worked to the face carries, which the move puts on the face."""
+    start = m.at(q={"elbow": 2.0 * sense})
+    assert 2.0 + (PAST - 2.0) == PAST
+    t = trace(m, Mission("to the face", [move(
+        start, direction=(0.0, sense), distance=PAST - 2.0,
+        limits=Limits(v=1.5, a=4.0, j=40.0, along=along))]), CONFIRM_RATE)
+    assert t.q["elbow"][-1] == 2.6 * sense
+    assert np.max(np.abs(t.q["elbow"])) == 2.6
+
+
+def test_a_move_past_the_envelope_is_infeasible(m):
+    """Past the elbow's range by a micrometre, or past a `within` box as
+    the `Coordinates` axis draws from, so a search counts the point under
+    the coordinate it left by rather than stopping."""
+    start = m.at(q={"shoulder": 0.0, "elbow": 2.0})
+    with pytest.raises(Infeasible, match="'elbow'"):
+        trace(m, Mission("past", [move(start, direction=(0.0, 1.0),
+                                       distance=0.600001, limits=LIMITS)]),
+              SEARCH_RATE)
+    with pytest.raises(Infeasible, match="'shoulder'"):
+        trace(m, Mission("past within", [move(
+            start, direction=(1.0, 0.0), distance=0.5, limits=LIMITS,
+            within={"shoulder": (-0.4, 0.4)})]), SEARCH_RATE)
+
+
+def test_a_clipped_move_stops_at_the_nearer_face(m):
+    """From (−0.4, 0.9) along (0.6, −0.8) the elbow meets within's 0.5 after
+    0.4 / 0.8 = 0.5, with the shoulder at −0.4 + 0.6 · 0.5 = −0.1, before
+    the shoulder's 0.4; along +shoulder from 3.0 the joint's own π stops
+    it, 0.14159… on."""
+    start = m.at(q={"shoulder": -0.4, "elbow": 0.9})
+    t = trace(m, Mission("clipped", [move(
+        start, direction=(0.6, -0.8), distance=3.0, limits=LIMITS,
+        within={"shoulder": (-0.4, 0.4), "elbow": (0.5, 2.0)}, clip=True)]),
+        CONFIRM_RATE)
+    assert t.q["shoulder"][-1] == pytest.approx(-0.1, abs=1e-12)
+    assert t.q["elbow"][-1] == pytest.approx(0.5, abs=1e-12)
+    t = trace(m, Mission("to pi", [move(
+        m.at(q={"shoulder": 3.0}), direction=(1.0, 0.0), distance=1.0,
+        limits=LIMITS, clip=True)]), CONFIRM_RATE)
+    assert t.q["shoulder"][-1] == math.pi
+
+
+def test_a_clipped_move_on_a_face_heading_out_stays_put(m):
+    start = m.at(q={"elbow": 2.6})
+    t = trace(m, Mission("out", [move(start, direction=(0.0, 1.0),
+                                      distance=1.0, limits=LIMITS,
+                                      clip=True)]), SEARCH_RATE)
+    assert t.duration == 0.0
+    assert np.all(t.q["elbow"] == 2.6)
+
+
+@pytest.mark.parametrize("clip", [False, True])
+def test_a_searched_move_past_the_envelope_is_rejected_or_clipped(clip):
+    """Up to 3 rad from anywhere inside within's box leaves it from most
+    starts: rejected under the coordinate it left by, or clipped and none
+    rejected. Either way the search runs to its worst."""
+    within = {"shoulder": (-1.0, 1.0), "elbow": (-1.0, 1.0)}
+
+    def travel(p):
+        t = trace(p.state.compiled, Mission("searched", [move(
+            p.state, direction=p.direction, distance=p.distance,
+            limits=LIMITS, within=within, clip=clip)]), SEARCH_RATE)
+        return -t.duration
+
+    worst = search(Margin("travel", travel, "s", over=Space(
+        state=Coordinates(arm, ARM, within=within),
+        direction=Direction("xy"), distance=Interval(0.0, 3.0)),
+        budget=Budget(global_points=32, polish_starts=0)))
+    if clip:
+        assert not worst.rejected
+    else:
+        assert set(worst.rejected) == {
+            "a move out of the envelope along 'shoulder'",
+            "a move out of the envelope along 'elbow'"}
+    assert worst.value < 0
+
+
+def test_a_move_to_an_end_has_no_distance_to_clip(m):
+    with pytest.raises(ValueError, match="clip"):
+        move({"elbow": 0.0}, end={"elbow": 1.0}, limits=LIMITS, clip=True)
 
 
 # --- the geared pendulum swing -----------------------------------------------
