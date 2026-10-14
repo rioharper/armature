@@ -14,6 +14,7 @@ module:
   traced and charged directly.
 """
 
+import importlib
 import math
 from dataclasses import replace
 
@@ -650,6 +651,94 @@ def test_an_events_capacitance_is_bisected_with_the_event_rerun():
                             capacitance=c, v_source=24.0), at).peak
 
     assert peak(n.capacitance) <= 30.0 < peak(n.capacitance / 1.002)
+
+
+# --- a mission as written, run once per value it reads ------------------------
+MARGINS = importlib.import_module("armature.drive.margins")
+
+
+def counted(monkeypatch, name):
+    """Every call the margins make to their `name` (`trace`, `charge`), as
+    a list of their arguments, grown as they run."""
+    calls, real = [], getattr(MARGINS, name)
+
+    def spy(*args, **kwargs):
+        calls.append((args, kwargs))
+        return real(*args, **kwargs)
+    monkeypatch.setattr(MARGINS, name, spy)
+    return calls
+
+
+def test_a_mission_as_written_runs_once_for_the_axes_it_never_reads(
+        monkeypatch):
+    """The heavy hold reads the bob's mass band and the gearbox's
+    efficiency band, and nothing of the wave's reach: two points that
+    differ in the reach alone are one run, read twice. A point at another
+    mass is a run of its own, traced again, and the heavier bob holds at
+    more current; one at another efficiency is charged again, and the less
+    efficient gearbox holds at more current too."""
+    space = Space(reach=Interval(0.5, 1.5),
+                  m=Band("m", {"m": (SWING["m"], 1.5 * SWING["m"])}),
+                  eff=Band("eff", {"eff": (0.8, 0.9)}, of="drive"))
+
+    def wave(p):
+        return Mission("wave", [move({"pivot": 0.0}, direction=(1.0,),
+                                     distance=p.reach,
+                                     limits=Limits(v=2, a=10, j=100,
+                                                   along="coordinate"))])
+
+    def geared(p):
+        return on_a_bus(["motor"], eta=p["eff"])
+    ms = named(margins(geared, [held("heavy", 1.0), wave], space,
+                       model=armature.compile(pendulum, SWING),
+                       params={"eff": 0.9}))
+    current = ms["motor: driver peak current"].fn
+    traced = counted(monkeypatch, "trace")
+    charged = counted(monkeypatch, "charge")
+
+    def at(reach, m=SWING["m"], eff=0.9, mission="heavy"):
+        return current(armature.Point({"reach": reach, "m": m, "eff": eff,
+                                       "mission": mission}))
+
+    first = at(0.6)
+    runs = len(charged)
+    assert runs > 0 and len(traced) == 1
+    assert at(1.4) == first
+    assert len(charged) == runs  # the reach changed, and nothing ran
+    heavier = at(0.6, m=1.5 * SWING["m"])
+    assert len(charged) == 2 * runs and len(traced) == 2
+    assert heavier < first
+    lossier = at(0.6, eff=0.8)
+    assert len(charged) == 3 * runs and lossier < first
+    # a searched mission reads every axis: the reach is a run of its own
+    at(0.6, mission="wave")
+    at(1.4, mission="wave")
+    assert len(charged) == 5 * runs
+
+
+def test_a_mission_as_written_with_an_event_reruns_at_each_bus_value(
+        monkeypatch):
+    """An e-stop's motion depends on the bus, so a mission as written with
+    one is traced again at each capacitance, and the least peaks highest;
+    an axis it never reads runs nothing."""
+    d = on_a_bus(["motor"], eta=1.0, capacitance=(1e-4, 2e-4), sinks=False)
+    m = armature.compile(flywheel, {"J": 0.01})
+    ms = named(margins(d, [estop_at(0.5)], Space(unread=Interval(0, 1)),
+                       model=m))
+    peak = ms["bus: peak V"].fn
+    traced = counted(monkeypatch, "trace")
+
+    def at(c, unread=0.5):
+        return peak(armature.Point({"unread": unread, "mission": "e-stop",
+                                    "capacitance": c}))
+
+    least = at(1e-4)
+    assert len(traced) == 1
+    assert at(1e-4, unread=0.9) == least and len(traced) == 1
+    most = at(2e-4)
+    assert len(traced) == 2
+    assert traced[1][1]["capacitance"] == 2e-4
+    assert least < most  # slack: the least capacitance peaks highest
 
 
 # --- the review --------------------------------------------------------------

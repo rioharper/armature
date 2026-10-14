@@ -48,7 +48,9 @@ What each margin searches:
 Every margin's slack at a point comes from one evaluation, shared: the
 mission traced at `rate`, each actuator through the electrical model, and
 the bus charged. The margins of one space read the same Sobol set, so the
-evaluations are cached by point and each runs once. Where a motor has a
+evaluations are cached by point and each runs once; a mission as written
+is cached by the values it reads, its bands and the bus's, so points that
+differ only in a searched mission's axes share its run. Where a motor has a
 `Thermal`, the bus is charged twice: with every winding at its resistance's
 T₀, which returns the most regeneration, for the peak voltage, the brake
 and each actuator's regeneration, whose flux brake then takes least; and
@@ -547,6 +549,18 @@ class _Setup:
             t, d, capacitance=cap, v_source=v_s, gear=gear, temperature=hot)
         return _Ran(values, m, d, mission, t, loads, r_hot, charged, sagged)
 
+    def reads(self, values):
+        """The axes a run at `values` reads. A searched mission reads every
+        one, since it builds its moves from the point. A mission as written
+        reads only the bands, the bus configuration, its capacitance and
+        source voltage (an event's motion depends on the bus), and the
+        mission's name; a `Coordinates` axis gives it the model compiled at
+        the mechanism bands, and nothing else."""
+        if values["mission"] not in self.written:
+            return set(values)
+        return {n for n, a in self.axes.items() if isinstance(a, Band)} | {
+            "mission", "drive", "capacitance", "v_source"}
+
     def _compiled(self, bands):
         key = tuple(sorted(bands.items()))
         if not any(v != self.mechanism_params[p] for p, v in bands.items()):
@@ -702,7 +716,7 @@ class _Evaluator:
         self._slacks = {}
 
     def slacks(self, point, confirm):
-        key = (confirm, _key(self.space, point))
+        key = (confirm, _key(self.space, point, self.setup.reads(point)))
         if key not in self._slacks:
             try:
                 ran = self.ran(point, confirm)
@@ -758,9 +772,10 @@ class _Slack:
                 f"{self.check.name!r}>")
 
 
-def _key(space, point):
+def _key(space, point, names):
+    """The point's values on the axes `names`, hashable."""
     return tuple((n, _hashable(space.axes[n].plain(point[n])))
-                 for n in space.axes)
+                 for n in space.axes if n in names)
 
 
 def _hashable(value):
