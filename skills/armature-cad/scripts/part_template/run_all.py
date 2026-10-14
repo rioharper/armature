@@ -140,8 +140,8 @@ def margin_check(margin, exempt=None):
     fail where it does not pass, or where its truth disagrees beyond
     `agree`. An UNCHECKED margin, whose inputs are missing, fails too,
     unless `exempt` gives the reason it may stand: then its `exempt_row`,
-    the inputs it lacks and the reason, prints. The margin rides on the check as `.margin`, the reason as
-    `.exempt`."""
+    the inputs it lacks and the reason, prints. The margin rides on the
+    check as `.margin`, the reason as `.exempt`."""
     def check():
         worst = searched(margin)
         if worst.unchecked:
