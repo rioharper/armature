@@ -204,14 +204,14 @@ STOPPED = Mission("stop", [follow(
 C_STOP = 0.2  # F: the stop's 50 J lifts 24 V to 32.8 V
 
 
-def stopping(**bus):
+def stopping(undervoltage=10.0, **bus):
     """The flywheel's one motor, on 200 V drivers, a 24 V source that cannot
     sink, and C_STOP."""
     kwargs = dict(source=Source(v=24.0, sinks=False, p_max=500.0),
                   capacitance=C_STOP)
     kwargs.update(bus)
     return Drive(motors={"motor": tiny_motor()},
-                 drivers={"motor": plain_driver()},
+                 drivers={"motor": plain_driver(undervoltage=undervoltage)},
                  bus=Bus(actuators=("motor",), **kwargs))
 
 
@@ -244,6 +244,48 @@ def test_each_bus_configuration_names_its_own_lowest_trip(free_wheel):
     assert worst.at["drive"] == "boarded"
     assert ("against power board (40 V) on boarded, the source's "
             "overvoltage (150 V) on bare at ") in str(worst)
+
+
+# --- a bus configuration with no source --------------------------------------
+UNMATED = dict(source=None, v0=24.0)
+
+
+def test_a_bus_with_no_source_has_no_minimum_or_source_power_margin(
+        free_wheel):
+    """Its peak is the stop's return on the capacitor alone, from v0."""
+    ms = named(margins(stopping(**UNMATED), [STOPPED], model=free_wheel))
+    assert "bus: minimum V" not in ms and "bus: source power" not in ms
+    peak = math.sqrt(24.0 ** 2 + 2 * returned(STOP) / C_STOP)
+    assert search(ms["bus: peak V"]).value == pytest.approx(200.0 - peak,
+                                                            rel=1e-9)
+
+
+def test_a_configuration_with_no_source_is_absent_from_the_source_margins(
+        free_wheel):
+    """Its hotel load drains the bus to nothing, which fails neither
+    margin: each is the mated pack's alone."""
+    ms = named(margins({"mated": stopping(hotel=200.0),
+                        "unmated": stopping(hotel=200.0, **UNMATED)},
+                       [STOPPED], model=free_wheel))
+    for name in ("bus: minimum V", "bus: source power"):
+        worst = search(ms[name])
+        cases = {c.choices["drive"]: c.value for c in worst.cases}
+        assert cases["unmated"] == math.inf
+        assert worst.at["drive"] == "mated" and math.isfinite(worst.value)
+
+
+def test_a_drained_bus_reads_its_envelope_at_its_drivers_trip(free_wheel):
+    """With no source, 200 W of hotel load drains the bus to 0 V, and the
+    driver is off below its 20 V trip: the envelope reads V_min there, as it
+    does where a sinking source holds the bus at 20 V."""
+    drained = stopping(undervoltage=20.0, hotel=200.0, **UNMATED)
+    assert charge(trace(free_wheel, STOPPED, 200.0), drained).minimum == 0
+    held = stopping(undervoltage=20.0, source=Source(v=20.0, sinks=True,
+                                                     p_max=1e4))
+    name = "motor: envelope at V_min"
+    worst = [search(named(margins(d, [STOPPED], model=free_wheel))[name])
+             for d in (drained, held)]
+    assert worst[0].value == pytest.approx(worst[1].value, rel=1e-12)
 
 
 def test_a_drive_band_names_a_drive_parameter():
@@ -425,6 +467,21 @@ def test_an_e_stops_trigger_is_searched():
     assert worst.at["fraction"] > 0.5
     assert worst.at["drive"] == "plain"
     assert worst.truth.agrees  # at half the event's timestep
+
+
+def test_an_event_runs_on_a_bus_with_no_source():
+    """The e-stop's bus starts where the spin left it, from v0, with nothing
+    to hold it up while the spin draws."""
+    d = Drive(motors={"motor": motor()}, drivers={"motor": driver()},
+              gearboxes={"motor": Gearbox(forward=1.0)},
+              bus=Bus(actuators=("motor",), source=None, v0=24.0,
+                      capacitance=1e-2))
+    m = armature.compile(flywheel, {"J": 0.01})
+    t = trace(m, estop_at(0.5), 200.0, drive=d, capacitance=1e-2,
+              v_source=24.0)
+    charged = charge(t, d)
+    assert charged.v[0] == 24.0 and charged.minimum < 24.0
+    assert not np.any(charged.source)
 
 
 # --- the review --------------------------------------------------------------

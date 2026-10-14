@@ -45,7 +45,7 @@ import numpy as np
 from ruckig import InputParameter, Result, Ruckig, Synchronization, Trajectory
 
 from ..state import Placement, State, placement
-from .bus import Drive, _within, charge
+from .bus import Drive, _v_source, _within, charge
 from .electrical import _positive
 from .event import After, Event, Run, Simulated, _simulate
 from .thermal import rms_torque
@@ -598,7 +598,7 @@ def _event_bus(m, mission, drive, capacitance, v_source):
                          f"runs every actuator on its motor and driver, so "
                          f"add them to Bus(actuators=...)")
     return (_within("capacitance", drive.bus.capacitance, capacitance),
-            _within("v_source", drive.bus.source.v, v_source))
+            _within("v_source", _v_source(drive.bus), v_source))
 
 
 def _event_start(m, mission, i, event, before, profiles):

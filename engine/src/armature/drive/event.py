@@ -305,7 +305,7 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     braking = [a for a in acts if a.flux is not None]
     levels = _levels(bus, capacitance, v_source,
                      [(a.name, a.flux[0]) for a in braking])
-    cap = {SOURCE: bus.source.p_max}
+    cap = {} if bus.source is None else {SOURCE: bus.source.p_max}
     cap.update({("flux", a.name): a.flux[1] for a in braking})
     energy = half_c * v0 ** 2
 

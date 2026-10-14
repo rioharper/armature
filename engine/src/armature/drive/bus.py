@@ -29,7 +29,9 @@ clamps are:
   V_s, inside its band; past `p_max` the bus sags below it or rises above
   it, which is what the minimum and peak report. Battery state of charge
   and sag beyond the band are left out (spec #83): the band is the range V_s
-  takes, and #88 searches it.
+  takes, and #88 searches it. A bus with no source, such as a pack unmated,
+  has no such clamp: it starts at its own `v0`, and the hotel load drains
+  it all along.
 - **the brake resistor**, an ideal chopper: above `threshold` it connects
   `r` across the bus, so it holds V at the threshold while V_th²/R covers
   what arrives, and past that V rises until V²/R does. Its capacity in a
@@ -63,9 +65,10 @@ power is its mean there, and the brake's capacity is V²/R at its start, so
 both converge as it shrinks; on a brake carrying twice its threshold
 capacity, the refined peak sits within 2·`agree` of the ODE's.
 
-The bus's bands, its `capacitance` and its source's `v`, are searched by
-#88 as `Interval(*band)` axes; `charge` runs at one point in each, given as
-`capacitance=` and `v_source=`, or the band's only value where it is one.
+The bus's bands, its `capacitance` and its source's `v` (or, with no
+source, its `v0`), are searched by #88 as `Interval(*band)` axes; `charge`
+runs at one point in each, given as `capacitance=` and `v_source=`, or the
+band's only value where it is one.
 A bus configuration, such as Ibex's pack unmated, is a `Choice` between
 `Drive`s.
 
@@ -168,18 +171,22 @@ class BrakeResistor:
 
 @dataclass(frozen=True, kw_only=True)
 class Bus:
-    """The shared DC bus: the `actuators` on it, by name; its `source`; its
+    """The shared DC bus: the `actuators` on it, by name; its `source`, or
+    None where nothing sources or sinks (a pack unmated), and then the
+    voltage `v0` (V) it starts at, a (lo, hi) band or a number; its
     `capacitance` (F), a (lo, hi) band or a number; an optional `brake`
-    resistor; a constant `hotel` load (W); and the voltage `ratings` (V) of
-    the parts on it that no driver carries, by name, such as `{"power
-    board": 44.0}`, each one of the bus's trips. Flux braking is each
-    driver's own, from its `Driver.flux_brake`."""
+    resistor; a constant `hotel` load (W), drawn with or without a source;
+    and the voltage `ratings` (V) of the parts on it that no driver
+    carries, by name, such as `{"power board": 44.0}`, each one of the
+    bus's trips. Flux braking is each driver's own, from its
+    `Driver.flux_brake`."""
     actuators: tuple
     source: Source
     capacitance: tuple
     brake: BrakeResistor = None
     hotel: float = 0.0
     ratings: MappingProxyType = None
+    v0: tuple = None
 
     def __post_init__(self):
         if isinstance(self.actuators, str) or not hasattr(
@@ -194,7 +201,15 @@ class Bus:
             raise ValueError(f"a bus names each actuator once; got "
                              f"{actuators!r}")
         object.__setattr__(self, "actuators", actuators)
-        _kind("a bus", "source", self.source, Source)
+        _kind("a bus", "source", self.source, Source, optional=True)
+        if self.source is None:
+            if self.v0 is None:
+                raise ValueError("a bus with no source starts at a voltage; "
+                                 "give v0=")
+            object.__setattr__(self, "v0", _band("a bus", "v0", self.v0))
+        elif self.v0 is not None:
+            raise ValueError("a bus with a source starts at its source's v; "
+                             "give v0= only with source=None")
         object.__setattr__(self, "capacitance",
                            _band("a bus", "capacitance", self.capacitance))
         _kind("a bus", "brake", self.brake, BrakeResistor, optional=True)
@@ -207,12 +222,18 @@ class Bus:
                             f"voltage rating; got {self.ratings!r}")
         for name, value in ratings.items():
             rating = _number("a bus", f"rating {name!r}", value)
-            if not rating > self.source.v[1]:
-                raise ValueError(f"a bus's rating {name!r} lies above its "
-                                 f"source's v band; got {rating:g} V over "
-                                 f"{self.source.v[1]:g} V")
+            if not rating > _v_source(self)[1]:
+                raise ValueError(f"a bus's rating {name!r} lies above the "
+                                 f"voltage it starts at; got {rating:g} V "
+                                 f"over {_v_source(self)[1]:g} V")
         object.__setattr__(self, "ratings", MappingProxyType(
             {k: float(v) for k, v in ratings.items()}))
+
+
+def _v_source(bus):
+    """The band `charge`'s `v_source` is a point in: the source's `v`, or,
+    on a bus with no source, its `v0`."""
+    return bus.v0 if bus.source is None else bus.source.v
 
 
 def _keyed(name, value, kind):
@@ -265,9 +286,9 @@ class Drive:
 
 @dataclass(frozen=True)
 class Charged:
-    """The bus over a trace, run at `capacitance` (F) and `v_source` (V)
-    with a `substep` (s), halving which moves the peak by less than the
-    `agree` it was run with.
+    """The bus over a trace, run at `capacitance` (F) and `v_source` (V),
+    the voltage a bus with no source started at, with a `substep` (s),
+    halving which moves the peak by less than the `agree` it was run with.
 
     `t` (s) is every substep's end, from the trace's start, and `v` (V) the
     bus there; `peak` and `minimum` are its extremes. `source` and `brake`
@@ -313,7 +334,8 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
            agree=AGREE, substep=None, temperature=None, gear=None):
     """The bus of `drive` over `trace`, at `capacitance` (F) and `v_source`
     (V), each a point in its band, or the band's only value where it is
-    one: a `Charged`. The bus starts at `v0` (V), by default `v_source`.
+    one: a `Charged`. The bus starts at `v0` (V), by default `v_source`,
+    which on a bus with no source is a point in its `v0` band.
 
     Each actuator's load comes from `trace.output(a)` and its bus power from
     `electrical`, its winding at `temperature[a]` (°C, a number or one per
@@ -327,7 +349,7 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
         raise TypeError(f"charge takes a Drive; got {drive!r}")
     bus = drive.bus
     c = _within("capacitance", bus.capacitance, capacitance)
-    v_s = _within("v_source", bus.source.v, v_source)
+    v_s = _within("v_source", _v_source(bus), v_source)
     v0 = v_s if v0 is None else _positive(v0, "charge's v0")
     agree = _positive(agree, "charge's agree")
     t = np.asarray(trace.t, dtype=float)
@@ -438,7 +460,8 @@ def _run(t, power, flux, bus, c, v_s, v0, h):
 
     energy, v = half_c * v0 ** 2, v0
     times, volts, sourced, braked = [float(t[0])], [v0], [], []
-    cap = {SOURCE: bus.source.p_max}  # W: each clamp's capacity this substep
+    # W: each clamp's capacity this substep
+    cap = {} if bus.source is None else {SOURCE: bus.source.p_max}
     for k in range(len(t) - 1):
         span = float(t[k + 1] - t[k])
         if span == 0:
@@ -482,9 +505,11 @@ def _levels(bus, c, v_s, flux):
     flux brake at each (actuator, onset) in `flux`, grouped by level: each
     level's energy ½CV², its floors' keys and its ceilings' keys, lowest
     first, as `_substep` takes them."""
-    clamps = [_Clamp(v_s, SOURCE, True)]
-    if bus.source.sinks:
-        clamps.append(_Clamp(v_s, SOURCE, False))
+    clamps = []
+    if bus.source is not None:
+        clamps.append(_Clamp(v_s, SOURCE, True))
+        if bus.source.sinks:
+            clamps.append(_Clamp(v_s, SOURCE, False))
     if bus.brake is not None:
         clamps.append(_Clamp(bus.brake.threshold, BRAKE, False))
     clamps += [_Clamp(onset, ("flux", a), False) for a, onset in flux]
