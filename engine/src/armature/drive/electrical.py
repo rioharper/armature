@@ -315,6 +315,12 @@ class Driver:
               optional=True)
         _kind("a driver", "flux_brake", self.flux_brake, FluxBrake,
               optional=True)
+        if (self.flux_brake is not None
+                and not self.flux_brake.onset < self.max_voltage):
+            raise ValueError(f"a driver's flux brake's onset lies under its "
+                             f"max_voltage, where the driver trips and its "
+                             f"flux brake stops; got {self.flux_brake.onset:g}"
+                             f" V against {self.max_voltage:g} V")
 
 
 @dataclass(frozen=True)
