@@ -403,28 +403,32 @@ def swing():
                                              qdd=swing_qdd)]), CONFIRM_RATE)
 
 
-def probe(brake=None):
+def probe(brake=None, trip=TRIP, hotel=0.0):
     """A small wye motor, Kt = Ke = 0.05 in d-q and R_φ = 0.2 Ω, behind a
     90 % gearbox and a 95 % driver that trips at 44 V, on a 24 V supply
     that cannot sink and 220 µF."""
     return Drive(motors={"motor": motor(r=0.2, kt=Kt(0.05 * SQ3, per="A_rms",
                                                      side="motor"))},
                  drivers={"motor": driver(efficiency=0.95,
-                                          max_voltage=TRIP)},
+                                          max_voltage=trip)},
                  gearboxes={"motor": Gearbox(forward=0.9)},
                  bus=Bus(actuators=("motor",), source=Source(
                      v=24.0, sinks=False, p_max=500.0), capacitance=220e-6,
-                     brake=brake))
+                     brake=brake, hotel=hotel))
 
 
-def test_the_probes_swing_on_220_uF_runs_far_above_any_trip(swing):
-    """With no brake, each run of returned energy lands on the capacitor,
-    and each draw comes off it until the bus is back at 24 V, where the
-    supply takes over. So the capacitor's energy above ½C·24² is the
-    returned energy's running integral S(t), reflected at zero: S(t) −
-    min(0, min S up to t). Integrated with numpy from `electrical`'s bus
-    powers, its largest value is the peak by the energy relation. The probe
-    reached 222 V with its own motor, whose constants were not kept."""
+UNTRIPPED = 200.0  # V: a driver the swing's bus never reaches
+
+
+def test_the_probes_swing_on_220_uF_reads_the_energy_relation(swing):
+    """With no brake and a driver that never trips, each run of returned
+    energy lands on the capacitor, and each draw comes off it until the bus
+    is back at 24 V, where the supply takes over. So the capacitor's energy
+    above ½C·24² is the returned energy's running integral S(t), reflected
+    at zero: S(t) − min(0, min S up to t). Integrated with numpy from
+    `electrical`'s bus powers, its largest value is the peak by the energy
+    relation, 92 V, twice the probe's 44 V trip. The probe reached 222 V
+    with its own motor, whose constants were not kept."""
     tau, omega, rotor = swing.output("motor")
     power = electrical(tau, omega, SWING["N"], probe().motors["motor"],
                        Gearbox(forward=0.9), probe().drivers["motor"],
@@ -434,11 +438,41 @@ def test_the_probes_swing_on_220_uF_runs_far_above_any_trip(swing):
     above = returned_ - np.minimum(0.0, np.minimum.accumulate(returned_))
     expected = math.sqrt(24.0 ** 2 + 2 * np.max(above) / 220e-6)
 
-    charged = charge(swing, probe())
+    charged = charge(swing, probe(trip=UNTRIPPED))
     assert charged.peak == pytest.approx(expected, rel=1e-4)
     assert charged.peak > 2 * TRIP
     assert charged.minimum == pytest.approx(24.0, rel=1e-12)
+    assert charged.tripped == {}
     np.testing.assert_array_equal(charged.power["motor"], power)
+
+
+def test_the_probes_swing_trips_its_driver_at_44_V(swing):
+    """The driver trips where the bus first reaches its 44 V, latched, and
+    its motor coasts. Before that the bus is the one a driver that never
+    trips gives, to the bit at the same substep, and the trip is where that
+    bus's energy, a straight line over each substep, reaches ½C·44². Past
+    it the motor's back-EMF, 15.7 V at most in d-q, stays under k_mod·24 V
+    = 17.0 V, so its diodes never conduct; nothing draws the bus down, and
+    it stays at the trip."""
+    h = 1e-4
+    free = charge(swing, probe(trip=UNTRIPPED), substep=h)
+    charged = charge(swing, probe(), substep=h)
+    assert set(charged.tripped) == {"motor"}
+    when = charged.tripped["motor"]
+    k = int(np.argmax(free.v >= TRIP))  # the substep reaching it, today
+    e0, e1 = free.v[k - 1] ** 2, free.v[k] ** 2
+    crossed = free.t[k - 1] + (free.t[k] - free.t[k - 1]) * (
+        (TRIP ** 2 - e0) / (e1 - e0))
+    assert when == pytest.approx(crossed, rel=1e-12)
+    np.testing.assert_array_equal(charged.v[charged.t < when],
+                                  free.v[free.t < when])
+    assert charged.peak == pytest.approx(TRIP, rel=1e-12)
+    np.testing.assert_allclose(charged.v[charged.t >= when], TRIP,
+                               rtol=1e-12)
+    # refined, the swing's peak is the trip: 92 V before #96
+    refined = charge(swing, probe())
+    assert refined.peak == pytest.approx(TRIP, rel=1e-12)
+    assert refined.tripped["motor"] == pytest.approx(when, abs=1e-3)
 
 
 def test_the_probes_swing_with_a_30_V_8_ohm_brake_stays_at_30_V(swing):

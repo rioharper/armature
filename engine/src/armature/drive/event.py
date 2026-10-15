@@ -158,11 +158,14 @@ class Run:
     event alone, its t from the event's start; and at each of its samples
     the bus voltage `v` (V) the simulation stepped with it, and `contacts`,
     what each touching contact carried, as `ContactForce`s from MuJoCo's
-    solver."""
+    solver. `tripped` gives the time (s, from the event's start) at which
+    each driver, by its actuator's name, or the source, as `"source"`,
+    tripped in this run; one that tripped before it is not named."""
     timestep: float
     trace: object
     v: np.ndarray
     contacts: tuple
+    tripped: MappingProxyType = MappingProxyType({})
 
 
 class Moved(NamedTuple):
@@ -479,7 +482,8 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
             power += float(e.bus)
         if bus.brake is not None:
             cap[BRAKE] = _brake_capacity(bus.brake, v)
-        energy, _ = _substep(energy, -(power + bus.hotel), step, levels, cap)
+        energy, _, _ = _substep(energy, -(power + bus.hotel), step, levels,
+                                cap)
     times = np.arange(steps + 1) * step
     times[-1] = ev.duration
     return _Simulation(times, rows, [driven] * len(rows),

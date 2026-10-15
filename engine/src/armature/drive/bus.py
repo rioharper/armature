@@ -85,12 +85,13 @@ import numpy as np
 
 from ..state import _frozen
 from .electrical import (Driver, DriveError, Gearbox, Motor, _kind, _number,
-                         _positive, electrical)
+                         _positive, _resolve, electrical)
 
 AGREE = 0.01       # V: halving the substep moves the peak by less than this
 MAX_HALVINGS = 10  # the substep's refinement gives up past this many halvings
 SOURCE, BRAKE = ("source",), ("brake",)
 # the clamps' keys; a flux brake's is ("flux", actuator)
+TRIPPED_SOURCE = "source"  # the source's name where `tripped` reports it
 
 
 def _band(owner, name, value):
@@ -200,6 +201,10 @@ class Bus:
         if len(set(actuators)) != len(actuators):
             raise ValueError(f"a bus names each actuator once; got "
                              f"{actuators!r}")
+        if TRIPPED_SOURCE in actuators:
+            raise ValueError(f"a bus's actuators are never named "
+                             f"{TRIPPED_SOURCE!r}, the name `tripped` gives "
+                             f"its source; got {actuators!r}")
         object.__setattr__(self, "actuators", actuators)
         _kind("a bus", "source", self.source, Source, optional=True)
         if self.source is None:
@@ -305,10 +310,16 @@ class Charged:
     mission reads above its `p_max` and not only as sag; `sink_peak` (W) is
     the most it sank, and `source_energy` (J) the net energy it gave.
 
-    `power` is each actuator's bus power (W, positive drawing) and `flux`
-    each flux brake's heat (W, zero where its driver has none), both on the
+    `power` is each actuator's bus power (W, positive drawing) as the trace
+    gives it, past a trip too, as is `source_demand`, and `flux` each flux
+    brake's heat (W, zero where its driver has none or is off), both on the
     trace's own times, each value the mean over the interval it starts:
-    `heat(trace.t, thermal, power=flux[a], ...)` takes it as it is."""
+    `heat(trace.t, thermal, power=flux[a], ...)` takes it as it is.
+
+    `tripped` gives the time (s) at which each driver, by its actuator's
+    name, or the source, as `"source"`, tripped, latched from there; it is
+    empty where nothing did. A trip inside a substep ends it there, so its
+    time is one of `t`, and V there is the trip's level."""
     t: np.ndarray
     v: np.ndarray
     peak: float
@@ -328,6 +339,7 @@ class Charged:
     v_source: float
     substep: float
     agree: float
+    tripped: MappingProxyType = MappingProxyType({})
 
 
 def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
@@ -341,6 +353,10 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
     `electrical`, its winding at `temperature[a]` (°C, a number or one per
     sample; by default its resistance's T₀). `gear` gives the ratio of an
     actuation seam's actuator, which has none in the compiled model.
+
+    Each driver, and the source, trips where the bus first reaches its
+    level on the trace's prescribed samples, latched for the rest of the
+    trace; inside an event, where the event tripped it (`Run.tripped`).
 
     Without a `substep` (s), it is refined from the trace's longest sample
     interval, halving until halving again moves the peak by less than
@@ -357,7 +373,7 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
     if stray:
         raise ValueError(f"the trace drives {stray}, which have no drive "
                          f"data; give each a motor and driver on the bus")
-    power, flux = {}, []
+    power, flux, coasts = {}, [], {}
     temperature = dict(temperature or {})
     gear = dict(gear or {})
     driven = getattr(trace, "driven", None) or {}
@@ -373,13 +389,16 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
         e = electrical(tau, omega, n, motor, box, driver,
                        temperature.get(a), rotor=rotor)
         power[a] = e.bus
+        coasts[a] = _Coast(driver.max_voltage, e, _resolve(motor, n, box),
+                           driver.efficiency)
         if driver.flux_brake is not None:
             capacity = _flux_capacity(driver, motor, e.resistance)
             if a in driven:  # a coasting or shorted driver's bridge is off
                 capacity = np.where(driven[a], capacity, 0.0)
             flux.append((a, driver.flux_brake.onset, capacity))
     total = sum(power.values())
-    run = partial(_run, t, total, flux, bus, c, v_s, v0)
+    run = partial(_run, t, total, flux, bus, c, v_s, v0,
+                  _trips(trace, t, bus, coasts))
     if substep is not None:
         result = run(_positive(substep, "charge's substep"))
     else:
@@ -413,7 +432,48 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
         float(max(0.0, np.max(sourced))),
         float(max(0.0, np.max(total + bus.hotel))),
         float(max(0.0, -np.min(sourced))),
-        float(np.sum(sourced[:-1] * steps)), c, v_s, float(substep), agree)
+        float(np.sum(sourced[:-1] * steps)), c, v_s, float(substep), agree,
+        MappingProxyType(result.tripped))
+
+
+class _Coast(NamedTuple):
+    """A driver as `charge` trips it: its `level` (V), its actuator's
+    `electrical` model on the trace's samples, its resolved constants `c`,
+    and its `efficiency`."""
+    level: float
+    e: object
+    c: object
+    efficiency: float
+
+
+class _Trips(NamedTuple):
+    """What may trip on a bus over a trace: each trip's `levels` (V), by
+    actuator or `TRIPPED_SOURCE`; each driver's `_Coast`; whether each of
+    the trace's intervals is `prescribed`, outside every event; and the
+    trips the events `recorded`, at their times in the trace (s)."""
+    levels: dict
+    drivers: dict
+    prescribed: np.ndarray
+    recorded: dict
+
+
+def _trips(trace, t, bus, coasts):
+    """The `_Trips` of `bus` over `trace`, sampled at `t`, each driver's
+    from `coasts`."""
+    levels = {a: d.level for a, d in coasts.items()}
+    if bus.source is not None and bus.source.overvoltage is not None:
+        levels[TRIPPED_SOURCE] = bus.source.overvoltage
+    prescribed, recorded = np.ones(len(t) - 1, dtype=bool), {}
+    events = getattr(trace, "events", ()) or ()
+    if events:
+        segment = np.asarray(trace.segment)[:-1]
+        prescribed = ~np.isin(segment, [s.segment for s in events])
+        for s in events:
+            begun = trace.spans[s.segment][0]
+            for key, when in s.run.tripped.items():
+                recorded[key] = min(recorded.get(key, math.inf),
+                                    begun + when)
+    return _Trips(levels, coasts, prescribed, recorded)
 
 
 def _largest_run(energies):
@@ -427,13 +487,15 @@ def _largest_run(energies):
 
 class _Run(NamedTuple):
     """One run of the bus: substep ends `t` and voltages `v`, the source's
-    and brake's power over each substep (W), and each flux brake's energy
-    (J) over each of the trace's intervals."""
+    and brake's power over each substep (W), each flux brake's energy (J)
+    over each of the trace's intervals, and the time (s) each driver or the
+    source tripped."""
     t: np.ndarray
     v: np.ndarray
     source: np.ndarray
     brake: np.ndarray
     flux: dict
+    tripped: dict
 
     @property
     def peak(self):
@@ -473,18 +535,27 @@ def _substeps(t, h):
     return _Substeps(k, j, count, step, end)
 
 
-def _run(t, power, flux, bus, c, v_s, v0, h):
+def _run(t, power, flux, bus, c, v_s, v0, trips, h):
     """The bus over sample times `t` with the actuators' total bus `power`
-    (W) at each, at substep `h`, from `v0`, its source at `v_s`.
+    (W) at each, at substep `h`, from `v0`, its source at `v_s`, each of
+    `trips` latching where the bus reaches it.
 
     Where the bus floats clear of every level, or is held at one, its
     substeps are taken together (`_together`), with the same arithmetic as
     `_substep`'s, so the run is the same to the bit. A substep that reaches
-    a level or leaves one, or that floats above a conducting brake, whose
-    capacity moves with V, is solved alone by `_substep`."""
+    a level or leaves one, that floats above a conducting brake, whose
+    capacity moves with V, or in which a tripped driver's diodes conduct, is
+    solved alone by `_substep`. A trip is a level with no clamp, where
+    `_substep` stops on the trace's prescribed samples: the driver or source
+    latches there, the rest of the substep runs at the new rate, and the
+    trip's time is a substep's end."""
     half_c = 0.5 * c
     brake = bus.brake
-    levels = _levels(bus, c, v_s, [(a, onset) for a, onset, _ in flux])
+    onsets = [(a, onset) for a, onset, _ in flux]
+    pending = dict(trips.levels)  # V: each trip not yet reached
+    levels = _levels(bus, c, v_s, onsets, pending.values())
+    stops = frozenset(0.5 * c * level ** 2 for level in pending.values())
+    first = min(stops, default=math.inf)  # J: the lowest trip's
     grid = _substeps(t, h)
     k, n = grid.interval, len(grid.interval)
     p0, p1 = power[k], power[k + 1]
@@ -499,40 +570,136 @@ def _run(t, power, flux, bus, c, v_s, v0, h):
     # negative
     flows = {key: np.zeros(n) for key in (SOURCE, BRAKE, *caps)}
     energy = np.empty(n)
+    step = grid.step.copy()  # a substep a trip splits keeps its last piece
+
+    prescribed = trips.prescribed[k]
+    begins = np.concatenate((t[:1], grid.end[:-1]))  # s: each substep's start
+    # each substep at which an event's trip latches, and where the trace
+    # turns prescribed, where a level an event's bus passed latches
+    recorded = {}
+    for key, when in trips.recorded.items():
+        at = int(np.searchsorted(begins, when))
+        if at < n:
+            recorded.setdefault(at, []).append((key, when))
+    turns = np.flatnonzero(prescribed[1:] & ~prescribed[:-1]) + 1
+    breaks = np.unique(np.concatenate((turns, list(recorded)))).astype(int)
+    tripped, diodes, pieces = {}, [], []
+    diode = None  # J: in each substep, the energy under which a tripped
+                  # driver's diodes conduct
+
+    def latch(keys, i, when):
+        """Trip each of `keys` at `when` (s), from substep `i` on: the
+        source neither sources nor sinks, and a driver's flux brake is off,
+        and, where the trace is prescribed, its actuator draws nothing and
+        returns what its diodes conduct."""
+        nonlocal diode, stops, first
+        for key in keys:
+            tripped[key] = when
+            pending.pop(key, None)
+            if key == TRIPPED_SOURCE:
+                if SOURCE in caps:
+                    caps[SOURCE][i:] = 0.0
+                continue
+            if ("flux", key) in caps:
+                caps[("flux", key)][i:] = 0.0
+            d = trips.drivers[key]
+            fraction = (grid.j[i:] + 0.5) / grid.m[i:]
+            ki = k[i:]
+            emf = d.c.ke * d.e.omega
+            emf = np.where(prescribed[i:], np.abs(
+                emf[ki] + (emf[ki + 1] - emf[ki]) * fraction), 0.0)
+            r = d.e.resistance[ki] + (d.e.resistance[ki + 1]
+                                      - d.e.resistance[ki]) * fraction
+            k_mod = d.c.k_mod
+            diodes.append((i, k_mod, d.efficiency, emf, r))
+            under = np.zeros(n)
+            under[i:] = half_c * (emf / k_mod) ** 2
+            diode = under if diode is None else np.maximum(diode, under)
+        on = [a for a in trips.drivers if a not in tripped]
+        drawn = (sum(trips.drivers[a].e.bus for a in on) if on
+                 else np.zeros(len(t)))
+        q0, q1 = drawn[k[i:]], drawn[k[i:] + 1]
+        rate[i:] = np.where(prescribed[i:], -(
+            q0 + (q1 - q0) * (grid.j[i:] + 0.5) / grid.m[i:] + bus.hotel),
+            rate[i:])
+        levels[:] = _levels(bus, c, v_s, onsets, pending.values())
+        stops = frozenset(0.5 * c * level ** 2 for level in pending.values())
+        first = min(stops, default=math.inf)
+
+    def returned(i, v):
+        """What the tripped drivers' diodes return (W) over substep `i` from
+        bus voltage `v`: η·k_mod·V·(|E| − k_mod·V)/R_φ where |E| passes
+        k_mod·V, held at the substep's starting V, the first-order term the
+        substep's halving refines, as the brake's V²/R is."""
+        return sum(eta * k_mod * v * max(0.0, emf[i - at] - k_mod * v)
+                   / r[i - at] for at, k_mod, eta, emf, r in diodes
+                   if i >= at)
+
+    def reached(e):
+        return [key for key, level in pending.items()
+                if 0.5 * c * level ** 2 <= e]
 
     e, v, i = half_c * v0 ** 2, v0, 0
     window, wait = WINDOW, 0
     while i < n:
+        if i in recorded:  # an event tripped them
+            for key, when in recorded[i]:
+                latch([key], i, when)
+        if e >= first and prescribed[i]:
+            latch(reached(e), i, float(begins[i]))
         taken = 0
         if i > 0 and wait == 0:  # the first runs from v0 itself, alone
-            taken = _together(e, v, i, min(n, i + window), levels, rate,
-                              grid.step, caps, brake, energy, flows)
-            window = 2 * window if i + taken == min(n, i + window) else WINDOW
+            later = np.searchsorted(breaks, i, side="right")
+            hi = min(n, i + window,
+                     int(breaks[later]) if later < len(breaks) else n)
+            taken = _together(e, v, i, hi, levels, rate, step, caps, brake,
+                              energy, flows, diode)
+            window = 2 * window if i + taken == hi else WINDOW
             wait = 0 if taken >= SPARSE else WAIT
         if taken:
             i += taken
             e = float(energy[i - 1])
         else:
-            cap = {key: float(values[i]) for key, values in caps.items()}
-            if brake is not None:
-                cap[BRAKE] = _brake_capacity(brake, v)
-            e, flowed = _substep(e, float(rate[i]), float(grid.step[i]),
-                                 levels, cap)
-            energy[i] = e
+            left, done = float(step[i]), 0.0
+            while True:
+                cap = {key: float(values[i]) for key, values in caps.items()}
+                if brake is not None:
+                    cap[BRAKE] = _brake_capacity(brake, v)
+                into = float(rate[i]) + (returned(i, v) if diodes else 0.0)
+                e, flowed, rest = _substep(e, into, left, levels, cap,
+                                           stops if prescribed[i] else ())
+                if not rest:
+                    break
+                done += left - rest  # a trip: the substep's piece before it
+                when = float(begins[i]) + done
+                pieces.append((i, left - rest, e, flowed, when))
+                latch(reached(e), i, when)
+                left, v = rest, math.sqrt(e / half_c)
+            energy[i], step[i] = e, left
             for key, flow in flowed.items():
                 flows[key][i] = flow
             i += 1
             wait = max(0, wait - 1)
         v = math.sqrt(e / half_c)
 
+    ends = grid.end
+    if pieces:  # each piece before a trip goes in ahead of its substep
+        at = [i for i, *_ in pieces]
+        ends = np.insert(ends, at, [when for *_, when in pieces])
+        step = np.insert(step, at, [piece[1] for piece in pieces])
+        energy = np.insert(energy, at, [piece[2] for piece in pieces])
+        k = np.insert(k, at, k[at])
+        flows = {key: np.insert(values, at, [piece[3].get(key, 0.0)
+                                             for piece in pieces])
+                 for key, values in flows.items()}
     heat = {}
     for a, _, _ in flux:
         heat[a] = np.zeros(len(t) - 1)
         np.add.at(heat[a], k, flows[("flux", a)])  # in substep order
-    return _Run(np.concatenate(([float(t[0])], grid.end)),
+    return _Run(np.concatenate(([float(t[0])], ends)),
                 np.concatenate(([v0], np.sqrt(energy / half_c))),
-                np.append(-flows[SOURCE] / grid.step, 0.0),
-                np.append(flows[BRAKE] / grid.step, 0.0), heat)
+                np.append(-flows[SOURCE] / step, 0.0),
+                np.append(flows[BRAKE] / step, 0.0), heat, tripped)
 
 
 WINDOW = 64  # substeps `_run` first tries to take together; doubled while
@@ -541,13 +708,16 @@ SPARSE, WAIT = 8, 16  # where fewer than SPARSE are taken together, the next
                       # WAIT substeps are solved alone first
 
 
-def _together(e, v, lo, hi, levels, rate, step, caps, brake, energy, flows):
+def _together(e, v, lo, hi, levels, rate, step, caps, brake, energy, flows,
+              diode=None):
     """Substeps `lo` to `hi` from energy `e` (J) at voltage `v`, as many as
     `_substep` takes without solving a crossing: while the bus floats
     between two levels and ends each substep clear of them, or while it is
-    held at one by its clamps. Writes their energies and flows into
-    `energy` and `flows`, each by `_substep`'s own arithmetic in its order,
-    and returns how many it took, 0 where the first needs solving alone."""
+    held at one by its clamps, and while no tripped driver's diodes
+    conduct, which they do in a substep starting under its `diode` energy
+    (J). Writes their energies and flows into `energy` and `flows`, each by
+    `_substep`'s own arithmetic in its order, and returns how many it took,
+    0 where the first needs solving alone."""
     at = next((i for i, (level, _, _) in enumerate(levels) if level == e),
               None)
     below = sum(1 for level, _, _ in levels if level < e) - 1
@@ -569,12 +739,16 @@ def _together(e, v, lo, hi, levels, rate, step, caps, brake, energy, flows):
         clear = TOUCH * max([e, *(level for level, _, _ in levels)])
         near = (((net > 0) & (ends >= top - clear))
                 | ((net < 0) & (ends <= bottom + clear)))
+        if diode is not None:
+            near |= np.concatenate(([e], ends[:-1])) < diode[lo:hi]
         taken = int(np.argmax(near)) if near.any() else len(net)
     else:
         _, floors, ceilings = levels[at]
         up = net - _sum(cap[key] for key in ceilings)
         down = net + _sum(cap[key] for key in floors)
         held = (up <= 0) & (0 <= down)
+        if diode is not None:
+            held &= e >= diode[lo:hi]
         taken = int(np.argmin(held)) if not held.all() else len(net)
         ends = np.full(taken, e)
     if not taken:
@@ -632,11 +806,12 @@ def _brake_capacity(brake, v):
     return max(v, brake.threshold) ** 2 / brake.r
 
 
-def _levels(bus, c, v_s, flux):
+def _levels(bus, c, v_s, flux, trips=()):
     """The clamps of `bus` at capacitance `c`, its source at `v_s`, with a
     flux brake at each (actuator, onset) in `flux`, grouped by level: each
     level's energy ½CV², its floors' keys and its ceilings' keys, lowest
-    first, as `_substep` takes them."""
+    first, as `_substep` takes them. Each of `trips` (V) is a level too,
+    with no clamp of its own unless one shares it."""
     clamps = []
     if bus.source is not None:
         clamps.append(_Clamp(v_s, SOURCE, True))
@@ -648,17 +823,19 @@ def _levels(bus, c, v_s, flux):
     return [(0.5 * c * level ** 2,
              [k.key for k in clamps if k.level == level and k.floor],
              [k.key for k in clamps if k.level == level and not k.floor])
-            for level in sorted({k.level for k in clamps})]
+            for level in sorted({k.level for k in clamps} | set(trips))]
 
 
-def _substep(e, rate, step, levels, cap):
+def _substep(e, rate, step, levels, cap, stops=()):
     """The capacitor's energy `e` (J) after `step` (s) of a constant `rate`
     (W) into it, with the clamps at `levels` acting exactly: between levels
     every clamp is off or saturated, so e moves at a constant rate; at a
     level, its clamps hold e there if their capacity covers the rest, and
     otherwise it moves on. The net rate never rises with e, so e moves one
-    way only and crosses each level at most once. Returns e and the energy
-    each clamp took from the bus (J), a floor's negative."""
+    way only and crosses each level at most once. Returns e, the energy
+    each clamp took from the bus (J), a floor's negative, and the time left
+    (s): 0, unless e rose to one of the levels in `stops`, where it stops
+    before that level's clamps act."""
     flows = {}
     left = step
 
@@ -697,7 +874,7 @@ def _substep(e, rate, step, levels, cap):
                     share(ceilings, net * left)
                 elif net < 0:
                     share(floors, net * left)
-                return e, flows
+                return e, flows, 0.0
             if up > 0:
                 net, below = up, at
             else:
@@ -711,10 +888,12 @@ def _substep(e, rate, step, levels, cap):
         dt = left if target is None else (target - e) / net
         if dt >= left:
             saturated(left, below, above)
-            return max(e + net * left, 0.0), flows
+            return max(e + net * left, 0.0), flows, 0.0
         saturated(dt, below, above)
         e, left = target, left - dt
+        if net > 0 and e in stops:  # a trip, which ends the substep here
+            return e, flows, left
         if e == 0.0 and below < 0:  # the bus has collapsed
             saturated(left, below, above)
-            return 0.0, flows
-    return e, flows
+            return 0.0, flows, 0.0
+    return e, flows, 0.0
