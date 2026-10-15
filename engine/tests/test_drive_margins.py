@@ -500,8 +500,8 @@ def test_a_driver_that_trips_fails_the_peak_and_the_review_marks_it(
     m = armature.compile(pendulum, SWING)
     margin = named(margins(d, [SWING_MISSION], model=m))["bus: peak V"]
     worst = search(margin)
-    assert not worst.passes
-    assert -1e-9 < worst.value < 0
+    assert not worst.passes and worst.value == 0.0
+    assert "bus: peak V: 0 V against" in str(worst)
     charged = charge(trace(m, SWING_MISSION, CONFIRM_RATE), d)
     when = charged.tripped["motor"]
     reviewed, = review([margin], tmp_path)

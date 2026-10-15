@@ -307,6 +307,20 @@ def test_an_unchecked_margin_fails_naming_what_is_missing():
         Margin("winding", fn, "K", over=Space(), unchecked="thermal")
 
 
+def test_a_strict_margin_fails_at_zero_slack():
+    """Slack 0 passes, unless the margin is strict: a peak V that reaches a
+    trip has tripped it. Coverage counts the same way."""
+    space = Space(x=Interval(0.0, 1.0))
+    loose = search(Margin("at the limit", lambda p: 0.0, "V", over=space))
+    assert loose.passes and loose.coverage == 1.0
+    strict = search(Margin("at the trip", lambda p: 0.0, "V", over=space,
+                           strict=True))
+    assert not strict.passes and strict.value == 0.0
+    assert strict.coverage == 0.0
+    assert str(strict).startswith("at the trip: 0 V at x = ")
+    assert ", FAILS;" in str(strict)
+
+
 def test_a_band_may_not_change_the_axes():
     def renamed(p):
         name = "a" if p["m"] < 1.05 else "b"

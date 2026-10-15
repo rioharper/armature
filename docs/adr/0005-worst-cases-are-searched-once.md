@@ -39,3 +39,8 @@ in a non-monotone margin, as Ibex's success-versus-μ map showed; coverage is
 reported so a thin margin is visible, and the budget is per margin. Revisit if a
 margin's worst case is found by review rather than by the search, or if a
 margin's evaluation cost makes the default budget unaffordable.
+
+**Amended 2026-10-15 (#96):** a margin may be `strict`, passing only where its
+slack is above 0, for a limit that reaching is itself the failure. The bus's
+peak V is the one: a driver latches at its trip, so a bus that reaches the
+lowest trip has tripped it and stops there, at 0 V of slack.

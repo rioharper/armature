@@ -26,8 +26,9 @@ A driver, or the source, that trips is off for the rest of the run, so the
 peak V past the lowest trip is the next trip, or what the tripped drivers'
 diodes return at the speeds the mission prescribes: its slack, the trip
 less that peak, measures the miss and does not predict the coasting
-motion. A bus that stops at the lowest trip, a driver latched there, reads
-the least negative slack, and fails. The review's V(t) marks each trip.
+motion. The peak-V margin is strict: a bus that reaches the lowest trip
+has tripped it, so a bus a latched driver stopped there reads 0 V and
+fails. The review's V(t) marks each trip.
 The thermal, current and envelope margins read the currents the mission
 prescribes, past a trip too, which is conservative; the regeneration margin
 reads an actuator as off from a trip in an event.
@@ -106,8 +107,6 @@ TRUTH_AGREE = 0.01  # a margin's truth agrees within this fraction of its
                     # limit: the trip, the rating, the stall torque
 RESERVED = ("mission", "drive", "capacitance", "v_source")
 PEAK, DUTY = "peak", "duty"
-TRIPPED = -math.ulp(0.0)  # V: the peak-V slack of a bus that stopped at the
-                          # trip it reached, which fails
 WRITTEN = "a mission as written, with its duty"
 KEPT_COMPILES = 8  # band values a setup keeps compiled; past it, it starts
                    # over, since a search moves on from a band value
@@ -146,7 +145,7 @@ def margins(drive, missions, over=None, *, model=None, params=None,
                 check.name, _Slack(evaluator, check, False), check.unit,
                 over=space, truth=_Slack(evaluator, check, True),
                 agree=agree * check.limit, budget=budget,
-                against=check.against))
+                against=check.against, strict=check.what == "peak V"))
     return tuple(out)
 
 
@@ -624,10 +623,7 @@ class _Setup:
             on = (ran.trace.driven or {}).get(a, True)
             return float(np.min(np.where(on, left, capacity)))
         if what == "peak V":
-            slack = _trip(d) - c.peak
-            if c.tripped and slack >= 0:  # a driver latched at the lowest
-                return TRIPPED          # trip, its bus stopped there
-            return slack
+            return _trip(d) - c.peak
         if what in ("minimum V", "source power") and d.bus.source is None:
             return math.inf
         if what == "minimum V":

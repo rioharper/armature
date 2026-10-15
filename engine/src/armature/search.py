@@ -3,8 +3,8 @@
 
 A margin is slack, available minus required against a limit with its
 derating already applied, written as `fn(point)` over a `Space` of named
-axes. Slack ≥ 0 passes, and −∞ is a legal value. `search(margin)` finds the
-worst, and a project declares margins rather than writing searches, so no
+axes. Slack ≥ 0 passes, or > 0 for a `strict` margin, and −∞ is a legal
+value. `search(margin)` finds the worst, and a project declares margins rather than writing searches, so no
 worst case is read at a posture, direction, sign or band value somebody
 happened to pick.
 
@@ -449,7 +449,9 @@ class Budget:
 @dataclass(frozen=True)
 class Margin:
     """A margin: `fn(point)` is slack against the derated limit, in `unit`,
-    over the space `over`; slack ≥ 0 passes. The derating and its reason sit
+    over the space `over`; slack ≥ 0 passes, or slack > 0 where `strict`,
+    for a limit that reaching is itself the failure, such as a trip that
+    latches at its level. The derating and its reason sit
     in `fn`'s docstring. `truth(point)`, when set, re-evaluates a point in
     the truth model, and `agree` is the absolute tolerance in `unit` it must
     match `fn` within; it is required with `truth`. The search evaluates
@@ -471,6 +473,7 @@ class Margin:
     budget: Budget = None
     unchecked: tuple = None
     against: str = None
+    strict: bool = False
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -528,7 +531,8 @@ class Case(NamedTuple):
 @dataclass(frozen=True)
 class Worst:
     """A margin's worst case. `value` is the least slack found, in `unit`,
-    at `at` (each axis's value by name), and `passes` is `value ≥ 0`.
+    at `at` (each axis's value by name), and `passes` is `value ≥ 0`, or
+    `value > 0` for a strict margin.
     `cases` holds the worst of each `Choice` combination. `n` counts every
     evaluation, `seed` seeds the Sobol set, and `method` says what was
     spent. `pre_polish` is the least slack before the polish, at
@@ -641,11 +645,15 @@ def search(margin, seed=DEFAULT_SEED):
     if len(cases) > 1:
         method += f", for each of {len(cases)} combinations"
     return Worst(margin.name, margin.unit, worst.value, worst.at,
-                 worst.value >= 0, tuple(cases), method, run.n, seed, pre[0],
-                 pre[1], MappingProxyType(dict(run.rejected)),
+                 _passes(margin, worst.value), tuple(cases), method, run.n,
+                 seed, pre[0], pre[1], MappingProxyType(dict(run.rejected)),
                  run.covered / run.counted if run.counted else 0.0,
                  _confirm(margin, (worst.value, worst.at, point), pre),
                  against=margin.against)
+
+
+def _passes(margin, slack):
+    return slack > 0 if margin.strict else slack >= 0
 
 
 def _confirm(margin, worst, pre):
@@ -745,7 +753,7 @@ class _Run:
             seen[key] = slack
             if glob and slack is not None:
                 self.counted += 1
-                self.covered += slack >= 0
+                self.covered += _passes(self.margin, slack)
             if slack is not None:
                 ranked.append((slack, len(ranked), u))
                 if best is None or slack < best[0]:
