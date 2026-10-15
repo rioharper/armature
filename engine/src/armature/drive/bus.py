@@ -594,6 +594,8 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
         returns what its diodes conduct."""
         nonlocal diode, stops, first
         for key in keys:
+            if key in tripped:
+                continue
             tripped[key] = when
             pending.pop(key, None)
             if key == TRIPPED_SOURCE:

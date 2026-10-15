@@ -602,18 +602,19 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
         if isinstance(segment, Event):
             start = _event_start(m, mission, i, segment, before, profiles)
             if not rows or times[-1] == times[0]:  # no time has passed
-                v0 = point[1]
+                v0, tripped = point[1], ()
             else:  # the bus as the segments before left it, at this start,
-                   # which they were sampled up to
-                v0 = float(charge(_assemble(
+                   # which they were sampled up to, and what tripped there
+                before_it = charge(_assemble(
                     m, mission, rate, times, which, starts, profiles,
-                    actuators, rows, driven), drive, capacitance=point[0],
-                    v_source=point[1], temperature=temperature,
-                    gear=gear).v[-1])
+                    actuators, rows, driven, tuple(simulated)), drive,
+                    capacitance=point[0], v_source=point[1],
+                    temperature=temperature, gear=gear)
+                v0, tripped = float(before_it.v[-1]), tuple(before_it.tripped)
             seam = _transmission(m, mission, begun, gear)
             run = partial(_simulate, m, start, segment, drive, actuators,
                           temperature, *point, v0)
-            runs = [run(segment.timestep, seam)]
+            runs = [run(segment.timestep, seam, tripped)]
             end = runs[0].rows[-1][0]
             profile = _Profile("event", segment.duration,
                                _posture(m, start, "an event's start"),
@@ -630,7 +631,7 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
                 i, _event_run(m, mission, i, segment, segment.timestep,
                               runs[0], actuators),
                 partial(_event_halved, m, mission, i, segment, half,
-                        partial(run, half, seam), actuators)))
+                        partial(run, half, seam, tripped), actuators)))
             before = profile.end
             continue
         profile = segment._profile(m, before)
@@ -794,7 +795,8 @@ def _event_run(m, mission, i, event, step, run, actuators):
                       1 / step, list(run.t), [0] * len(run.t),
                       [0.0, event.duration], [profile], actuators, run.rows,
                       run.driven)
-    return Run(step, alone, run.v, run.contacts)
+    return Run(step, alone, run.v, run.contacts,
+               MappingProxyType(run.tripped))
 
 
 def _event_halved(m, mission, i, event, step, simulate, actuators):
