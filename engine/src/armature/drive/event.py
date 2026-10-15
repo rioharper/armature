@@ -63,6 +63,14 @@ electrical model, is held over the step and integrated with the clamps
 exactly, as `charge` integrates a substep. The bus starts where the mission
 left it (`trace` charges the segments before the event), or at V_s.
 
+A driver whose bus reaches its `max_voltage`, in any mode, a short's
+included, trips at the first step that starts at or above it, latched: its
+motor coasts from that step on, its flux brake off. The source trips at its
+`overvoltage` the same way, and then neither sources nor sinks. One that
+tripped earlier in the mission, as `trace` charges it, is off from the
+event's start. `Run.tripped` names those that trip in the event, and
+halving the timestep measures the step's lag in the trip.
+
 Every event is run at its timestep and at half of it; `trace` carries the
 first in its samples and reports both as a `Simulated`, whose run at half
 the timestep runs when it is first read.
@@ -82,8 +90,8 @@ import numpy as np
 from ..assembly import tangent
 from ..contact import from_solver
 from ..state import State, _frozen, _load_force
-from .bus import (BRAKE, SOURCE, _brake_capacity, _flux_capacity, _levels,
-                  _substep)
+from .bus import (BRAKE, SOURCE, TRIPPED_SOURCE, _brake_capacity,
+                  _flux_capacity, _levels, _substep)
 from .electrical import (_current_limit, _electrical, _hot, _positive,
                          _resolve)
 
@@ -158,11 +166,14 @@ class Run:
     event alone, its t from the event's start; and at each of its samples
     the bus voltage `v` (V) the simulation stepped with it, and `contacts`,
     what each touching contact carried, as `ContactForce`s from MuJoCo's
-    solver."""
+    solver. `tripped` gives the time (s, from the event's start) at which
+    each driver, by its actuator's name, or the source, as `"source"`,
+    tripped in this run; one that tripped before it is not named."""
     timestep: float
     trace: object
     v: np.ndarray
     contacts: tuple
+    tripped: MappingProxyType = MappingProxyType({})
 
 
 class Moved(NamedTuple):
@@ -229,12 +240,14 @@ class _Actuated(NamedTuple):
 class _Simulation(NamedTuple):
     """An event's samples: local times `t`, and for each its `rows` (state,
     qdd, {actuator: (τ, ω, rotor)}, residual), `driven` ({actuator: whether
-    its driver is on}), bus voltage `v` and `contacts`."""
+    its driver is on}), bus voltage `v` and `contacts`; and the time (s)
+    each driver or the source `tripped` in it."""
     t: np.ndarray
     rows: list
     driven: list
     v: np.ndarray
     contacts: tuple
+    tripped: dict
 
 
 def _actuated(m, ev, drive, actuators, temperature):
@@ -368,11 +381,14 @@ def _through(model, data, acts, through, t, v, step, torque):
 
 
 def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
-              v_source, v0, timestep, seam=None):
+              v_source, v0, timestep, seam=None, tripped=()):
     """`ev` run from the `State` `start` at `timestep`, the bus of `drive`
     at `capacitance` and `v_source` from `v0`: a `_Simulation`. Under a
     `seam`, (transmission(state, t), gear), the actuators are the
-    transmission's, at the gear of each, in place of `actuators`."""
+    transmission's, at the gear of each, in place of `actuators`. The
+    drivers, and the source, named in `tripped` tripped before the event
+    and are off from its start; each other trips at the first step that
+    starts at or above its level."""
     steps = max(1, math.ceil(ev.duration / timestep - 1e-9))
     step = ev.duration / steps
     if seam is not None:
@@ -400,15 +416,23 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     cap = {} if bus.source is None else {SOURCE: bus.source.p_max}
     cap.update({("flux", a.name): a.flux[1] for a in braking})
     energy = half_c * v0 ** 2
+    trips = {a.name: a.driver.max_voltage for a in acts}  # V, still to reach
+    if bus.source is not None and bus.source.overvoltage is not None:
+        trips[TRIPPED_SOURCE] = bus.source.overvoltage
+    _trip(acts, cap, trips, [key for key in tripped if key in trips])
 
     free = bool(m._free)
     independent = [i for i, d in enumerate(m.dofs) if d not in m.dependent]
-    driven = {a.name: a.mode not in PASSIVE for a in acts}
     contacts = bool(m.description.contacts)
-    rows, volts, carried = [], [], []
+    rows, volts, carried, driven, latched = [], [], [], [], {}
     for k in range(steps + 1):
         t = k * step
         v = math.sqrt(energy / half_c)
+        reached = [key for key, level in trips.items() if v >= level]
+        if reached:  # latched from this step's start
+            _trip(acts, cap, trips, reached)
+            latched.update(dict.fromkeys(reached, k))
+        driven.append({a.name: a.mode not in PASSIVE for a in acts})
         damping, push, torque = base.copy(), np.zeros(model.nv), {}
         for a in acts:
             if a.dof is None:
@@ -479,8 +503,34 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
             power += float(e.bus)
         if bus.brake is not None:
             cap[BRAKE] = _brake_capacity(bus.brake, v)
-        energy, _ = _substep(energy, -(power + bus.hotel), step, levels, cap)
+        energy, _, _ = _substep(energy, -(power + bus.hotel), step, levels,
+                                cap)
     times = np.arange(steps + 1) * step
     times[-1] = ev.duration
-    return _Simulation(times, rows, [driven] * len(rows),
-                       _frozen(np.array(volts)), tuple(carried))
+    return _Simulation(times, rows, driven, _frozen(np.array(volts)),
+                       tuple(carried),
+                       {key: float(times[k]) for key, k in latched.items()})
+
+
+def _trip(acts, cap, trips, keys):
+    """Trip each of `keys`, latched, so it leaves `trips`, the levels
+    still to reach: the source neither sources nor sinks, and a driver's
+    motor coasts, whatever its mode, a short's included, its flux brake
+    off."""
+    for key in keys:
+        trips.pop(key, None)
+        if key == TRIPPED_SOURCE:
+            if SOURCE in cap:
+                cap[SOURCE] = 0.0
+            continue
+        for i, a in enumerate(acts):
+            if a.name != key:
+                continue
+            if a.eta == 0:
+                raise ValueError(f"{key!r}'s driver trips, and its gearbox "
+                                 f"is self-locking (backward efficiency 0), "
+                                 f"so it does not back-drive to coast; lock "
+                                 f"its joint for this event")
+            if a.flux is not None:
+                cap[("flux", key)] = 0.0
+            acts[i] = a._replace(mode="coast", flux=None)

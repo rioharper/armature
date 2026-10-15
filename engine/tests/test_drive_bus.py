@@ -23,10 +23,10 @@ from scipy.optimize import brentq
 
 import armature
 from armature import actuator, body, gravity, joint
-from armature.drive import (CONFIRM_RATE, BrakeResistor, Bus, Current, Drive,
-                            Driver, FluxBrake, Gearbox, Kt, Mission, Motor,
-                            Resistance, Source, Thermal, charge, electrical,
-                            follow, heat, trace)
+from armature.drive import (AGREE, CONFIRM_RATE, BrakeResistor, Bus, Current,
+                            Drive, Driver, FluxBrake, Gearbox, Kt, Mission,
+                            Motor, Resistance, Source, Thermal, charge,
+                            electrical, follow, heat, trace)
 from test_drive_mission import (SWING, pendulum, swing_q, swing_qd,
                                 swing_qdd)
 
@@ -249,6 +249,29 @@ def test_a_sinking_source_past_its_limit_lets_the_bus_rise(stop):
     assert charged.sink_peak == pytest.approx(sink, rel=1e-12)
 
 
+def test_a_source_past_its_overvoltage_trips_off_latched(stop):
+    """A pack that sinks 50 W at 24 V takes half of the stop's first 100 W
+    of return; the rest raises the bus, and at the pack's 30 V overvoltage
+    the pack trips, latched: it neither sinks nor sources from there, so
+    every joule the stop returns, less a 5 W hotel load, lands on the
+    capacitor: V² = 30² + 2(E(t) − E(t_trip) − 5 W·(t − t_trip))/C. The rest
+    of the substep the trip splits runs at that substep's mean return, which
+    moves E by J·α²·h²/4 = 25 µJ at most, 1.4e-6 of V."""
+    c, hotel = 0.01, 5.0
+    pack = Source(v=24.0, sinks=True, p_max=50.0, overvoltage=30.0)
+    charged = charge(stop, one(pack, c, hotel=hotel))
+    when = charged.tripped["source"]
+    assert set(charged.tripped) == {"source"}
+    after = charged.t >= when
+    np.testing.assert_allclose(
+        charged.v[after],
+        np.sqrt(30.0 ** 2 + 2 * (returned(charged.t[after]) - returned(when)
+                                 - hotel * (charged.t[after] - when)) / c),
+        rtol=2e-6)
+    assert np.all(charged.source[:-1][after[:-1]] == 0.0)
+    assert charged.source[:-1][~after[:-1]].min() < 0  # it sank before
+
+
 def test_a_source_past_its_limit_lets_the_bus_sag(start):
     """Sourcing at most 60 W, the source leaves the capacitor the start's
     draw beyond it. P(t) = J·α²·t + copper passes 60 W at t* = (60 −
@@ -403,28 +426,32 @@ def swing():
                                              qdd=swing_qdd)]), CONFIRM_RATE)
 
 
-def probe(brake=None):
+def probe(brake=None, trip=TRIP, hotel=0.0):
     """A small wye motor, Kt = Ke = 0.05 in d-q and R_φ = 0.2 Ω, behind a
     90 % gearbox and a 95 % driver that trips at 44 V, on a 24 V supply
     that cannot sink and 220 µF."""
     return Drive(motors={"motor": motor(r=0.2, kt=Kt(0.05 * SQ3, per="A_rms",
                                                      side="motor"))},
                  drivers={"motor": driver(efficiency=0.95,
-                                          max_voltage=TRIP)},
+                                          max_voltage=trip)},
                  gearboxes={"motor": Gearbox(forward=0.9)},
                  bus=Bus(actuators=("motor",), source=Source(
                      v=24.0, sinks=False, p_max=500.0), capacitance=220e-6,
-                     brake=brake))
+                     brake=brake, hotel=hotel))
 
 
-def test_the_probes_swing_on_220_uF_runs_far_above_any_trip(swing):
-    """With no brake, each run of returned energy lands on the capacitor,
-    and each draw comes off it until the bus is back at 24 V, where the
-    supply takes over. So the capacitor's energy above ½C·24² is the
-    returned energy's running integral S(t), reflected at zero: S(t) −
-    min(0, min S up to t). Integrated with numpy from `electrical`'s bus
-    powers, its largest value is the peak by the energy relation. The probe
-    reached 222 V with its own motor, whose constants were not kept."""
+UNTRIPPED = 200.0  # V: a driver the swing's bus never reaches
+
+
+def test_the_probes_swing_on_220_uF_reads_the_energy_relation(swing):
+    """With no brake and a driver that never trips, each run of returned
+    energy lands on the capacitor, and each draw comes off it until the bus
+    is back at 24 V, where the supply takes over. So the capacitor's energy
+    above ½C·24² is the returned energy's running integral S(t), reflected
+    at zero: S(t) − min(0, min S up to t). Integrated with numpy from
+    `electrical`'s bus powers, its largest value is the peak by the energy
+    relation, 92 V, twice the probe's 44 V trip. The probe reached 222 V
+    with its own motor, whose constants were not kept."""
     tau, omega, rotor = swing.output("motor")
     power = electrical(tau, omega, SWING["N"], probe().motors["motor"],
                        Gearbox(forward=0.9), probe().drivers["motor"],
@@ -434,11 +461,101 @@ def test_the_probes_swing_on_220_uF_runs_far_above_any_trip(swing):
     above = returned_ - np.minimum(0.0, np.minimum.accumulate(returned_))
     expected = math.sqrt(24.0 ** 2 + 2 * np.max(above) / 220e-6)
 
-    charged = charge(swing, probe())
+    charged = charge(swing, probe(trip=UNTRIPPED))
     assert charged.peak == pytest.approx(expected, rel=1e-4)
     assert charged.peak > 2 * TRIP
     assert charged.minimum == pytest.approx(24.0, rel=1e-12)
+    assert charged.tripped == {}
     np.testing.assert_array_equal(charged.power["motor"], power)
+
+
+def test_the_probes_swing_trips_its_driver_at_44_V(swing):
+    """The driver trips where the bus first reaches its 44 V, latched, and
+    its motor coasts. Before that the bus is the one a driver that never
+    trips gives, to the bit at the same substep, and the trip is where that
+    bus's energy, a straight line over each substep, reaches ½C·44². Past
+    it the motor's back-EMF, 15.7 V at most in d-q, stays under k_mod·24 V
+    = 17.0 V, so its diodes never conduct; nothing draws the bus down, and
+    it stays at the trip."""
+    h = 1e-4
+    free = charge(swing, probe(trip=UNTRIPPED), substep=h)
+    charged = charge(swing, probe(), substep=h)
+    assert set(charged.tripped) == {"motor"}
+    when = charged.tripped["motor"]
+    k = int(np.argmax(free.v >= TRIP))  # the substep reaching it, today
+    e0, e1 = free.v[k - 1] ** 2, free.v[k] ** 2
+    crossed = free.t[k - 1] + (free.t[k] - free.t[k - 1]) * (
+        (TRIP ** 2 - e0) / (e1 - e0))
+    assert when == pytest.approx(crossed, rel=1e-12)
+    np.testing.assert_array_equal(charged.v[charged.t < when],
+                                  free.v[free.t < when])
+    assert charged.peak == pytest.approx(TRIP, rel=1e-12)
+    np.testing.assert_allclose(charged.v[charged.t >= when], TRIP,
+                               rtol=1e-12)
+    # refined, the swing's peak is the trip: 92 V before #96
+    refined = charge(swing, probe())
+    assert refined.peak == pytest.approx(TRIP, rel=1e-12)
+    assert refined.tripped["motor"] == pytest.approx(when, abs=1e-3)
+
+
+def test_a_tripped_driver_stays_off_once_the_bus_falls_back(swing):
+    """Latched: a 0.5 W hotel load pulls the bus back down from the trip,
+    by ½C(V² − 44²) = −0.5 W·(t − t_trip), to the supply's 24 V, which then
+    holds it, while the swing goes on asking the motor for torque. A driver
+    that came back on would draw on the bus and return to it."""
+    hotel = 0.5
+    charged = charge(swing, probe(hotel=hotel), substep=1e-4)
+    when = charged.tripped["motor"]
+    after = charged.t >= when
+    floor = when + 0.5 * 220e-6 * (TRIP ** 2 - 24.0 ** 2) / hotel
+    assert floor < PROBE - 1.0  # the swing has a second left to run
+    falling = after & (charged.t <= floor)
+    np.testing.assert_allclose(
+        charged.v[falling],
+        np.sqrt(TRIP ** 2 - 2 * hotel * (charged.t[falling] - when) / 220e-6),
+        rtol=1e-12)
+    np.testing.assert_allclose(charged.v[charged.t > floor + 1e-3], 24.0,
+                               rtol=1e-12)
+    assert charged.peak == pytest.approx(TRIP, rel=1e-12)
+    assert set(charged.tripped) == {"motor"}
+
+
+def test_past_a_trip_the_bus_rises_only_while_the_diodes_conduct():
+    """A flywheel stopped from 600 rad/s in 1 s returns 1800 J, which would
+    take 10 mF from 24 V to 570 V. Its driver trips at 48 V, and past that
+    its motor returns only what its diodes conduct, η·k_mod·V·(|E| −
+    k_mod·V)/R_φ, while its back-EMF |E| = Kt·ω, 60 V at most, passes
+    k_mod·V: the bus can rise past the trip, but never past 60 V/k_mod =
+    84.85 V."""
+    w0, c, trip, r = 600.0, 10e-3, 48.0, 0.05
+    alpha = w0 / STOP
+    m = armature.compile(flywheel, {"J": J_WHEEL})
+    fast = trace(m, Mission("stop", [follow(
+        lambda t: {"spin": w0 * t - 0.5 * alpha * t * t}, STOP,
+        qd=lambda t: {"spin": w0 - alpha * t},
+        qdd=lambda t: {"spin": -alpha})]), CONFIRM_RATE)
+
+    def stopped(max_voltage):
+        return Drive(motors={"motor": motor(r=r)},
+                     drivers={"motor": driver(i_peak=Current(500.0,
+                                                             per="A_peak"),
+                                              max_voltage=max_voltage)},
+                     bus=Bus(actuators=("motor",), source=Source(
+                         v=24.0, sinks=False, p_max=500.0), capacitance=c))
+
+    assert charge(fast, stopped(1000.0)).peak == pytest.approx(570.5,
+                                                               abs=0.1)
+    charged = charge(fast, stopped(trip))
+    bound = KT * w0 / math.sqrt(1 / 2)
+    assert bound == pytest.approx(84.85, abs=0.01)
+    assert trip < charged.peak <= bound
+    assert set(charged.tripped) == {"motor"}
+    # past the peak the back-EMF has fallen under k_mod·V, and the bus,
+    # with nothing drawing on it, stays where the diodes left it
+    top = int(np.argmax(charged.v))
+    assert np.all(charged.v[top:] == charged.v[top])
+    assert KT * (w0 - alpha * charged.t[top]) <= math.sqrt(1 / 2) * (
+        charged.peak + AGREE)
 
 
 def test_the_probes_swing_with_a_30_V_8_ohm_brake_stays_at_30_V(swing):
@@ -568,6 +685,12 @@ def test_a_hotel_load_drains_a_bus_with_no_source_to_nothing(stop):
      "capacitance"),
     (lambda: Bus(actuators=("motor", "motor"), source=Source(
         v=24.0, sinks=True, p_max=1.0), capacitance=1e-3), "once"),
+    (lambda: Bus(actuators=("motor", "source"), source=Source(
+        v=24.0, sinks=True, p_max=1.0), capacitance=1e-3),
+     r"never named 'source'"),
+    (lambda: driver(max_voltage=44.0, flux_brake=FluxBrake(
+        onset=44.0, i_d=Current(2.0, per="A_peak"))),
+     r"flux brake's onset.*under its max_voltage.*44 V against 44 V"),
     (lambda: Bus(actuators=("motor",), source=Source(
         v=24.0, sinks=True, p_max=1.0), capacitance=1e-3, hotel=-1.0),
      "hotel"),

@@ -21,6 +21,7 @@ and the mechanics, never from the event module:
 
 import importlib
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -374,6 +375,133 @@ def test_a_coasting_motor_regenerates_through_its_diodes_past_the_bus():
     # the back-EMF settles towards k_mod·V, past which the diodes conduct
     assert KT * t.speed["motor"][-1] == pytest.approx(k_mod * v[-1],
                                                       rel=0.05)
+
+
+# --- a trip -------------------------------------------------------------------
+TRIP, W_TRIP = 40.0, 600.0  # V, rad/s
+
+
+def tripping(r=1.0, capacitance=1e-3):
+    """`drive`'s motor on a driver that trips at 40 V."""
+    d = drive(["motor"], r, capacitance=capacitance)
+    return replace(d, drivers={"motor": replace(d.drivers["motor"],
+                                                max_voltage=TRIP)})
+
+
+def test_a_driver_past_its_trip_coasts_in_an_event():
+    """A wheel at 600 rad/s braked at 1 N·m returns 600 W less 100 W of
+    copper loss at 10 A, and takes 1 mF from 24 V to the 40 V trip in
+    ½C(40² − 24²)/500 W = 1.02 ms. From the first step that starts at or
+    above 40 V, the next after 1.02 ms, its driver is off and its motor
+    coasts: its back-EMF, 60 V, passes k_mod·V, so its diodes conduct
+    (E − k_mod·V)/R_φ against the motion, at the bus voltage the step
+    starts on."""
+    m = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    t = trace(m, Mission("brake", [event(spun(m, W_TRIP), {"motor": -1.0},
+                                         0.01)]), 1000.0, drive=tripping())
+    run = t.events[0].run
+    v, times = run.v, run.trace.t
+    first = int(np.argmax(v >= TRIP))
+    assert run.tripped == {"motor": times[first]}
+    rise = 0.5 * 1e-3 * (TRIP ** 2 - V_S ** 2) / (KT * W_TRIP * 10 - 100.0)
+    assert rise <= times[first] < rise + 1e-4  # the next step's start
+    assert np.all(t.torque["motor"][:first] == -1.0)
+    k_mod = math.sqrt(1 / 2)
+    np.testing.assert_allclose(
+        t.torque["motor"][first:],
+        -KT * (KT * t.speed["motor"][first:] - k_mod * v[first:]) / 1.0,
+        rtol=1e-12)
+    np.testing.assert_array_equal(t.driven["motor"], np.arange(len(v))
+                                  < first)
+    # its diodes raise the bus past the trip, but never past E/k_mod
+    assert TRIP < np.max(v) <= KT * W_TRIP / k_mod
+    assert charge(t, tripping()).tripped == {"motor": times[first]}
+
+
+def bare_wheel(p):
+    return [body("wheel", mass=1.0, com=(0, 0, 0),
+                 inertia=np.diag([p["J"]] * 3)),
+            joint("spin", "hinge", parent="world", child="wheel",
+                  axis=(0, 0, 1), point=(0, 0, 0), range=(-1e4, 1e4)),
+            gravity((0, 0, 0))]
+
+
+def test_an_actuator_through_a_transmission_trips_as_one_on_a_joint():
+    """The same braked wheel, its motor an actuation seam's, turning at
+    1 rad/s per rad/s of the wheel: it trips at the same step and coasts
+    the same way."""
+    m = armature.compile(bare_wheel, {"J": 0.01})
+
+    def through(state, *, t, p):
+        return {"motor": ({"spin": 1.0}, 0.0, 0.0)}
+
+    def actuation(state, qdd, loads, *, t, p):
+        return {"motor": (0.01 * qdd.get("spin", 0.0), state.qd["spin"])}
+
+    seamed = trace(m, Mission("brake", [event(
+        m.at(qd={"spin": W_TRIP}), {"motor": -1.0}, 0.01)],
+        actuation=actuation, transmission=through), 1000.0,
+        drive=tripping(), gear={"motor": 1.0})
+    joined = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    direct = trace(joined, Mission("brake", [event(
+        spun(joined, W_TRIP), {"motor": -1.0}, 0.01)]), 1000.0,
+        drive=tripping())
+    assert seamed.events[0].run.tripped == direct.events[0].run.tripped
+    np.testing.assert_array_equal(seamed.driven["motor"],
+                                  direct.driven["motor"])
+    np.testing.assert_allclose(seamed.torque["motor"],
+                               direct.torque["motor"], rtol=1e-9)
+
+
+def test_a_move_that_trips_hands_the_event_after_it_a_coasting_driver():
+    """Slowed from 600 rad/s at 100 rad/s², the wheel returns 500 W and
+    trips its driver at 40 V within 1.1 ms. The event after the 3 ms move
+    asks for 1 N·m of braking, but its driver tripped in the move, latched,
+    so its motor coasts from the event's start, its diodes conducting, and
+    `Run.tripped`, naming only what trips in the event, leaves it out."""
+    m = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    slow = follow(lambda t: {"spin": W_TRIP * t - 50.0 * t * t}, 0.003,
+                  qd=lambda t: {"spin": W_TRIP - 100.0 * t},
+                  qdd=lambda t: {"spin": -100.0})
+    d = tripping()
+    t = trace(m, Mission("slow, then brake", [
+        slow, event(after(slow, 1.0), {"motor": -1.0}, 0.005)]), 1000.0,
+        drive=d)
+    when = charge(t, d).tripped["motor"]
+    assert 0 < when < 1.1e-3
+    run = t.events[0].run
+    assert run.tripped == {}
+    assert not t.driven["motor"][t.segment == 1].any()
+    k_mod = math.sqrt(1 / 2)
+    speed = run.trace.speed["motor"]
+    np.testing.assert_allclose(
+        run.trace.torque["motor"],
+        -KT * np.maximum(KT * speed - k_mod * run.v, 0.0) / 1.0, rtol=1e-12)
+    assert KT * speed[0] > k_mod * run.v[0]  # its diodes conduct
+
+
+def test_an_event_that_trips_keeps_its_driver_off_in_the_moves_after_it():
+    """The braked wheel trips its driver in the event; the wheel then spins
+    up from rest at 100 rad/s², which a driver that was on would draw on
+    the bus for. Latched, it draws nothing, and its back-EMF stays under
+    k_mod·V, so the bus stays where the event left it."""
+    m = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    d = tripping()
+    braked = event(spun(m, W_TRIP), {"motor": -1.0}, 0.01)
+    alone = trace(m, Mission("brake", [braked]), 1000.0, drive=d)
+    end = float(alone.q["spin"][-1])
+    spin = follow(lambda t: {"spin": end + 50.0 * t * t}, 0.1,
+                  qd=lambda t: {"spin": 100.0 * t},
+                  qdd=lambda t: {"spin": 100.0})
+    t = trace(m, Mission("brake, then spin up", [braked, spin]), 1000.0,
+              drive=d)
+    tripped = t.events[0].run.tripped
+    assert set(tripped) == {"motor"}
+    charged = charge(t, d)
+    assert charged.tripped == tripped
+    later = charged.t >= 0.01
+    assert np.ptp(charged.v[later]) == 0.0
+    assert np.all(charged.power["motor"][t.segment == 1][1:] > 0)  # asked
 
 
 # --- contact ------------------------------------------------------------------

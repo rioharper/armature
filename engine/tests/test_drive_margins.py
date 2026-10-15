@@ -488,6 +488,27 @@ def test_the_review_plots_the_regeneration_against_the_brake(tmp_path):
         assert png.text["Panels"] == reviewed.panels[0]
 
 
+def test_a_driver_that_trips_fails_the_peak_and_the_review_marks_it(
+        tmp_path):
+    """The swing on 220 µF trips its 44 V driver, whose motor then coasts:
+    its bus stops at the trip, 92 V before #96, and the peak-V margin fails
+    there, though the bus never passes 44 V. The review's V(t) names the
+    trip and its time."""
+    d = on_a_bus(["motor"], capacitance=220e-6, sinks=False, drivers={
+        "motor": Driver(efficiency=0.95, i_peak=Current(40.0, per="A_peak"),
+                        max_voltage=44.0, undervoltage=10.0)})
+    m = armature.compile(pendulum, SWING)
+    margin = named(margins(d, [SWING_MISSION], model=m))["bus: peak V"]
+    worst = search(margin)
+    assert not worst.passes
+    assert -1e-9 < worst.value < 0
+    charged = charge(trace(m, SWING_MISSION, CONFIRM_RATE), d)
+    when = charged.tripped["motor"]
+    reviewed, = review([margin], tmp_path)
+    assert reviewed.panels[0] == (f"bus: V(t) against its trips, motor's "
+                                  f"driver tripped at {when:.4g} s")
+
+
 # --- energy, reported --------------------------------------------------------
 def test_a_holds_energy_is_its_copper_loss_through_the_driver():
     m = armature.compile(pendulum, SWING)
@@ -538,6 +559,28 @@ def test_a_sink_below_the_trip_is_bisected(free_wheel):
         assert not n.exact
         assert n.capacitance == pytest.approx(hand, rel=2 * each)
         assert n.capacitance >= hand * (1 - 1e-6)
+
+
+def test_the_capacitance_needed_is_the_least_at_which_nothing_trips(
+        free_wheel):
+    """The same pack against a driver that trips at 40 V, where the board
+    was: below the capacitance needed the driver trips, latched at 40 V,
+    and the bus never passes 40 V, so the peak alone would read every
+    capacitance as holding. The least at which nothing trips is the
+    board's."""
+    sink = Source(v=24.0, sinks=True, p_max=50.0)
+    hand = 2 * (returned(0.5) - 50.0 * 0.5) / (40.0 ** 2 - 24.0 ** 2)
+    d = replace(stopping(source=sink),
+                drivers={"motor": plain_driver(max_voltage=40.0)})
+    n, = needed(d, free_wheel)
+    assert not n.exact
+    assert n.against == "motor's driver (40 V)"
+    assert n.capacitance == pytest.approx(hand, rel=2e-3)
+    assert n.capacitance >= hand * (1 - 1e-6)
+    short = replace(d, bus=replace(d.bus, capacitance=hand / 2))
+    tripped = charge(trace(free_wheel, STOPPED, CONFIRM_RATE), short,
+                     capacitance=hand / 2)
+    assert tripped.tripped and tripped.peak == pytest.approx(40.0, rel=1e-12)
 
 
 def test_the_brakes_energy_is_reported_at_the_capacitance(free_wheel):
