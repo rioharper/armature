@@ -488,6 +488,27 @@ def test_the_review_plots_the_regeneration_against_the_brake(tmp_path):
         assert png.text["Panels"] == reviewed.panels[0]
 
 
+def test_a_driver_that_trips_fails_the_peak_and_the_review_marks_it(
+        tmp_path):
+    """The swing on 220 µF trips its 44 V driver, whose motor then coasts:
+    its bus stops at the trip, 92 V before #96, and the peak-V margin fails
+    there, though the bus never passes 44 V. The review's V(t) names the
+    trip and its time."""
+    d = on_a_bus(["motor"], capacitance=220e-6, sinks=False, drivers={
+        "motor": Driver(efficiency=0.95, i_peak=Current(40.0, per="A_peak"),
+                        max_voltage=44.0, undervoltage=10.0)})
+    m = armature.compile(pendulum, SWING)
+    margin = named(margins(d, [SWING_MISSION], model=m))["bus: peak V"]
+    worst = search(margin)
+    assert not worst.passes
+    assert -1e-9 < worst.value < 0
+    charged = charge(trace(m, SWING_MISSION, CONFIRM_RATE), d)
+    when = charged.tripped["motor"]
+    reviewed, = review([margin], tmp_path)
+    assert reviewed.panels[0] == (f"bus: V(t) against its trips, motor's "
+                                  f"driver tripped at {when:.4g} s")
+
+
 # --- energy, reported --------------------------------------------------------
 def test_a_holds_energy_is_its_copper_loss_through_the_driver():
     m = armature.compile(pendulum, SWING)

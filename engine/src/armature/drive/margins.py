@@ -85,7 +85,7 @@ import numpy as np
 from ..compiler import Compiled, compile
 from ..search import (Band, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Point, Space, search)
-from .bus import Drive, _flux_capacity, _v_source, charge
+from .bus import TRIPPED_SOURCE, Drive, _flux_capacity, _v_source, charge
 from .electrical import (_amps, _bound, _current_limit, _efficiencies, _hot,
                          _resolve, electrical)
 from .event import Event
@@ -96,6 +96,8 @@ TRUTH_AGREE = 0.01  # a margin's truth agrees within this fraction of its
                     # limit: the trip, the rating, the stall torque
 RESERVED = ("mission", "drive", "capacitance", "v_source")
 PEAK, DUTY = "peak", "duty"
+TRIPPED = -math.ulp(0.0)  # V: the peak-V slack of a bus that stopped at the
+                          # trip it reached, which fails
 WRITTEN = "a mission as written, with its duty"
 KEPT_COMPILES = 8  # band values a setup keeps compiled; past it, it starts
                    # over, since a search moves on from a band value
@@ -612,7 +614,10 @@ class _Setup:
             on = (ran.trace.driven or {}).get(a, True)
             return float(np.min(np.where(on, left, capacity)))
         if what == "peak V":
-            return _trip(d) - c.peak
+            slack = _trip(d) - c.peak
+            if c.tripped and slack >= 0:  # a driver latched at the lowest
+                return TRIPPED          # trip, its bus stopped there
+            return slack
         if what in ("minimum V", "source power") and d.bus.source is None:
             return math.inf
         if what == "minimum V":
@@ -976,8 +981,14 @@ def _bus(plt, setup, check, ran, worst):
                       label="flux-brake onset" if k == 0 else None)
     volts.axhline(c.v_source, color="grey", lw=0.5,
                   label="start" if d.bus.source is None else "source")
-    volts.set_ylabel("V")
     first = "bus: V(t) against its trips"
+    for who, when in sorted(c.tripped.items(), key=lambda item: item[1]):
+        name = ("the source" if who == TRIPPED_SOURCE
+                else f"{who}'s driver")
+        volts.axvline(when, color="tab:red", ls="-.", lw=1,
+                      label=f"{name} trips, latched")
+        first += f", {name} tripped at {when:.4g} s"
+    volts.set_ylabel("V")
     volts.set_title(first, fontsize=9)
     volts.legend(fontsize=7)
     power.step(c.t, c.source, where="post", lw=1, label="source")
