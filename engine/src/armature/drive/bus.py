@@ -89,6 +89,7 @@ A bus configuration, such as Ibex's pack unmated, is a `Choice` between
 Units are SI: V, F, W, J, Ω, s.
 """
 
+import bisect
 import math
 from dataclasses import dataclass
 from functools import partial
@@ -403,7 +404,7 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
         e = electrical(tau, omega, n, motor, box, driver,
                        temperature.get(a), rotor=rotor)
         power[a] = e.bus
-        coasts[a] = _Coast(driver.max_voltage, e, _resolve(motor, n, box),
+        coasts[a] = _Coast(driver.max_voltage, e, motor, n, box,
                            driver.efficiency)
         if driver.flux_brake is not None:
             capacity = _flux_capacity(driver, motor, e.resistance)
@@ -452,11 +453,13 @@ def charge(trace, drive, *, capacitance=None, v_source=None, v0=None,
 
 class _Coast(NamedTuple):
     """A driver as `charge` trips it: its `level` (V), its actuator's
-    `electrical` model on the trace's samples, its resolved constants `c`,
-    and its `efficiency`."""
+    `electrical` model `e` on the trace's samples, its `motor`, gear `n`
+    and `gearbox`, and its `efficiency`."""
     level: float
     e: object
-    c: object
+    motor: object
+    n: float
+    gearbox: object
     efficiency: float
 
 
@@ -587,16 +590,17 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
     step = grid.step.copy()  # a substep a trip splits keeps its last piece
 
     prescribed = trips.prescribed[k]
+    on_trace = prescribed.tolist()  # the same, read one substep at a time
     begins = np.concatenate((t[:1], grid.end[:-1]))  # s: each substep's start
-    # each substep at which an event's trip latches, and where the trace
-    # turns prescribed, where a level an event's bus passed latches
+    # each substep at which an event's trip latches; and where the trace
+    # turns prescribed, a level an event's bus passed latches
     recorded = {}
     for key, when in trips.recorded.items():
         at = int(np.searchsorted(begins, when))
         if at < n:
             recorded.setdefault(at, []).append((key, when))
     turns = np.flatnonzero(prescribed[1:] & ~prescribed[:-1]) + 1
-    breaks = np.unique(np.concatenate((turns, list(recorded)))).astype(int)
+    breaks = sorted({*turns.tolist(), *recorded})
     tripped, diodes, pieces = {}, [], []
     diode = None  # J: in each substep, the energy under which a tripped
                   # driver's diodes conduct
@@ -621,12 +625,13 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
             d = trips.drivers[key]
             fraction = (grid.j[i:] + 0.5) / grid.m[i:]
             ki = k[i:]
-            emf = d.c.ke * d.e.omega
+            resolved = _resolve(d.motor, d.n, d.gearbox)
+            emf = resolved.ke * d.e.omega
             emf = np.where(prescribed[i:], np.abs(
                 emf[ki] + (emf[ki + 1] - emf[ki]) * fraction), 0.0)
             r = d.e.resistance[ki] + (d.e.resistance[ki + 1]
                                       - d.e.resistance[ki]) * fraction
-            k_mod = d.c.k_mod
+            k_mod = resolved.k_mod
             diodes.append((i, k_mod, d.efficiency, emf, r))
             under = np.zeros(n)
             under[i:] = half_c * (emf / k_mod) ** 2
@@ -661,13 +666,15 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
         if i in recorded:  # an event tripped them
             for key, when in recorded[i]:
                 latch([key], i, when)
-        if e >= first and prescribed[i]:
+        if e >= first and on_trace[i]:
             latch(reached(e), i, float(begins[i]))
         taken = 0
         if i > 0 and wait == 0:  # the first runs from v0 itself, alone
-            later = np.searchsorted(breaks, i, side="right")
-            hi = min(n, i + window,
-                     int(breaks[later]) if later < len(breaks) else n)
+            hi = min(n, i + window)
+            if breaks:  # a run ends where an event's trip latches, and where
+                        # the trace turns prescribed
+                later = bisect.bisect_right(breaks, i)
+                hi = min(hi, breaks[later] if later < len(breaks) else n)
             taken = _together(e, v, i, hi, levels, rate, step, caps, brake,
                               energy, flows, diode)
             window = 2 * window if i + taken == hi else WINDOW
@@ -681,9 +688,11 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
                 cap = {key: float(values[i]) for key, values in caps.items()}
                 if brake is not None:
                     cap[BRAKE] = _brake_capacity(brake, v)
-                into = float(rate[i]) + (returned(i, v) if diodes else 0.0)
+                into = float(rate[i])
+                if diodes:
+                    into += returned(i, v)
                 e, flowed, rest = _substep(e, into, left, levels, cap,
-                                           stops if prescribed[i] else ())
+                                           stops if on_trace[i] else ())
                 if not rest:
                     break
                 done += left - rest  # a trip: the substep's piece before it
@@ -691,7 +700,9 @@ def _run(t, power, flux, bus, c, v_s, v0, trips, h):
                 pieces.append((i, left - rest, e, flowed, when))
                 latch(reached(e), i, when)
                 left, v = rest, math.sqrt(e / half_c)
-            energy[i], step[i] = e, left
+            energy[i] = e
+            if done:
+                step[i] = left
             for key, flow in flowed.items():
                 flows[key][i] = flow
             i += 1
