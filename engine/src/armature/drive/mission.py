@@ -582,10 +582,9 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
     winding at `temperature[a]` (°C, a number; by default its resistance's
     T₀). Its bus starts where the segments before it left it, charged as
     `charge` would, each driver or source that tripped there off, or at
-    `v_source` where it is first. Under an actuation
-    seam an event runs through the mission's transmission, each actuator at
-    the ratio `gear[a]` gives, as `charge` takes it. Without events these
-    are not read.
+    `v_source` where it is first. Under an actuation seam an event runs
+    through the mission's transmission, each actuator at the ratio `gear[a]`
+    gives, as `charge` takes it. Without events these are not read.
 
     Raises where a segment starts more than `CONTINUITY` from where the one
     before it ended, or where the mission runs longer than its duty's

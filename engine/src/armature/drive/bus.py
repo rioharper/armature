@@ -51,16 +51,16 @@ clamps are:
   an event that coasts or shorts the motor has switched it off.
 
 A driver whose bus reaches its `max_voltage` trips, as does the source at
-its `overvoltage`, latched for the rest of the trace (#96). Each trip
-is a level with no clamp, where a substep ends exactly; drivers at one
-level trip together, and the bus's `ratings` latch nothing. A tripped
-source neither sources nor sinks, as with no source. A tripped driver's
-bridge is off: its flux brake stops, and its motor draws nothing and
-returns only what its diodes conduct, η·k_mod·V·(|E| − k_mod·V)/R_φ while
-its back-EMF |E| passes k_mod·V, held at the substep's starting V as the
-brake's V²/R is. The motion stays the prescribed one, so past a trip the
-peak is the next trip or the diodes' bound at that speed, not a prediction
-of the coasting motion; where that matters, write an event. In an event's
+its `overvoltage`, latched for the rest of the trace (#96). Each trip is a
+level with no clamp, where a substep ends exactly; drivers at one level
+trip together, and the bus's `ratings` latch nothing. A tripped source
+neither sources nor sinks, as with no source. A tripped driver's bridge is
+off: its flux brake stops, and its motor draws nothing and returns only
+what its diodes conduct, η·k_mod·V·(|E| − k_mod·V)/R_φ while its back-EMF
+|E| passes k_mod·V, held at the substep's starting V as the brake's V²/R
+is. The motion stays the prescribed one, so past a trip the peak is the
+next trip or the diodes' bound at that speed, not a prediction of the
+coasting motion; where that matters, write an event. In an event's
 samples `charge` decides nothing: the event's own torques already coast a
 driver it tripped, and its trips latch here at its `Run.tripped`.
 
