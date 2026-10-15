@@ -418,6 +418,41 @@ def test_a_driver_past_its_trip_coasts_in_an_event():
     assert charge(t, tripping()).tripped == {"motor": times[first]}
 
 
+def bare_wheel(p):
+    return [body("wheel", mass=1.0, com=(0, 0, 0),
+                 inertia=np.diag([p["J"]] * 3)),
+            joint("spin", "hinge", parent="world", child="wheel",
+                  axis=(0, 0, 1), point=(0, 0, 0), range=(-1e4, 1e4)),
+            gravity((0, 0, 0))]
+
+
+def test_an_actuator_through_a_transmission_trips_as_one_on_a_joint():
+    """The same braked wheel, its motor an actuation seam's, turning at
+    1 rad/s per rad/s of the wheel: it trips at the same step and coasts
+    the same way."""
+    m = armature.compile(bare_wheel, {"J": 0.01})
+
+    def through(state, *, t, p):
+        return {"motor": ({"spin": 1.0}, 0.0, 0.0)}
+
+    def actuation(state, qdd, loads, *, t, p):
+        return {"motor": (0.01 * qdd.get("spin", 0.0), state.qd["spin"])}
+
+    seamed = trace(m, Mission("brake", [event(
+        m.at(qd={"spin": W_TRIP}), {"motor": -1.0}, 0.01)],
+        actuation=actuation, transmission=through), 1000.0,
+        drive=tripping(), gear={"motor": 1.0})
+    joined = armature.compile(flywheel, {"J": 0.01, "N": 1.0, "Jm": 0.0})
+    direct = trace(joined, Mission("brake", [event(
+        spun(joined, W_TRIP), {"motor": -1.0}, 0.01)]), 1000.0,
+        drive=tripping())
+    assert seamed.events[0].run.tripped == direct.events[0].run.tripped
+    np.testing.assert_array_equal(seamed.driven["motor"],
+                                  direct.driven["motor"])
+    np.testing.assert_allclose(seamed.torque["motor"],
+                               direct.torque["motor"], rtol=1e-9)
+
+
 def test_a_move_that_trips_hands_the_event_after_it_a_coasting_driver():
     """Slowed from 600 rad/s at 100 rad/s², the wheel returns 500 W and
     trips its driver at 40 V within 1.1 ms. The event after the 3 ms move
