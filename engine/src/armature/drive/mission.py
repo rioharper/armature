@@ -515,9 +515,10 @@ class Trace:
     torques the simulation's own, with a residual of 0: its forces are the
     ones applied. `driven` says, for each actuator at each sample, whether
     its driver is on, so its flux brake can act: off where an event coasts
-    or shorts it, on everywhere else. `events` reports each event as a
-    `Simulated`, run at its timestep and at half of it, the second run
-    when it is first read.
+    or shorts it, or from where it trips in one, on everywhere else; a
+    trip `charge` finds outside an event is `Charged.tripped`'s. `events`
+    reports each event as a `Simulated`, run at its timestep and at half of
+    it, the second run when it is first read.
     """
     mission: str
     rate: float
@@ -580,7 +581,8 @@ def trace(m, mission, rate, *, drive=None, capacitance=None, v_source=None,
     `v_source` (V), points in its bands as `charge` takes them, and each
     winding at `temperature[a]` (°C, a number; by default its resistance's
     T₀). Its bus starts where the segments before it left it, charged as
-    `charge` would, or at `v_source` where it is first. Under an actuation
+    `charge` would, each driver or source that tripped there off, or at
+    `v_source` where it is first. Under an actuation
     seam an event runs through the mission's transmission, each actuator at
     the ratio `gear[a]` gives, as `charge` takes it. Without events these
     are not read.

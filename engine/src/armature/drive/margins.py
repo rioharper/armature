@@ -22,6 +22,16 @@ neither is checked. Its hotel load still drains it, so its envelope reads
 V_min no lower than each driver's undervoltage trip, below which the driver
 is off.
 
+A driver, or the source, that trips is off for the rest of the run, so the
+peak V past the lowest trip is the next trip, or what the tripped drivers'
+diodes return at the speeds the mission prescribes: its slack, the trip
+less that peak, measures the miss and does not predict the coasting
+motion. A bus that stops at the lowest trip, a driver latched there, reads
+the least negative slack, and fails. The review's V(t) marks each trip.
+The thermal, current and envelope margins read the currents the mission
+prescribes, past a trip too, which is conservative; the regeneration margin
+reads an actuator as off from a trip in an event.
+
 `drive` is a `Drive`; or the project's `drive(p)`, called with `params`
 and each drive band's value in, `Band(name, BANDS, of="drive")`; or a
 mapping of names to either, the bus configurations, enumerated as the

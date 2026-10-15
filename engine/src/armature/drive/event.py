@@ -38,7 +38,15 @@ motor's torque is Kt·i:
   gear as `qfrc_applied`.
 
 A short's or a coasting motor's driver is off, so its flux brake cannot
-act: `Trace.driven` says so per sample, and `charge` reads it. The braking
+act: `Trace.driven` says so per sample, and `charge` reads it.
+
+A driver whose bus reaches its `max_voltage`, in any mode, a short's
+included, trips at the first step that starts at or above it, latched: its
+motor coasts from that step on, its flux brake off. The source trips at its
+`overvoltage` the same way, and then neither sources nor sinks. One that
+tripped earlier in the mission, as `trace` charges it, is off from the
+event's start. `Run.tripped` names those that trip in the event, and
+halving the timestep measures the step's lag in the trip. The braking
 modes reach the joint through the gearbox back-driven, at N/η_b, so the
 damping a short puts on its joint is N²·Kt·Ke/(R_φ·η_b), and the electrical
 model, which takes the load's share of the rotor's torque at η_b/N, reads

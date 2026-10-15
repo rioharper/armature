@@ -17,7 +17,9 @@ bus=Bus(actuators, source=Source(v, sinks, p_max), capacitance, brake=
 BrakeResistor(threshold, r, energy, power), hotel))`, and `charge(trace,
 drive, capacitance=..., v_source=...)` integrates their bus powers against
 its source, capacitance, brake resistor and each driver's flux brake, at a
-substep refined until halving it moves the peak V by less than `agree`.
+substep refined until halving it moves the peak V by less than `agree`. A
+driver past its `max_voltage`, or the source past its `overvoltage`, trips,
+latched for the rest of the trace, and `Charged.tripped` names it.
 
 An `event(start, modes, duration)` is a segment forward-simulated from a
 state or from `after(segment, fraction)`, each actuator coasting, shorted,
