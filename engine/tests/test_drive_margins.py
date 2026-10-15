@@ -540,6 +540,28 @@ def test_a_sink_below_the_trip_is_bisected(free_wheel):
         assert n.capacitance >= hand * (1 - 1e-6)
 
 
+def test_the_capacitance_needed_is_the_least_at_which_nothing_trips(
+        free_wheel):
+    """The same pack against a driver that trips at 40 V, where the board
+    was: below the capacitance needed the driver trips, latched at 40 V,
+    and the bus never passes 40 V, so the peak alone would read every
+    capacitance as holding. The least at which nothing trips is the
+    board's."""
+    sink = Source(v=24.0, sinks=True, p_max=50.0)
+    hand = 2 * (returned(0.5) - 50.0 * 0.5) / (40.0 ** 2 - 24.0 ** 2)
+    d = replace(stopping(source=sink),
+                drivers={"motor": plain_driver(max_voltage=40.0)})
+    n, = needed(d, free_wheel)
+    assert not n.exact
+    assert n.against == "motor's driver (40 V)"
+    assert n.capacitance == pytest.approx(hand, rel=2e-3)
+    assert n.capacitance >= hand * (1 - 1e-6)
+    short = replace(d, bus=replace(d.bus, capacitance=hand / 2))
+    tripped = charge(trace(free_wheel, STOPPED, CONFIRM_RATE), short,
+                     capacitance=hand / 2)
+    assert tripped.tripped and tripped.peak == pytest.approx(40.0, rel=1e-12)
+
+
 def test_the_brakes_energy_is_reported_at_the_capacitance(free_wheel):
     """A 30 V brake under the 40 V board: at the least capacitance the bus
     reaches 40 V with the brake conducting from 30 V, so it takes part of

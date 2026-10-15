@@ -1,6 +1,6 @@
 """The capacitance a bus needs (#93): for each searched worst case of the
-bus's peak V, the least capacitance that holds it under the lowest trip.
-Reported, never checked.
+bus's peak V, the least capacitance that holds it under the lowest trip, at
+which nothing trips (#96). Reported, never checked.
 
 Where nothing takes power off the bus below the trip (no sinking source, no
 brake resistor or flux brake switching in under it) and no event runs, the
@@ -11,7 +11,9 @@ what they and the hotel load draw, with a source's floor refilling any sag
 below V₀. One `charge` at that C confirms the peak lands on the trip. A
 source too small to hold its floor, a bus with no source emptied before its
 peak, a sink below the trip and an event, whose motion depends on the bus,
-each bisect C on `charge(...).peak` instead, which falls as C rises.
+each bisect C instead, on `charge` at each C tried holding its peak under
+the trip with nothing tripped: a driver that trips latches, and the bus can
+stop there, at its trip, so the peak alone would hold at any C.
 """
 
 import math
@@ -33,9 +35,10 @@ MAX_STEPS = 40    # halvings or doublings of C that bracket it
 @dataclass(frozen=True)
 class Needed:
     """The least `capacitance` (F) that holds one searched worst case of
-    the bus's peak V under its lowest `trip` (V), named `against`, for
-    `mission` on bus configuration `drive` (None where there is one), at
-    the case's point `at`, every axis but the capacitance read there.
+    the bus's peak V under its lowest `trip` (V), named `against`, with
+    nothing tripped, for `mission` on bus configuration `drive` (None where
+    there is one), at the case's point `at`, every axis but the capacitance
+    read there.
     `exact` where the closed form gave it; otherwise it was bisected, and
     lies within the tolerance above the least. 0 F where the bus never
     rises above where it starts, or where its clamps hold it under the trip
@@ -160,11 +163,12 @@ def _closed_form(ran, v0, trip):
 
 
 def _bisected(charged, c0, trip, tolerance):
-    """The least C (F) whose `charged(C).peak` holds under `trip` (V),
-    bracketed from `c0` and bisected in ratio to within `tolerance`; the
-    end that holds."""
+    """The least C (F) whose `charged(C)` holds its peak under `trip` (V)
+    with nothing tripped, bracketed from `c0` and bisected in ratio to
+    within `tolerance`; the end that holds."""
     def holds(c):
-        return charged(c).peak <= trip
+        at = charged(c)
+        return at.peak <= trip and not at.tripped
 
     lo = hi = c0
     if holds(c0):
