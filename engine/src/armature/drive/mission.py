@@ -444,8 +444,11 @@ class Mission:
     in ω_m = g·q̇, whose transpose takes the motor torque to the mechanism;
     `bias` is ω̇_m at q̈ = 0 (rad/s²); `inertia` is the rotor's J_m (kg·m²).
     For a cable robot, g is a winch's N/r_drum times its cable's unit
-    vector. The transmission is bilateral, so a cable it pushes on is one
-    gone slack, which the event does not model: check the torques' sign."""
+    vector. An actuator may add a fourth element, `pulls`: True for a
+    cable, which pulls only, its g oriented so that a positive motor torque
+    tensions it, the same at every step. Its cable goes slack wherever its
+    motor would push, and snaps taut where the slack closes; `Run.slack`
+    and `Run.snaps` report both. Without it, the actuator is bilateral."""
     name: str
     segments: tuple
     duty: Duty = None
@@ -797,7 +800,8 @@ def _event_run(m, mission, i, event, step, run, actuators):
                       [0.0, event.duration], [profile], actuators, run.rows,
                       run.driven)
     return Run(step, alone, run.v, run.contacts,
-               MappingProxyType(run.tripped))
+               MappingProxyType(run.tripped), MappingProxyType(run.slack),
+               MappingProxyType(run.snaps))
 
 
 def _event_halved(m, mission, i, event, step, simulate, actuators):

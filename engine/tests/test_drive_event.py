@@ -16,7 +16,11 @@ and the mechanics, never from the event module:
 - fixture 2's platform on four shorted winches, stopped partway through a
   move, loses exactly the energy the shorts dissipate, its rotors'
   ½J_m·ω_m² counted, and each winch turns at its cable's rate, worked here
-  from the anchors.
+  from the anchors; with cables that pull only, the same, each snap's loss
+  counted;
+- a load thrown up on a shorted winch flies free, z = v₀t − g·t²/2, while
+  its rotor stops, θ = K·v₀·τ(1 − e^(−t/τ)), and snaps taut where K·z = θ,
+  a plastic impact between m/K² and J_m.
 """
 
 import importlib
@@ -635,6 +639,155 @@ def test_an_estop_stops_a_cable_robot_on_its_shorted_winches():
     assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
 
 
+def pulling(state, *, t, p):
+    """`winches`, each a cable that pulls only."""
+    return {w: (*row, True) for w, row in winches(state, t=t, p=p).items()}
+
+
+def balance(run, platform, mass, height, dissipation):
+    """`run`'s energy gap: its first sample's energy, the platform's
+    `platform(v)`, m·g·`height(q)` and each rotor's ½J_W·ω_m², less its
+    last's, less `dissipation` and every snap's loss, over that."""
+    tr = run.trace
+    v = np.stack([tr.qd[s] for s in platform], axis=1)
+    e = (0.5 * mass * np.sum(v * v, axis=1) + mass * G * height(tr.q)
+         + sum(0.5 * J_W * tr.speed[w] ** 2 for w in tr.speed))
+    lost = sum(s.lost for snaps in run.snaps.values() for s in snaps)
+    return abs(e[0] - e[-1] - dissipation - lost) / (dissipation + lost)
+
+
+def test_a_shorted_cable_goes_slack_and_never_pushes():
+    """The e-stop above, its cables pulling only: the reeling-in winches'
+    shorts would push, so their cables go slack and carry nothing, each
+    rotor then braking on its own short, J_W·ω̇_m = −c·ω_m. The energy
+    balance still closes, each rotor's ½J_m·ω_m² counted, any snap's loss
+    with the shorts'."""
+    p = hung_at(HOME, 2.0)
+    m, across = on_winches(p)
+    stop = event(after(across, 0.5), {w: "short" for w in WINCHES}, 0.3)
+    t = trace(m, Mission("e-stop", [across, stop], actuation=least_tensions,
+                         transmission=pulling), 1000.0,
+              drive=drive(WINCHES, R_W_PHI, kt=KT_W),
+              gear={w: N_W for w in WINCHES})
+    simulated, = t.events
+    c = KT_W * KT_W / R_W_PHI
+
+    gaps = []
+    for run in (simulated.run, simulated.half):
+        tr = run.trace
+        assert set(run.slack) == set(WINCHES)
+        went = [w for w in WINCHES if np.any(run.slack[w])]
+        assert went and len(went) < len(WINCHES)
+        for w in WINCHES:
+            tension = tr.torque[w] - tr.rotor[w]
+            assert np.all(tension >= 0.0)
+            np.testing.assert_array_equal(run.slack[w], tension == 0.0)
+            np.testing.assert_allclose(tr.torque[w], -c * tr.speed[w],
+                                       rtol=1e-9, atol=1e-12)
+        dissipated = np.trapezoid(sum(c * tr.speed[w] ** 2
+                                      for w in WINCHES), tr.t)
+        gaps.append(balance(run, SLIDES, p["m"], lambda q: q["hang:z"],
+                            dissipated))
+    assert gaps[0] < 5e-4
+    assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
+
+
+# --- a mass on a line, thrown up --------------------------------------------
+R_LINE = 0.1  # Ω in d-q: the short stops the free rotor in J_W/c = 6.2 ms
+
+
+def on_a_line(p):
+    """A mass on a vertical slide, hung on one winch's cable."""
+    return [body("load", mass=p["m"], com=(0, 0, 0),
+                 inertia=np.diag([1e-3] * 3)),
+            joint("lift", "slide", parent="world", child="load",
+                  axis=(0, 0, 1), point=(0, 0, 0), range=(-1, 1)),
+            gravity((0, 0, -G))]
+
+
+def lifted(state, *, t, p):
+    """ω_m = K·ż: the winch reels in as the load rises, and pulls only."""
+    return {"w": ({"lift": K_W}, 0.0, J_W, True)}
+
+
+def unused(state, qdd, loads, *, t, p):
+    return {"w": (0.0, 0.0)}
+
+
+def thrown(v0, duration, r=R_LINE, gearboxes=None):
+    m = armature.compile(on_a_line, {"m": 2.0})
+    start = m.at(q={"lift": 0.0}, qd={"lift": v0})
+    t = trace(m, Mission("thrown", [event(start, {"w": "short"}, duration)],
+                         actuation=unused, transmission=lifted), 1000.0,
+              drive=drive(["w"], r, kt=KT_W, gearboxes=gearboxes),
+              gear={"w": N_W})
+    return t.events[0]
+
+
+def test_a_slack_cable_snaps_taut_as_a_plastic_impact():
+    """Thrown up at 1 m/s on a shorted winch, the load leaves its cable at
+    once: it flies free, z = v₀t − g·t²/2, while its rotor stops on its
+    short, θ = K·v₀·τ(1 − e^(−t/τ)), τ = J_W/c. The cable snaps taut on the
+    way down where K·z = θ, an impulse P = (ω_m − K·ż)/(K²/m + 1/J_W)
+    matching the two, which loses ½(ω_m − K·ż)²/(K²/m + 1/J_W)."""
+    from scipy.optimize import brentq
+    v0, mass = 1.0, 2.0
+    c = KT_W * KT_W / R_LINE
+    tau = J_W / c
+
+    def gap(t):
+        return K_W * (v0 * t - G * t * t / 2) - K_W * v0 * tau * (
+            1 - math.exp(-t / tau))
+
+    snapped = brentq(gap, v0 / G, 2 * v0 / G)
+    z_dot, omega = v0 - G * snapped, K_W * v0 * math.exp(-snapped / tau)
+    impulse = (omega - K_W * z_dot) / (K_W ** 2 / mass + 1 / J_W)
+    lost = 0.5 * (omega - K_W * z_dot) ** 2 / (K_W ** 2 / mass + 1 / J_W)
+
+    simulated = thrown(v0, 0.3)
+    gaps = []
+    for run in (simulated.run, simulated.half):
+        tr = run.trace
+        snap, = run.snaps["w"]
+        assert snap.t == pytest.approx(snapped, abs=3 * run.timestep)
+        assert snap.impulse == pytest.approx(impulse, rel=2e-2)
+        assert snap.lost == pytest.approx(lost, rel=2e-2)
+        before = tr.t < snap.t
+        assert np.all(run.slack["w"][before])
+        assert not np.any(run.slack["w"][tr.t >= snap.t])
+        free = before & (tr.t > 0)
+        np.testing.assert_allclose(tr.qd["lift"][free],
+                                   v0 - G * tr.t[free], atol=5e-3)
+        dissipated = np.trapezoid(c * tr.speed["w"] ** 2, tr.t)
+        gaps.append(balance(run, ("lift",), mass, lambda q: q["lift"],
+                            dissipated))
+    assert gaps[0] < 1e-2
+    assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
+
+
+@pytest.mark.parametrize("v0, r", [(-0.5, 1.0), (0.5, 50.0)])
+def test_a_taut_cable_reads_back_its_short_through_a_lossy_gearbox(v0, r):
+    """On a shorted winch through a gearbox driven forward at 0.9 and back
+    at 0.8, the cable stays taut, paying out as the load falls, or reeling
+    in as it rises on a weak short and then paying out, and the electrical
+    model reads back the
+    short's own current, i = −Ke·ω_m/R_φ, from the trace's tension and
+    rotor: the rotor takes η_b·T across the gearbox paying out, and gives
+    T/η_f reeling in, so its inertia torque is the motor's side of it."""
+    box = Gearbox(forward=0.9, backward=0.8)
+    simulated = thrown(v0, 0.1, r=r, gearboxes={"w": box})
+    run = simulated.run
+    tr = run.trace
+    assert run.slack["w"].dtype == bool
+    assert not np.any(run.slack["w"]) and not run.snaps["w"]
+    assert np.sign(tr.speed["w"][0]) == np.sign(v0)  # rising, it turns
+    assert np.ptp(tr.rotor["w"]) > 0  # the rotor accelerates
+    e = electrical(*tr.output("w", N_W)[:2], N_W, motor(r, KT_W),
+                   gearbox=box, rotor=tr.rotor["w"])
+    np.testing.assert_allclose(e.current, -KT_W * tr.speed["w"] / r,
+                               rtol=1e-9, atol=1e-12)
+
+
 # --- what an event needs ------------------------------------------------------
 def test_an_event_names_what_it_is_missing():
     m = armature.compile(pendulum, SWING)
@@ -685,6 +838,21 @@ def test_an_event_under_a_seam_names_what_it_is_missing():
                          transmission=lambda state, *, t, p: {
                              w: ({"hang:rx": 1.0}, 0.0, 0.0)
                              for w in WINCHES}), 1e3, drive=d, gear=gear)
+    with pytest.raises(TypeError, match="pulls"):
+        trace(m, Mission("x", [across, stop], actuation=least_tensions,
+                         transmission=lambda state, *, t, p: {
+                             w: (*row, "yes") for w, row in winches(
+                                 state, t=t, p=p).items()}),
+              1e3, drive=d, gear=gear)
+    calls = []
+
+    def flipping(state, *, t, p):  # pulls from its second call on
+        calls.append(t)
+        return {w: (*row, len(calls) > 1)
+                for w, row in winches(state, t=t, p=p).items()}
+    with pytest.raises(ValueError, match="pulls"):
+        trace(m, Mission("x", [across, stop], actuation=least_tensions,
+                         transmission=flipping), 1e3, drive=d, gear=gear)
     floating = armature.compile(unhung, p)
     with pytest.raises(ValueError, match="open chain"):
         trace(floating, Mission("x", [event(floating.at(), {

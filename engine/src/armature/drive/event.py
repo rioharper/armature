@@ -49,12 +49,26 @@ read back is off by (1 − η_b)·J_m·ω̇_m/Kt. A self-locking gearbox, η_b =
 does not back-drive at all; lock its joint for the event instead.
 
 Under a mission's actuation seam the actuators are its `transmission`'s,
-which drive no joint: each motor turns at ω_m = g·q̇ and pushes the
-mechanism with gᵀ·τ, the same modes setting τ. Its rotor adds J_m·g·gᵀ to
-the mechanism's inertia and a short's damping c·g·gᵀ acts implicitly over
-the step, both through a generalised force that gives MuJoCo's
-unconstrained acceleration their effect. A joint limit or a contact sees
-the mechanism's own inertia alone.
+which drive no joint: each pulls the mechanism with g·T, T its tension at
+the motor, and its rotor turns as J_m·ω̇_m = Kt·i − s·T, the modes
+setting i. The gearbox's share s is the electrical model's: η_b
+back-driven, where T·ω_m < 0, and 1/η_f where the motor drives its load;
+a torque profile's torque is its rotor's, lossless. A bilateral one turns
+at ω_m = g·q̇, so T carries a short's damping, c = Kt·Ke/(R_φ·s), and the
+rotor's J_m/s. A cable that pulls only carries T ≥ 0: where its motor
+would push, it goes slack, its rotor turning on its own under its mode,
+and its slack, in motor radians, growing as g·q̇ − ω_m. Each step solves
+the tensions as one complementarity problem, a short's damping implicit
+in each rotor's own row, and applies them as a generalised force; a joint
+limit or a contact sees the mechanism's own inertia alone, so a taut
+cable against one may open or close by a step's error, which the next
+step takes up. A slack cable whose slack closes within a step at the
+speeds it starts with snaps taut first, as a plastic impact, an impulse
+that matches its rotor to its cable, so the samples carry no impulse/h:
+`Run.snaps` reports each one. The trace reads each transmitted motor's
+current at its sample's speed, so `electrical` reads the mode's current
+back from the tension and the rotor exactly; a torque profile's, through
+a gearbox, it reads with the gearbox's loss, as it does a joint's.
 
 The bus is stepped with the mechanics, since a coasting motor's diodes and
 a braking driver's flux brake both act on the bus voltage as it is: each
@@ -86,6 +100,8 @@ from typing import NamedTuple
 
 import mujoco
 import numpy as np
+from scipy.linalg import solve_triangular
+from scipy.optimize import nnls
 
 from ..assembly import tangent
 from ..contact import from_solver
@@ -168,12 +184,30 @@ class Run:
     what each touching contact carried, as `ContactForce`s from MuJoCo's
     solver. `tripped` gives the time (s, from the event's start) at which
     each driver, by its actuator's name, or the source, as `"source"`,
-    tripped in this run; one that tripped before it is not named."""
+    tripped in this run; one that tripped before it is not named. For each
+    actuator whose cable pulls only, `slack` says at each sample whether
+    its cable carried nothing, and `snaps` gives each time it snapped taut,
+    as `Snap`s in order."""
     timestep: float
     trace: object
     v: np.ndarray
     contacts: tuple
     tripped: MappingProxyType = MappingProxyType({})
+    slack: MappingProxyType = MappingProxyType({})
+    snaps: MappingProxyType = MappingProxyType({})
+
+
+class Snap(NamedTuple):
+    """A slack cable snapped taut at `t` (s, from the event's start), as a
+    plastic impact: the `impulse` (N·m·s, motor side) that matched its
+    rotor to its cable, and its share of the kinetic energy `lost` (J) in
+    the impact, which it splits with any other cable that snapped in it as
+    each one's impulse times its closing speed. A rigid cable's peak
+    tension in the snap depends on its stiffness, which the event does not
+    model; size the snap from the impulse."""
+    t: float
+    impulse: float
+    lost: float
 
 
 class Moved(NamedTuple):
@@ -240,14 +274,18 @@ class _Actuated(NamedTuple):
 class _Simulation(NamedTuple):
     """An event's samples: local times `t`, and for each its `rows` (state,
     qdd, {actuator: (τ, ω, rotor)}, residual), `driven` ({actuator: whether
-    its driver is on}), bus voltage `v` and `contacts`; and the time (s)
-    each driver or the source `tripped` in it."""
+    its driver is on}), bus voltage `v` and `contacts`; the time (s) each
+    driver or the source `tripped` in it; and, for each actuator whose
+    cable pulls only, whether it was `slack` at each sample and its
+    `snaps`."""
     t: np.ndarray
     rows: list
     driven: list
     v: np.ndarray
     contacts: tuple
     tripped: dict
+    slack: dict
+    snaps: dict
 
 
 def _actuated(m, ev, drive, actuators, temperature):
@@ -322,62 +360,219 @@ def _current(act, e, v):
     return False, -sign * act.i_max
 
 
+class _Transmitted(NamedTuple):
+    """A transmitted actuator at one step: `g`, its motor speed per rate of
+    each of the dofs, as an array; `bias`, its ω̇_m at q̈ = 0 (rad/s²);
+    `j_m`, its rotor's inertia (kg·m²); and `pulls`, whether its cable
+    pulls only."""
+    g: np.ndarray
+    bias: float
+    j_m: float
+    pulls: bool
+
+
+def _row(g, bias, j_m, pulls=False):
+    return dict(g), float(bias), float(j_m), pulls
+
+
 def _transmitted(m, transmission, state, t):
-    """The transmission at `state`, `t` into the event: for each actuator,
-    (g, ω̇ at q̈ = 0, J_m), g its motor speed per rate of each of `m.dofs`,
-    as an array."""
+    """The transmission at `state`, `t` into the event: each actuator's
+    `_Transmitted`."""
     out = transmission(state, t)
     try:
-        rows = {a: (dict(g), float(bias), float(j_m))
-                for a, (g, bias, j_m) in dict(out).items()}
+        rows = {a: _row(*row) for a, row in dict(out).items()}
     except (TypeError, ValueError):
         rows = None
     if not rows:
         raise TypeError(f"a transmission returns {{actuator: (rates, bias, "
-                        f"inertia)}}, rates a mapping by dof; got {out!r}")
+                        f"inertia)}}, or (rates, bias, inertia, pulls), "
+                        f"rates a mapping by dof; got {out!r}")
     known = set(m.dofs)
     out = {}
-    for a, (g, bias, j_m) in rows.items():
+    for a, (g, bias, j_m, pulls) in rows.items():
         unknown = sorted(set(g) - known)
         if unknown:
             raise KeyError(f"the transmission's {a!r} turns with {unknown}, "
                            f"which are not among the dofs {list(m.dofs)}")
-        out[a] = (np.array([float(g.get(d, 0.0)) for d in m.dofs]), bias,
-                  j_m)
+        if not isinstance(pulls, (bool, np.bool_)):
+            raise TypeError(f"the transmission's {a!r} pulls is True, a "
+                            f"cable that pulls only, or False; got "
+                            f"{pulls!r}")
+        if pulls and j_m <= 0:
+            raise ValueError(f"the transmission's {a!r} pulls only, and its "
+                             f"rotor turns on its own while its cable is "
+                             f"slack; give its inertia, J_m > 0")
+        out[a] = _Transmitted(np.array([float(g.get(d, 0.0))
+                                        for d in m.dofs]), bias, j_m,
+                              bool(pulls))
     return out
 
 
-def _through(model, data, acts, through, t, v, step, torque):
-    """The generalised force, added to what MuJoCo applies, that gives the
-    mechanism the acceleration it has with each transmitted actuator's
-    torque on it through gᵀ, its rotor's J_m·g·gᵀ added to its inertia and
-    a short's c·g·gᵀ damping it implicitly over `step`; each actuator's
-    torque goes into `torque`. Constraints see the mechanism's own inertia
-    alone."""
-    extra, force = np.zeros((model.nv, model.nv)), np.zeros(model.nv)
+def _share(a, omega, sign):
+    """The share of its tension T a transmitted actuator's rotor takes, T of
+    `sign`, as `electrical` reads its gearbox: 1/η_f where T·ω_m ≥ 0, the
+    motor driving its load, else η_b, back-driven. A torque profile's
+    torque is its rotor's, lossless."""
+    if callable(a.mode):
+        return 1.0
+    if sign * omega >= 0:
+        return 1.0 / (1.0 if a.gearbox is None else a.gearbox.forward)
+    return a.eta
+
+
+def _through(model, data, acts, through, t, v, step, own, gaps, signs):
+    """The generalised force, added to what MuJoCo applies, of each
+    transmitted actuator's tension T on the mechanism through g, over
+    `step`. Each rotor turns as J_m·ω̇_m = Kt·i − s·T, s its gearbox's
+    share (`_share`), a short's damping implicit in it. A bilateral one
+    turns at ω_m = g·q̇, its T's sign taken from `signs`, the step
+    before's, and solved again where it turns out the other. One that
+    pulls only turns at its `own` ω_m, carrying T ≥ 0 where its cable's
+    slack, in `gaps` (motor rad), would otherwise go negative. With each
+    actuator's (τ, ω_m, rotor), its current read at the step's start, as
+    `electrical` reads it back; its T; and each rotor's ω_m at the step's
+    end. Constraints see the mechanism's own inertia alone."""
+    mujoco.mj_fwdActuation(model, data)
+    mujoco.mj_fwdAcceleration(model, data)  # qfrc_smooth, loads included
+    mass = np.zeros((model.nv, model.nv))
+    mujoco.mj_fullM(model, data, mass)
+    turning = {}  # each one's (actuator, row, ω_m, drive, damping)
     for a in acts:
         if a.dof is not None:
             continue
-        g, bias, j_m = through[a.name]
-        damping = 0.0
+        row = through[a.name]
+        omega = own[a.name] if row.pulls else float(row.g @ data.qvel)
         if callable(a.mode):
-            tau = float(a.mode(t))
+            drive, damping = float(a.mode(t)), 0.0
         else:
-            e = a.c.ke * float(g @ data.qvel)
-            damped, offset = _current(a, e, v)
-            tau = a.c.kt * (offset - (e / a.r if damped else 0.0)) / a.eta
-            if damped:
-                damping = a.c.kt * a.c.ke / (a.r * a.eta)
-        torque[a.name] = tau
-        extra += (j_m + step * damping) * np.outer(g, g)
-        force += g * (tau - j_m * bias)
-    mujoco.mj_fwdActuation(model, data)
-    mujoco.mj_fwdAcceleration(model, data)  # qfrc_smooth, loads included
-    smooth = data.qfrc_smooth.copy()
+            damped, offset = _current(a, a.c.ke * omega, v)
+            drive = a.c.kt * offset
+            damping = a.c.kt * a.c.ke / a.r if damped else 0.0
+        turning[a.name] = (a, row, omega, drive, damping)
+    for _ in range(2):  # again, where a bilateral tension changed its sign
+        tension, spun = _tensions(mass, data.qfrc_smooth, data.qvel, turning,
+                                  step, gaps, signs)
+        changed = {name: math.copysign(1.0, tension[name])
+                   for name, (_, row, *_) in turning.items()
+                   if not row.pulls and tension[name] != 0
+                   and math.copysign(1.0, tension[name])
+                   != signs.get(name, 1.0)}
+        signs.update(changed)
+        if not changed:
+            break
+    force, out = np.zeros(model.nv), {}
+    for name, (a, row, omega, drive, damping) in turning.items():
+        force += row.g * tension[name]
+        motor = drive - damping * omega  # Kt·i, at the step's start
+        rotor = motor - _share(a, omega, tension[name]) * tension[name]
+        out[name] = (tension[name] + rotor, omega, rotor)
+    return force, out, tension, spun
+
+
+def _tensions(mass, smooth, qvel, turning, step, gaps, signs):
+    """`_through`'s tensions, each bilateral one's sign as `signs` gives
+    it, and each rotor's ω_m at the step's end."""
+    smooth, rows, tension, spun = smooth.copy(), [], {}, {}
+    for name, (a, row, omega, drive, damping) in turning.items():
+        share = _share(a, omega, 1.0 if row.pulls else signs.get(name, 1.0))
+        held = row.j_m + step * damping
+        if held == 0:  # a massless rotor, undamped: T is what drives it
+            tension[name] = drive / share
+            smooth += row.g * tension[name]
+            continue
+        rows.append((name, row.g, row.bias + gaps.get(name, 0.0) / step ** 2,
+                     row.pulls, (row.j_m * omega + step * drive) / held,
+                     step * share / held))
+    if rows:
+        names, g, bias, pulls, w, k = zip(*rows)
+        g, w, k = np.array(g).T, np.array(w), np.array(k)  # g by column
+        moved = np.linalg.solve(mass, np.column_stack([smooth, g]))
+        coupled = step * g.T @ moved[:, 1:] + np.diag(k)
+        unforced = (g.T @ (qvel + step * moved[:, 0])
+                    + step * np.array(bias) - w)
+        found = _complementary(coupled, unforced, np.array(pulls))
+        for i, name in enumerate(names):
+            tension[name] = float(found[i])
+            spun[name] = float(w[i] - k[i] * found[i])
+    return tension, spun
+
+
+def _complementary(matrix, b, unilateral):
+    """x with b + A·x zero on the bilateral rows and, on the `unilateral`,
+    x ≥ 0 and b + A·x ≥ 0, one of the two zero, for A, `matrix`, symmetric
+    positive definite: the unilateral rows' Schur complement solved
+    exactly, as a non-negative least squares on its Cholesky factor."""
+    pulled = np.flatnonzero(unilateral)
+    held = np.flatnonzero(~unilateral)
+    x = np.zeros(len(b))
+    solved = np.linalg.solve(matrix[np.ix_(held, held)], np.column_stack(
+        [b[held], matrix[np.ix_(held, pulled)]])) if len(held) else (
+            np.zeros((0, 1 + len(pulled))))
+    reduced = (matrix[np.ix_(pulled, pulled)]
+               - matrix[np.ix_(pulled, held)] @ solved[:, 1:])
+    offset = b[pulled] - matrix[np.ix_(pulled, held)] @ solved[:, 0]
+    if len(pulled) and np.any(offset < 0):
+        lower = np.linalg.cholesky(reduced)
+        x[pulled] = nnls(lower.T, -solve_triangular(lower, offset,
+                                                    lower=True))[0]
+    x[held] = -(solved[:, 0] + solved[:, 1:] @ x[pulled])
+    return x
+
+
+def _impact(model, data, acts, through, own, gaps, step, signs):
+    """Snap taut, as one plastic impact, each slack cable whose gap closes
+    within `step` at the speeds the step starts with, the taut cables and
+    the bilateral actuators holding through it, each rotor taking its
+    gearbox's share of its impulse (a bilateral one's at the sign `signs`
+    gives), on `data.qvel` and the `own` rotors. Returns each snapped
+    cable's (impulse, lost) by name: its impulse (N·m·s, motor side) and
+    its share of the kinetic energy the impact lost (J), split among the
+    snapped cables as each one's impulse times its closing speed. Reads
+    the mass matrix `mj_step1` left; contacts and joint limits take no
+    part in the impact."""
+    closing = {a.name for a in acts if gaps.get(a.name, 0.0) > 0
+               and gaps[a.name] + step * (through[a.name].g @ data.qvel
+                                          - own[a.name]) < 0}
+    if not closing:
+        return {}
+    rows = []
+    for a in acts:
+        if a.dof is not None:
+            continue
+        row = through[a.name]
+        if row.j_m == 0 or (row.pulls and gaps[a.name] > 0
+                            and a.name not in closing):
+            continue  # a massless rotor takes no impulse, a slack cable none
+        omega = own[a.name] if row.pulls else float(row.g @ data.qvel)
+        sign = 1.0 if row.pulls else signs.get(a.name, 1.0)
+        rows.append((a.name, row.g, row.j_m, row.pulls,
+                     _share(a, omega, sign)))
+    names, g, j_m, pulls, share = zip(*rows)
+    g, j_m, share = np.array(g).T, np.array(j_m), np.array(share)
     mass = np.zeros((model.nv, model.nv))
     mujoco.mj_fullM(model, data, mass)
-    accel = np.linalg.solve(mass + extra, smooth + force)
-    return mass @ accel - smooth
+    moved = np.linalg.solve(mass, g)
+
+    def kinetic():
+        omega = np.array([own[n] if p else g[:, i] @ data.qvel
+                          for i, (n, p) in enumerate(zip(names, pulls))])
+        return 0.5 * (data.qvel @ mass @ data.qvel + j_m @ omega ** 2)
+
+    before = kinetic()
+    closes = np.array([g[:, i] @ data.qvel - own[n] if p else 0.0
+                       for i, (n, p) in enumerate(zip(names, pulls))])
+    impulse = _complementary(g.T @ moved + np.diag(share / j_m), closes,
+                             np.array(pulls))
+    data.qvel[:] += moved @ impulse
+    for i, name in enumerate(names):
+        if pulls[i]:
+            own[name] -= share[i] * impulse[i] / j_m[i]
+    snapped = [i for i, name in enumerate(names)
+               if name in closing and impulse[i] > 0]
+    weight = -impulse[snapped] * closes[snapped]  # each one's share
+    lost = (before - kinetic()) * weight / np.sum(weight)
+    return {names[i]: (float(impulse[i]), float(part))
+            for i, part in zip(snapped, lost)}
 
 
 def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
@@ -393,7 +588,8 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     step = ev.duration / steps
     if seam is not None:
         transmission, gear = seam
-        names = tuple(_transmitted(m, transmission, start, 0.0))
+        first = _transmitted(m, transmission, start, 0.0)
+        names = tuple(first)
         missing = [a for a in names if a not in gear]
         if missing:
             raise KeyError(f"{missing} have no gear in the compiled model; "
@@ -425,6 +621,43 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     independent = [i for i, d in enumerate(m.dofs) if d not in m.dependent]
     contacts = bool(m.description.contacts)
     rows, volts, carried, driven, latched = [], [], [], [], {}
+
+    def observed():
+        """The `State` `data` holds, its rates, and, for a floating body,
+        its tangent map and drift."""
+        q = {name: start._read(data, name) for name in m.coordinates}
+        rates, turned, drift = data.qvel.copy(), None, None
+        if free:
+            turned = tangent(m, data)[0]
+            rates = np.linalg.solve(turned, rates)
+            drift = tangent(m, data, rates)[1]
+        qd = dict(zip(m.dofs, (float(x) for x in rates)))
+        return (State(m, MappingProxyType(q), MappingProxyType(qd)), rates,
+                turned, drift)
+
+    def transmitted(state, t):
+        through = _transmitted(m, transmission, state, t)
+        if tuple(through) != names:
+            raise ValueError(f"the transmission gave {list(through)} at "
+                             f"t = {t:g} s into the event, and {list(names)} "
+                             f"at its start; the actuators are the same at "
+                             f"every step")
+        changed = [a for a in names if through[a].pulls != (a in pulling)]
+        if changed:
+            raise ValueError(f"the transmission's {changed} pull only at "
+                             f"t = {t:g} s into the event and not at its "
+                             f"start, or the other way; whether a cable "
+                             f"pulls is the same at every step")
+        return through
+
+    # each pulling rotor's own ω_m (rad/s), its cable's slack (motor rad),
+    # whether it carried tension over the step before, and what it reports
+    pulling = set() if seam is None else {a for a in names
+                                          if first[a].pulls}
+    own, gaps = dict.fromkeys(pulling, 0.0), dict.fromkeys(pulling, 0.0)
+    taut = dict.fromkeys(pulling, True)
+    signs = {}  # each bilateral transmitted tension's sign, the step before
+    slack, snaps = {a: [] for a in pulling}, {a: [] for a in pulling}
     for k in range(steps + 1):
         t = k * step
         v = math.sqrt(energy / half_c)
@@ -450,24 +683,26 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
             push[a.dof] += a.n * a.c.kt * offset / a.eta
         model.dof_damping[:] = damping
         mujoco.mj_step1(model, data)  # the passive forces, at this damping
-        q = {name: start._read(data, name) for name in m.coordinates}
-        rates = data.qvel.copy()
-        if free:
-            turned = tangent(m, data)[0]
-            rates = np.linalg.solve(turned, rates)
-            drift = tangent(m, data, rates)[1]
-        data.qfrc_applied[:] = _load_force(model, data, ev.loads) + push
-        qd = dict(zip(m.dofs, (float(x) for x in rates)))
-        state = State(m, MappingProxyType(q), MappingProxyType(qd))
+        state, rates, turned, drift = observed()
         if seam is not None:
-            through = _transmitted(m, transmission, state, t)
-            if tuple(through) != names:
-                raise ValueError(f"the transmission gave {list(through)} at "
-                                 f"t = {t:g} s into the event, and "
-                                 f"{list(names)} at its start; the actuators "
-                                 f"are the same at every step")
-            data.qfrc_applied[:] += _through(model, data, acts, through, t,
-                                             v, step, torque)
+            through = transmitted(state, t)
+            for a in pulling:
+                if taut[a]:  # its rotor turns with its cable
+                    own[a] = float(through[a].g @ data.qvel)
+            snapped = _impact(model, data, acts, through, own, gaps, step,
+                              signs)
+            if snapped:
+                mujoco.mj_fwdVelocity(model, data)  # at the snapped rates
+                for a, (impulse, lost) in snapped.items():
+                    snaps[a].append(Snap(t, impulse, lost))
+                    gaps[a] = 0.0
+                state, rates, turned, drift = observed()
+                through = transmitted(state, t)
+        data.qfrc_applied[:] = _load_force(model, data, ev.loads) + push
+        if seam is not None:
+            force, carrying, tension, spun = _through(
+                model, data, acts, through, t, v, step, own, gaps, signs)
+            data.qfrc_applied[:] += force
         mujoco.mj_step2(model, data)  # qacc is the continuous one, here
         if not (np.all(np.isfinite(data.qpos))
                 and np.all(np.isfinite(data.qvel))):
@@ -477,12 +712,17 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
         accel = data.qacc.copy()
         if free:
             accel = np.linalg.solve(turned, accel - drift)
+        for a in pulling:  # its slack, at the step's end
+            row = through[a]
+            gap = gaps[a] + step * (float(row.g @ data.qvel)
+                                    + step * row.bias - spun[a])
+            own[a], taut[a] = spun[a], tension[a] > 0
+            gaps[a] = 0.0 if taut[a] else max(0.0, gap)
+            slack[a].append(not taut[a])
         out = {}
         for a in acts:
             if a.dof is None:
-                g, bias, j_m = through[a.name]
-                out[a.name] = (torque[a.name], float(g @ rates),
-                               j_m * (float(g @ data.qacc) + bias))
+                out[a.name] = carrying[a.name]
                 continue
             out[a.name] = (torque[a.name], a.n * float(rates[a.dof]),
                            a.j_m * a.n * float(data.qacc[a.dof]))
@@ -509,7 +749,15 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     times[-1] = ev.duration
     return _Simulation(times, rows, driven, _frozen(np.array(volts)),
                        tuple(carried),
-                       {key: float(times[k]) for key, k in latched.items()})
+                       {key: float(times[k]) for key, k in latched.items()},
+                       {a: _flags(slack[a]) for a in sorted(slack)},
+                       {a: tuple(snaps[a]) for a in sorted(snaps)})
+
+
+def _flags(values):
+    flags = np.array(values, dtype=bool)
+    flags.flags.writeable = False
+    return flags
 
 
 def _trip(acts, cap, trips, keys):
