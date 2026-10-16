@@ -91,18 +91,28 @@ def params(point, m):
     return {"m": m, **{f"l0_{i + 1}": rest[i] for i in range(4)}}
 
 
-def potential(point, m, rest):
+def potential(point, m, rest, turn=None):
     """The rig's potential over (Δp, rotation vector), cables as unilateral
-    springs: the review's own model."""
+    springs: the review's own model. The rotation vector turns the platform
+    about base axes through its point, from the orientation `turn` (level if
+    None)."""
     k = EA / rest
+    turn = np.eye(3) if turn is None else turn
 
     def v(x):
-        rot = Rotation.from_rotvec(x[3:]).as_matrix()
+        rot = Rotation.from_rotvec(x[3:]).as_matrix() @ turn
         at = point + x[:3]
         span = np.linalg.norm(ANCHORS - (at + ATTACH @ rot.T), axis=1)
         return (0.5 * np.sum(k * np.maximum(span - rest, 0) ** 2)
                 + m * G * (at + rot @ COM)[2])
     return v
+
+
+def gradient(v, x, h=1e-6):
+    """∇v at x, by central differences."""
+    e = np.eye(len(x))
+    return np.array([(v(x + h * e[i]) - v(x - h * e[i])) / (2 * h)
+                     for i in range(len(x))])
 
 
 def tilt(rotation):
@@ -141,6 +151,34 @@ def test_settle_is_the_potential_minimum(name, point, m):
     assert out.q["hang"].position == pytest.approx(point + found.x[:3],
                                                    abs=2e-6)
     assert np.max(np.abs(out.q["hang"].rotation - rotation)) < 2e-5
+
+
+# Placements away from rest: the edge midpoint level, where the law leaves a
+# moment; and turned and displaced there, and at the low corner.
+OFF_REST = [
+    ((0.5, 2.0, 1.2), 2.0, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)),
+    ((0.5, 2.0, 1.2), 2.0, (0.01, -0.02, 0.003), (0.1, -0.2, 0.05)),
+    ((0.5, 0.5, 0.4), 2.5, (-0.004, 0.006, 0.002), (-0.3, 0.25, 0.05)),
+]
+
+
+@pytest.mark.parametrize("point, m, shift, euler", OFF_REST)
+def test_floating_need_is_the_potentials_gradient(point, m, shift, euler):
+    """With no actuator to supply it, the generalised force the platform
+    needs to stay put is ∇V, by central differences of the potential: the
+    force on it is −∇V. Its rows are the point's three translations and turns
+    about base axes through it, which the potential's rotation vector is."""
+    point = np.asarray(point, float)
+    turn = Rotation.from_euler("xyz", euler).as_matrix()
+    at = point + shift
+    grad = gradient(potential(at, m, law(point, m)[1], turn), np.zeros(6))
+    inv = armature.compile(platform, params(point, m)).at(
+        q={"hang": (at, turn)}).inverse()
+    assert inv.torque == {} and inv.rank == 0
+    assert list(inv.generalised.values()) == pytest.approx(grad, rel=1e-6,
+                                                           abs=1e-6)
+    assert inv.residual == pytest.approx(np.max(np.abs(grad)), rel=1e-6)
+    assert np.max(np.abs(grad)) > 1.0  # away from rest
 
 
 def test_slack_cables_read_exactly_zero():

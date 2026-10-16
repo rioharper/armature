@@ -1,10 +1,14 @@
 """Fixture 5: a mass on a spring, and on a cable.
 
 Answer: √(k/m)/2π = 7.1176 Hz at k = 1000 N/m and m = 0.5 kg; a slack cable
-gives K = 0. Trap: the stiffness lives only in MuJoCo's passive force, so a
-linearisation of the bias force alone reads both as 0 N/m and 0 Hz.
+gives K = 0; the force to hold the bob is m·g less the cable's k·stretch;
+at rest the spring's slide carries m·g and the cable's carries nothing.
+Trap: the stiffness lives only in MuJoCo's passive force, so a
+linearisation of the bias force alone reads both as 0 N/m and 0 Hz, and is
+shown doing so.
 """
 
+import mujoco
 import numpy as np
 import pytest
 
@@ -18,6 +22,15 @@ PARAMS = spring_cable.PARAMS
 on_cable = spring_cable.mechanism
 SPRING = {k: PARAMS[k] for k in ("m", "k")}  # it reads neither drop nor rest
 F_TRUE = CABLE_FREQUENCY.value
+G = 9.81  # the engine's default gravity [m/s^2]
+WEIGHT = PARAMS["m"] * G
+REST = PARAMS["drop"] - PARAMS["rest"] - WEIGHT / PARAMS["k"]  # the hung bob
+
+
+def stretch(z):
+    """The cable's stretch with the bob at z: its span less its rest
+    length, zero once slack."""
+    return max(PARAMS["drop"] - z - PARAMS["rest"], 0.0)
 
 
 def on_spring(p):
@@ -58,3 +71,74 @@ def test_record_carries_method_and_step():
     assert "mjd_inverseFD" in str(lin) and "1e-07" in str(lin)
     with pytest.raises(ValueError):
         lin.stiffness[0, 0] = 0.0
+
+
+# --- the trap, shown failing ---------------------------------------------------
+def bias_stiffness(m, z, h=1e-6):
+    """The derivation's K: a central difference of MuJoCo's bias force alone,
+    gravity and Coriolis, with the passive force left out."""
+    data = mujoco.MjData(m.model)
+
+    def bias(at):
+        data.qpos[0] = at
+        mujoco.mj_forward(m.model, data)
+        return data.qfrc_bias[0]
+    return (bias(z + h) - bias(z - h)) / (2 * h)
+
+
+@pytest.mark.parametrize("model, params", [(on_spring, SPRING),
+                                           (on_cable, PARAMS)],
+                         ids=["spring", "cable"])
+def test_a_bias_only_linearisation_reads_zero(model, params):
+    m = armature.compile(model, params)
+    wrong = bias_stiffness(m, -0.02)
+    right = m.at(q={"z": -0.02}).linearise().stiffness[0, 0]
+    assert abs(wrong) < 1e-6  # gravity's force does not vary with z
+    assert right == pytest.approx(1000.0, rel=1e-6)
+    assert abs(wrong - right) > 0.99 * right
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="the trap: the bias force alone carries no "
+                          "stiffness")
+def test_the_bias_only_trap_reads_the_cables_stiffness():
+    """The check a derivation writes for its bias-only K: that it reads the
+    cable's 1000 N/m at a taut posture. It must fail."""
+    m = armature.compile(on_cable, PARAMS)
+    assert bias_stiffness(m, -0.02) == pytest.approx(PARAMS["k"], rel=1e-3)
+
+
+# --- inverse and the wrench ----------------------------------------------------
+@pytest.mark.parametrize("z", [-0.05, -0.02, REST, 0.0, 0.05])
+def test_inverse_needs_the_weight_less_the_cables_pull(z):
+    """No actuator holds the bob, so the force it needs is left as the
+    residual: m·g − k·stretch, signed; m·g once the cable is slack."""
+    inv = armature.compile(on_cable, PARAMS).at(q={"z": z}).inverse()
+    need = WEIGHT - PARAMS["k"] * stretch(z)
+    assert inv.generalised["z"] == pytest.approx(need, abs=1e-9)
+    assert inv.residual == pytest.approx(abs(need), abs=1e-9)
+    assert inv.torque == {}
+
+
+def test_at_rest_the_spring_carries_the_weight_in_its_slide():
+    """The spring is the slide's own: at its rest, sagged m·g/k, the slide
+    carries the bob's weight, k·sag, up its axis and nothing across it."""
+    sag = WEIGHT / PARAMS["k"]
+    s = armature.compile(on_spring, SPRING).at(q={"z": -sag})
+    assert s.inverse().residual < 1e-9
+    w = s.wrench("bob")
+    assert w.joint == "z"
+    assert w.force == pytest.approx([0.0, 0.0, WEIGHT], abs=1e-9)
+    assert w.force[2] == pytest.approx(PARAMS["k"] * sag, rel=1e-12)
+    assert w.torque == pytest.approx(np.zeros(3), abs=1e-12)
+
+
+def test_at_rest_the_cable_carries_the_weight_and_the_slide_nothing():
+    """The cable is an applied force, as the platform's are: at its rest the
+    slide carries nothing, and the cable's tension, k·stretch, is m·g."""
+    s = armature.compile(on_cable, PARAMS).at(q={"z": REST})
+    assert PARAMS["k"] * stretch(REST) == pytest.approx(WEIGHT, rel=1e-12)
+    assert s.wrench("bob").force == pytest.approx(np.zeros(3), abs=1e-9)
+    out = s.settle()
+    assert out.stable and abs(out.moved["z"]) < 1e-9
+    assert out.tension["hang"] == pytest.approx(WEIGHT, rel=1e-9)

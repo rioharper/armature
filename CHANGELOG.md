@@ -13,6 +13,10 @@ The engine is checked on five golden mechanisms and the agent on four ([#113](ht
   - the wheel leg's worst skid clearance over the hips' working range, −42.91 mm, against +50.79 mm at α = 0 alone;
   - the cable's 7.1176 Hz;
   - the cable's sag of 4.905 mm.
+- **Tier 1 on the 2R arm, the cable platform and the spring and cable** ([#115](https://github.com/rioharper/armature/issues/115)). Each new check is against an answer that does not come from the engine:
+  - **The 2R arm.** An e-stop, both motors shorted halfway through a swing, loses ½q̇ᵀM q̇ + V by what the shorts dissipate, M and V in closed form, within 5e-4 (2.3e-4 measured), halving with the step. `linearise` reads K = ∂g/∂q at sampled postures, and hanging straight down its modes are eig(M⁻¹K) in closed form.
+  - **The cable platform.** At placements away from rest, turned and displaced, `inverse`'s generalised force is ∇V of the test's own potential, to 1e-6. `test_search.py`'s tension floor is no longer a pinned 4.987626 N: it is the slackest cable at that potential's minimum at the mirror corner, which the search matches within 1e-5 N (3e-7 N measured), the mirror corner by symmetry.
+  - **The spring and cable.** The trap is shown failing: a central difference of `qfrc_bias` alone reads 0 N/m on both, where `linearise` reads 1000 N/m, and the derivation's own check of it is a strict xfail. A searched first-mode margin over k ± 20 % is worst at k_low, √(k_low/m)/2π. At rest the spring's slide carries m·g, while the cable's carries nothing and the cable's tension is m·g. `inverse` on the elastic cable needs m·g − k·stretch.
 
 ### Mission sizing
 

@@ -5,8 +5,11 @@ by construction, or from a dense run of the same margin. Golden 1 is the 2R
 arm's holding margin, whose worst posture is interior while its worst mass
 is a corner of its band; golden 2 is the cable platform's tension floor,
 whose slope jumps where the active cable switches and whose worst sits on
-two mirror corners. The five-bar's pin clearance is searched over ±π, where
-three of the four corners and a third of the space cannot close.
+two mirror corners, its value the slackest cable at the minimum of the
+platform's potential there. Golden 5 is the mass on a cable's first mode
+over a band on its stiffness, worst at the band's soft end, √(k_low/m)/2π.
+The five-bar's pin clearance is searched over ±π, where three of the four
+corners and a third of the space cannot close.
 """
 
 import math
@@ -14,14 +17,16 @@ from collections import Counter
 
 import numpy as np
 import pytest
-from scipy.optimize import minimize
+from scipy.optimize import minimize, root
+from scipy.spatial.transform import Rotation
 
 import armature
 from armature import (Band, Budget, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Rejected, Space, body, joint, search)
 from armature.sampler import unit_cube
-from golden import arm_2r, cable_platform
-from test_fixture_cable_platform import LEVEL, params, settled
+from golden import arm_2r, cable_platform, spring_cable
+from test_fixture_cable_platform import (ANCHORS, ATTACH, EA, LEVEL, gradient,
+                                         law, params, potential, settled)
 from test_fixture_five_bar import PARAMS as FIVE_BAR
 from test_fixture_five_bar import POINTS, five_bar
 
@@ -83,6 +88,22 @@ def floor(p):
     return min(out.tension.values())
 
 
+def floor_from_the_potential(point, m):
+    """The slackest cable's tension at the minimum of the platform's
+    potential, started level at `point` on the law's rest lengths: BFGS,
+    then a root of the potential's gradient, polished from there."""
+    point = np.asarray(point, float)
+    rest = law(point, m)[1]
+    v = potential(point, m, rest)
+    start = minimize(v, np.zeros(6), method="BFGS", options={"gtol": 1e-10})
+    found = root(lambda x: gradient(v, x), start.x, tol=1e-14)
+    assert found.success and np.max(np.abs(gradient(v, found.x))) < 1e-6
+    rot = Rotation.from_rotvec(found.x[3:]).as_matrix()
+    span = np.linalg.norm(ANCHORS - (point + found.x[:3] + ATTACH @ rot.T),
+                          axis=1)
+    return float(np.min(EA / rest * np.maximum(span - rest, 0)))
+
+
 def test_golden_platform_tension_floor():
     # The commanded pose is level, so the space is the level variant's three
     # slides across the envelope's box. The free platform would add a tilt,
@@ -93,10 +114,40 @@ def test_golden_platform_tension_floor():
         over=Space(state=Coordinates(LEVEL, params(HOME, 2.0),
                                      poses={"hang": ROOM}))))
     print(worst)
-    assert worst.value == pytest.approx(4.987626, abs=1e-5)
     at = worst.at["state"]
     assert at["hang:x"] in (1.5, 2.5)
     assert (at["hang:y"], at["hang:z"]) == (1.6, 0.9)
+    # the rig is mirrored about x = 2, so both corners' floor is this one's
+    answer = floor_from_the_potential((1.5, 1.6, 0.9), 2.0)
+    assert worst.value == pytest.approx(answer, abs=1e-5)
+
+
+# --- golden 5: the mass on a cable's first mode ---------------------------------
+CABLE = spring_cable.PARAMS
+F_MIN = 6.0  # Hz: the mode the bob's cable must stay above
+K_BAND = {"k": (0.8 * CABLE["k"], 1.2 * CABLE["k"])}  # N/m: ± 20 %
+
+
+def first_mode(p):
+    """The bob's first mode above F_MIN (Hz), linearised where it hangs."""
+    return p.state.linearise().frequencies[0] - F_MIN
+
+
+def test_golden_cable_frequency_margin():
+    """The cable is taut over the slide's −50 to 0 mm, where its stiffness
+    is EA/l0 = k at every posture, so the worst is the band's soft end."""
+    k_low = K_BAND["k"][0]
+    answer = math.sqrt(k_low / CABLE["m"]) / (2 * math.pi) - F_MIN
+    assert answer == pytest.approx(0.3662, abs=1e-4)
+    worst = search(Margin(
+        "first mode", first_mode, "Hz",
+        over=Space(k=Band("k", K_BAND),
+                   state=Coordinates(spring_cable.mechanism, CABLE,
+                                     within={"z": (-0.05, 0.0)}))))
+    print(worst)
+    assert worst.at["k"] == k_low
+    assert worst.value == pytest.approx(answer, rel=1e-6)
+    assert worst.passes
 
 
 # --- the five-bar's pin over ±π -----------------------------------------------

@@ -9,6 +9,9 @@ and the mechanics, never from the event module:
   the timestep, semi-implicit Euler's;
 - `after(move, fraction)` starts where ruckig, called here directly, puts
   the move at that fraction;
+- the 2R arm, both motors shorted partway through a move, loses
+  ½q̇ᵀM q̇ + V from the closed-form M and potential by what the shorts
+  dissipate, to first order in the step;
 - a flux-braking flywheel regenerates (E − R_φ·i_max)·i_max, raising the
   bus by ½C(V² − V₀²) to the onset, where the flux brake takes it;
 - fixture 3, held by its motors at the torques `inverse` gives, presses
@@ -38,7 +41,8 @@ from armature.drive import (AGREE, Bus, Current, Drive, Driver, FluxBrake,
                             Simulated, Source, after, charge, electrical,
                             event, follow, hold, move, trace)
 from armature.elements import Cable
-from golden import cable_platform, wheel_leg as golden_leg
+from golden import arm_2r, cable_platform, wheel_leg as golden_leg
+from test_fixture_2r_arm import gravity_potential, mass_matrix
 from test_drive_mission import (AMPLITUDE, J_TOTAL, MGL, SWING, pendulum)
 from test_fixture_cable_platform import params as hung_at
 from test_fixture_wheel_leg import CARRIED
@@ -255,6 +259,49 @@ def test_an_estop_partway_through_a_move_inherits_its_rates():
                                                     0.2)]),
                   1000.0, drive=drive(["motor"], 0.5, kt=0.01))
     assert alone.qd["pivot"][0] == pytest.approx(qd, abs=1e-12)
+
+
+ARM_MOTORS = ("shoulder_motor", "elbow_motor")
+ARM_JOINTS = {"shoulder_motor": ("shoulder", "N1"),
+              "elbow_motor": ("elbow", "N2")}  # each motor's joint and gear
+
+
+def test_an_estop_stops_the_2r_arm_by_its_closed_form_energy():
+    """Both motors shorted halfway through a swing: ½q̇ᵀM(q₂)q̇ + V(q), M
+    the 2R arm's closed form with the rotors' N²J_m, falls by ∫Σ c·ω_m²,
+    c = Kt·Ke/R_φ, to first order in the step. R_φ = 5 Ω puts the
+    shoulder's short at a 60 ms time constant, which the step resolves."""
+    r = 5.0
+    m = armature.compile(arm_2r.mechanism, arm_2r.PARAMS)
+    swing = move({"shoulder": -0.4, "elbow": 0.9},
+                 end={"shoulder": 0.8, "elbow": 0.1},
+                 limits=Limits(v=2.0, a=8.0, j=80.0, along="coordinate"))
+    stop = event(after(swing, 0.5), {a: "short" for a in ARM_MOTORS}, 0.3)
+    t = trace(m, Mission("e-stop", [swing, stop]), 1000.0,
+              drive=drive(ARM_MOTORS, r))
+    simulated, = t.events
+    c = KT * KT / r
+
+    gaps = []
+    for run in (simulated.run, simulated.half):
+        tr = run.trace
+        q1, q2 = tr.q["shoulder"], tr.q["elbow"]
+        qd = np.stack([tr.qd["shoulder"], tr.qd["elbow"]], axis=1)
+        assert np.abs(qd[0]).max() > 1.0  # it stops from the move's speed
+        for a, (dof, n) in ARM_JOINTS.items():
+            np.testing.assert_allclose(tr.speed[a],
+                                       arm_2r.PARAMS[n] * tr.qd[dof],
+                                       rtol=1e-12, atol=1e-12)
+            np.testing.assert_allclose(tr.torque[a], -c * tr.speed[a],
+                                       rtol=1e-12, atol=1e-12)
+        assert np.all(run.v == V_S)
+        e = (np.array([0.5 * v @ mass_matrix(b) @ v for v, b in zip(qd, q2)])
+             + gravity_potential(q1, q2))
+        dissipated = np.trapezoid(sum(c * tr.speed[a] ** 2
+                                      for a in ARM_MOTORS), tr.t)
+        gaps.append(abs(e[0] - e[-1] - dissipated) / dissipated)
+    assert gaps[0] < 5e-4
+    assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
 
 
 def test_an_event_after_a_followed_q_starts_at_its_closed_form():

@@ -1,9 +1,9 @@
 """Fixture 1: the 2R arm, end to end through the description.
 
-Answer: closed forms for FK, the Jacobian, M, g, the static torques and the
-elbow's reaction wrench, written out here by hand. Trap: a variant that locks
-the elbow. Every number in it is right for the one-body arm it describes, and
-its release must fail, naming the elbow.
+Answer: closed forms for FK, the Jacobian, M, g, its stiffness ∂g/∂q, the
+static torques and the elbow's reaction wrench, written out here by hand.
+Trap: a variant that locks the elbow. Every number in it is right for the
+one-body arm it describes, and its release must fail, naming the elbow.
 """
 
 import math
@@ -66,6 +66,20 @@ def gravity_torque(q1, q2):
     return P["g"] * np.array([(P["m1"] * P["lc1"] + P["m2"] * P["l1"]) * c1
                               + P["m2"] * P["lc2"] * c12,
                               P["m2"] * P["lc2"] * c12])
+
+
+def gravity_potential(q1, q2):
+    """V, the links' weight times their COMs' height along y; g = ∂V/∂q."""
+    return P["g"] * ((P["m1"] * P["lc1"] + P["m2"] * P["l1"]) * np.sin(q1)
+                     + P["m2"] * P["lc2"] * np.sin(q1 + q2))
+
+
+def gravity_stiffness(q1, q2):
+    """K = ∂g/∂q, the gravity torque's own derivative."""
+    s1, s12 = math.sin(q1), math.sin(q1 + q2)
+    a, b = P["m1"] * P["lc1"] + P["m2"] * P["l1"], P["m2"] * P["lc2"]
+    return -P["g"] * np.array([[a * s1 + b * s12, b * s12],
+                               [b * s12, b * s12]])
 
 
 def coriolis(q2, qd1, qd2):
@@ -145,6 +159,26 @@ def test_mass_matrix_carries_the_reflected_rotors(m, q, qd, qdd):
     assert lin.mass == pytest.approx(mass_matrix(q[1]), rel=1e-12)
     assert lin.mass[0, 0] - mass_matrix(q[1], rotors=False)[0, 0] == \
         pytest.approx(P["N1"] ** 2 * P["J1"])
+
+
+@pytest.mark.parametrize("q, qd, qdd", list(sampled_states(6)))
+def test_stiffness_is_the_gravity_torques_derivative(m, q, qd, qdd):
+    lin = m.at(q=_named(q)).linearise()
+    assert lin.stiffness == pytest.approx(gravity_stiffness(*q), abs=1e-6)
+
+
+def test_hanging_modes_are_the_closed_form(m):
+    """Hanging straight down, the arm rests with K = g [[a + b, b], [b, b]],
+    a = m1·lc1 + m2·l1 and b = m2·lc2, and its modes solve K v = ω² M v."""
+    a, b = P["m1"] * P["lc1"] + P["m2"] * P["l1"], P["m2"] * P["lc2"]
+    k = P["g"] * np.array([[a + b, b], [b, b]])
+    mass = mass_matrix(0.0)
+    expected = np.sqrt(np.sort(np.linalg.eigvals(np.linalg.solve(mass, k))
+                               .real)) / (2 * math.pi)
+    lin = m.at(q=_named((-math.pi / 2, 0.0))).linearise()
+    assert lin.stiffness == pytest.approx(k, rel=1e-6)
+    assert np.all(expected > 0)
+    assert lin.frequencies == pytest.approx(expected, rel=1e-6)
 
 
 @pytest.mark.parametrize("q, qd, qdd", list(sampled_states(6)))
