@@ -24,82 +24,19 @@ import pytest
 from mpmath import mp
 
 import armature
-from armature import actuator, body, contact, gravity, joint, loop, shape, site
+from armature import contact, shape
 from armature.contact import TOUCH
+from golden import wheel_leg as golden_leg
+from golden.answers import SKID_CLEARANCE, SKID_WORST_AT
 
-POINTS = {"A": (-0.05, 0.0), "B": (-0.10, -0.10), "C": (0.0, -0.25),
-          "E": (0.05, 0.0), "D": (0.11, -0.09)}
-LINKS = {  # name: (from, to, mass, Izz)
-    "l1": ("A", "B", 0.30, 1.0e-3), "l2": ("B", "C", 0.45, 2.0e-3),
-    "l3": ("E", "D", 0.35, 1.5e-3), "l4": ("D", "C", 0.50, 2.5e-3)}
-COM_AT = 0.4  # each link's COM, as a fraction from its first point
-TORSO_COM = (0.0, 0.08)
-PUSH_AT = (0.0, 0.12)  # the torso site loads act at
-PARAMS = {f"{k}{axis}": v[i] for k, v in POINTS.items()
-          for i, axis in enumerate("xy")}
-PARAMS.update({f"m_{k}": v[2] for k, v in LINKS.items()})
-PARAMS.update({f"I_{k}": v[3] for k, v in LINKS.items()})
-PARAMS.update({"g": 9.81, "N": 20.0, "N_hub": 10.0, "J": 1e-5, "kB": 2.0,
-               "m_torso": 3.0, "I_torso": 0.02, "m_cart": 0.2,
-               "m_wheel": 0.4, "r": 0.06, "w": 0.015, "mu": 0.7})
+# The description is the golden project's; its tables are the reference's.
+LEG = golden_leg.params
+POINTS, LINKS, COM_AT = LEG.POINTS, LEG.LINKS, LEG.COM_AT
+TORSO_COM, PUSH_AT = LEG.TORSO_COM, LEG.PUSH_AT
+PARAMS = golden_leg.PARAMS
+wheel_leg = golden_leg.mechanism
 CARRIED = ["m_torso", "m_wheel"] + [f"m_{k}" for k in LINKS]
 SEED = 20261011
-
-
-def wheel_leg(p):
-    """Ground is the floor, y = Cy − r. The torso rides slides x then y; the
-    hip pivots A and E are on it; l2 and l4 meet at the pin C, where the
-    wheel turns on l2. Gravity is −y and every hinge turns about z."""
-    def at(name):
-        return (p[f"{name}x"], p[f"{name}y"], 0)
-
-    def com(start, end):
-        return tuple(a + COM_AT * (b - a) for a, b in zip(at(start), at(end)))
-
-    out = [body("cart", mass=p["m_cart"], com=(0, 0, 0),
-                inertia=np.diag([1e-4] * 3)),
-           body("torso", mass=p["m_torso"], com=(*TORSO_COM, 0),
-                inertia=np.diag([p["I_torso"]] * 3))]
-    for name, (start, end, _, _) in LINKS.items():
-        i = p[f"I_{name}"]
-        out.append(body(name, mass=p[f"m_{name}"], com=com(start, end),
-                        inertia=np.diag([i, i, i])))
-    i_w = p["m_wheel"] * p["r"] ** 2 / 2
-    out.append(body("wheel", mass=p["m_wheel"], com=at("C"),
-                    inertia=np.diag([i_w, i_w, i_w])))
-    span, rail = (-math.pi, math.pi), (-0.5, 0.5)
-    floor = (0, p["Cy"] - p["r"], 0)
-    out += [
-        joint("x", "slide", parent="world", child="cart", axis=(1, 0, 0),
-              point=(0, 0, 0), range=rail),
-        joint("y", "slide", parent="cart", child="torso", axis=(0, 1, 0),
-              point=(0, 0, 0), range=rail),
-        joint("A", "hinge", parent="torso", child="l1", axis=(0, 0, 1),
-              point=at("A"), range=span),
-        joint("B", "hinge", parent="l1", child="l2", axis=(0, 0, 1),
-              point=at("B"), range=span, stiffness=p["kB"]),
-        joint("E", "hinge", parent="torso", child="l3", axis=(0, 0, 1),
-              point=at("E"), range=span),
-        joint("D", "hinge", parent="l3", child="l4", axis=(0, 0, 1),
-              point=at("D"), range=span),
-        joint("hub", "hinge", parent="l2", child="wheel", axis=(0, 0, 1),
-              point=at("C"), range=(-100.0, 100.0)),
-        site("C2", body="l2", pos=at("C")),
-        site("C4", body="l4", pos=at("C")),
-        site("push", body="torso", pos=(*PUSH_AT, 0)),
-        loop("pin", "C2", "C4"),
-        actuator("motor_A", joint="A", gear=p["N"], rotor_inertia=p["J"]),
-        actuator("motor_E", joint="E", gear=p["N"], rotor_inertia=p["J"]),
-        actuator("hub_motor", joint="hub", gear=p["N_hub"],
-                 rotor_inertia=p["J"]),
-        contact("tyre", body="wheel",
-                shape=shape("cylinder", pos=at("C"), axis=(0, 0, 1),
-                            radius=p["r"], half_length=p["w"]),
-                against=shape("plane", pos=floor, axis=(0, 1, 0)),
-                mu=p["mu"]),
-        gravity((0, -p["g"], 0)),
-    ]
-    return out
 
 
 # --- the minimal-coordinate reference -----------------------------------------
@@ -276,7 +213,7 @@ def test_mj_inverse_is_never_called(m, monkeypatch):
 # straight down, in the torso's frame. A skid pad round the knee pivot B
 # reaches the floor only when the leg swings; a check run at α = 0 alone,
 # over every leg length, never sees it touch.
-SKID_PARAMS = PARAMS | {"r_skid": 0.09}
+SKID_PARAMS = PARAMS | {"r_skid": LEG.R_SKID}
 HIPS = [(PT["A"][i] + PT["E"][i]) / 2 for i in range(2)]
 
 
@@ -370,6 +307,18 @@ def test_sampling_finds_the_skid_away_from_alpha_zero(skid_m):
         assert skid_clearance(ya, ye) <= TOUCH
         assert abs(alpha(ya, ye)) > 0.5
     assert f"skid: {len(reached)} of 24" in str(samples)
+
+
+def test_the_skids_worst_clearance_is_the_answer(skid_m):
+    """At the hips where the answer's grid finds the worst, the engine's
+    clearance and this reference's closed form both read its value, and the
+    leg there swings well away from α = 0."""
+    ya, ye = SKID_WORST_AT
+    gap = armature.clearance(_standing(skid_m, 0.0, ya, ye), "skid")
+    assert gap * 1e3 == pytest.approx(SKID_CLEARANCE.value, abs=1e-6)
+    assert skid_clearance(ya, ye) * 1e3 == pytest.approx(SKID_CLEARANCE.value,
+                                                         abs=1e-9)
+    assert abs(alpha(ya, ye)) > 0.5
 
 
 def test_a_far_turned_wheel_closes_in_the_legs_steps(m, monkeypatch):

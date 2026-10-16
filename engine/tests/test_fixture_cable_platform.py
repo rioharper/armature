@@ -23,14 +23,17 @@ from scipy.optimize import minimize
 from scipy.spatial.transform import Rotation
 
 import armature
-from armature import body, cable, joint, lock, site
+from armature import body, joint, lock, site
+from golden import cable_platform
+from golden.answers import PLATFORM_TILT
 
-G, EA, I_P = 9.81, 44_000.0, 0.02
-ANCHORS = np.array([[0, 0, 2.4], [4, 0, 2.4], [4, 4, 2.4], [0, 4, 2.4]], float)
-ATTACH = np.array([[-0.075, -0.075, 0], [0.075, -0.075, 0],
-                   [0.075, 0.075, 0], [-0.075, 0.075, 0]])  # about the point
-COM = np.array([0.0, 0.0, -0.10])                            # below the point
-HOME = np.array([2.0, 2.0, 1.2])                             # the room centre
+# The description is the golden project's, hung at HOME, the room centre; its
+# own PARAMS are the law's rest lengths at its POSE. Every other pose here
+# takes `params(point, m)`.
+RIG = cable_platform.params
+G, EA, I_P, ANCHORS, ATTACH, COM, HOME = (RIG.G, RIG.EA, RIG.I_P, RIG.ANCHORS,
+                                          RIG.ATTACH, RIG.COM, RIG.HOME)
+platform = cable_platform.mechanism
 T_HARD, T_PREF, T_CEIL = 3.0, 10.0, 60.0
 
 # (pose, point, mass, tilt °, |Δp| mm, tensions N) from §2's table. Its top
@@ -44,20 +47,6 @@ POSES = [
     ("low corner", (0.5, 0.5, 0.4), 2.5, 26.3, 52.3, (22.61, 0.0, 7.72, 0.0)),
 ]
 OFF_CENTRE = [pose for pose in POSES if pose[0] != "room centre"]
-
-
-def platform(p):
-    """The platform hung at the room centre, level, on four cables; its free
-    joint's point is the centre of the attachment square."""
-    return [
-        body("platform", mass=p["m"], com=HOME + COM,
-             inertia=np.diag([I_P] * 3)),
-        joint("hang", "free", parent="world", child="platform", point=HOME),
-        site("centre", body="platform", pos=HOME),
-        *(cable(f"c{i + 1}", start=("world", ANCHORS[i]),
-                end=("platform", HOME + ATTACH[i]), ea=EA,
-                rest_length=p[f"l0_{i + 1}"]) for i in range(4)),
-    ]
 
 
 LEVEL = armature.reduce(platform, *(lock(f"hang:{c}", 0.0, assumption="A5")
@@ -167,6 +156,22 @@ def test_level_start_is_balanced_only_at_the_centre():
         np.eye(3), abs=1e-12)
 
 
+def test_the_golden_rest_lengths_are_the_law_at_its_pose():
+    m = cable_platform.PARAMS["m"]
+    assert cable_platform.PARAMS == pytest.approx(params(RIG.POSE, m),
+                                                  rel=1e-12)
+
+
+def test_settle_tilts_to_the_answer_at_the_stated_pose():
+    """The golden project, hung at its POSE: the tilt is the answer's,
+    found in mpmath from the same cables."""
+    out = armature.compile(platform, cable_platform.PARAMS).at(
+        q={"hang": (RIG.POSE, np.eye(3))}).settle()
+    assert out.stable
+    assert tilt(out.q["hang"].rotation) == pytest.approx(PLATFORM_TILT.value,
+                                                         abs=1e-3)
+
+
 # --- the level-platform variant and its release ----------------------------------
 def test_level_platform_compiles_to_three_slides():
     m = armature.compile(LEVEL, params(HOME, 2.0))
@@ -187,9 +192,11 @@ def _release(point, m):
 def test_release_names_the_turns_at_the_edge_midpoint():
     out = _release((0.5, 2.0, 1.2), 2.0)
     assert set(out.moved) == {"hang:rx", "hang:ry", "hang:rz"}
-    assert math.degrees(out.moved["hang:ry"]) == pytest.approx(20.76, abs=0.01)
+    assert math.degrees(out.moved["hang:ry"]) == pytest.approx(
+        PLATFORM_TILT.value, abs=0.01)
     assert abs(out.moved["hang:rx"]) < 1e-9 and abs(out.moved["hang:rz"]) < 1e-9
-    assert tilt(out.settled.q["hang"].rotation) == pytest.approx(20.8, abs=0.05)
+    assert tilt(out.settled.q["hang"].rotation) == pytest.approx(
+        PLATFORM_TILT.value, abs=0.01)
     assert "lock 'hang:ry' at 0.0 (assumption A5) moved +0.3623" in str(out)
 
 

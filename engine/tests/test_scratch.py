@@ -16,10 +16,11 @@ import mujoco
 import numpy as np
 
 import armature
-from test_fixture_2r_arm import PARAMS as ARM_PARAMS
-from test_fixture_2r_arm import arm
+from golden import arm_2r
 from test_fixture_five_bar import PARAMS as FIVE_BAR_PARAMS
 from test_fixture_five_bar import five_bar
+
+ARM_PARAMS, arm = arm_2r.PARAMS, arm_2r.mechanism
 
 JACOBIAN_BOUND = 100e-6  # s per call, against about 35 µs measured
 INVERSE_BOUND = 300e-6   # s per call, against about 100 µs measured, nearly

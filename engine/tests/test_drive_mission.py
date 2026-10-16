@@ -21,10 +21,12 @@ from armature import (Budget, Coordinates, Direction, Infeasible, Interval,
                       Margin, Space, search)
 from armature.drive import (CONFIRM_RATE, SEARCH_RATE, Duty, Limits, Mission,
                             follow, hold, move, trace)
-from test_fixture_2r_arm import PARAMS as ARM
-from test_fixture_2r_arm import arm, joint_torque
+from golden import arm_2r
+from test_fixture_2r_arm import joint_torque
 from test_fixture_five_bar import PARAMS as FIVE_BAR
 from test_fixture_five_bar import five_bar
+
+ARM, arm = arm_2r.PARAMS, arm_2r.mechanism
 
 LIMITS = Limits(v=1.5, a=4.0, j=40.0,  # rad/s, rad/s², rad/s³
                 along="coordinate")

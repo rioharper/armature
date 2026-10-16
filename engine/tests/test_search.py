@@ -20,11 +20,13 @@ import armature
 from armature import (Band, Budget, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Rejected, Space, body, joint, search)
 from armature.sampler import unit_cube
-from test_fixture_2r_arm import PARAMS as ARM
-from test_fixture_2r_arm import arm
-from test_fixture_cable_platform import HOME, LEVEL, params, platform, settled
+from golden import arm_2r, cable_platform
+from test_fixture_cable_platform import LEVEL, params, settled
 from test_fixture_five_bar import PARAMS as FIVE_BAR
 from test_fixture_five_bar import POINTS, five_bar
+
+ARM, arm = arm_2r.PARAMS, arm_2r.mechanism
+HOME, platform = cable_platform.params.HOME, cable_platform.mechanism
 
 
 def margin(fn, budget=None, **axes):

@@ -5,41 +5,23 @@ gives K = 0. Trap: the stiffness lives only in MuJoCo's passive force, so a
 linearisation of the bias force alone reads both as 0 N/m and 0 Hz.
 """
 
-import math
-
 import numpy as np
 import pytest
 
 import armature
-from armature import body, cable, joint
+from golden import spring_cable
+from golden.answers import CABLE_FREQUENCY
 
-PARAMS = {"m": 0.5, "k": 1000.0, "drop": 1.0, "rest": 0.99}
-SPRING = {"m": 0.5, "k": 1000.0}  # the spring reads neither drop nor rest
-F_TRUE = math.sqrt(1000.0 / 0.5) / (2 * math.pi)
-
-
-def _bob(p):
-    r = 0.01  # a 10 mm sphere's inertia, so the body is a rigid body
-    i = 0.4 * p["m"] * r ** 2
-    return body("bob", mass=p["m"], com=(0, 0, 0),
-                inertia=np.diag([i, i, i]))
-
-
-def _slide(**spring):
-    return joint("z", "slide", parent="world", child="bob", axis=(0, 0, 1),
-                 point=(0, 0, 0), range=(-0.1, 0.1), **spring)
+# The description is the golden project's, the mass on a cable. The spring is
+# its control, built from the same bob and slide.
+PARAMS = spring_cable.PARAMS
+on_cable = spring_cable.mechanism
+SPRING = {k: PARAMS[k] for k in ("m", "k")}  # it reads neither drop nor rest
+F_TRUE = CABLE_FREQUENCY.value
 
 
 def on_spring(p):
-    return [_bob(p), _slide(stiffness=p["k"])]
-
-
-def on_cable(p):
-    # Anchored `drop` above the bob, with EA chosen so EA / rest = k.
-    return [_bob(p), _slide(),
-            cable("hang", start=("world", (0, 0, p["drop"])),
-                  end=("bob", (0, 0, 0)), ea=p["k"] * p["rest"],
-                  rest_length=p["rest"])]
+    return [spring_cable.bob(p), spring_cable.slide(stiffness=p["k"])]
 
 
 def test_frequency_is_the_closed_form():

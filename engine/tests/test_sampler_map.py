@@ -17,15 +17,17 @@ import pytest
 import armature
 from armature import Rejected, lock
 from armature.sampler import unit_cube
-from test_fixture_2r_arm import PARAMS as ARM_PARAMS
-from test_fixture_2r_arm import arm
-from test_fixture_cable_platform import HOME, LEVEL, params, platform
+from golden import arm_2r, cable_platform
+from test_fixture_cable_platform import LEVEL, params
 from test_fixture_five_bar import PARAMS as FIVE_BAR_PARAMS
 from test_fixture_five_bar import five_bar
 from test_fixture_wheel_leg import SKID_PARAMS, with_skid
 from test_planar import P as IBEX_PARAMS
 from test_planar import SAGITTAL
 from test_sampler import BOX, ENVELOPE, SEED, swing_twist
+
+ARM_PARAMS, arm = arm_2r.PARAMS, arm_2r.mechanism
+HOME, platform = cable_platform.params.HOME, cable_platform.mechanism
 
 QD = {"shoulder": 2.0, "elbow": 3.0}
 QDD = {"shoulder": 10.0, "elbow": 20.0}

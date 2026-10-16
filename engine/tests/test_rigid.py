@@ -17,8 +17,10 @@ from scipy.optimize import brentq
 import armature
 from armature import (actuator, body, cable, couple, gravity, joint, lock, rigid,
                       site)
+from golden import spring_cable
+from golden.answers import CABLE_SAG
 
-PARAMS = {"m": 0.5, "k": 1000.0, "drop": 1.0, "rest": 0.99}
+PARAMS = spring_cable.PARAMS
 G = 9.81
 
 
@@ -27,15 +29,9 @@ def _ball(name, mass, com):
     return body(name, mass=mass, com=com, inertia=np.diag([i, i, i]))
 
 
-def on_cable(p):
-    """Fixture 5's bob, anchored `drop` above on a cable with EA / rest = k:
-    1 cm stretched at home."""
-    return [_ball("bob", p["m"], (0, 0, 0)),
-            joint("z", "slide", parent="world", child="bob", axis=(0, 0, 1),
-                  point=(0, 0, 0), range=(-0.1, 0.1)),
-            cable("hang", start=("world", (0, 0, p["drop"])),
-                  end=("bob", (0, 0, 0)), ea=p["k"] * p["rest"],
-                  rest_length=p["rest"])]
+# Fixture 5's bob, the golden mass on a cable: anchored `drop` above on a
+# cable with EA / rest = k, 1 cm stretched at home.
+on_cable = spring_cable.mechanism
 
 
 STIFF = rigid("hang", assumption="A3")
@@ -68,7 +64,7 @@ def test_at_holds_it_at_its_rest_length(m):
 
 def test_rigid_cable_releases_with_the_sag_the_elastic_one_shows(m):
     out = m.at().release(quantity=lambda s: s.settle().q["z"])
-    sag = -PARAMS["m"] * G / PARAMS["k"]
+    sag = -CABLE_SAG.value / 1e3
     assert out.sized[STIFF] == pytest.approx(sag, abs=1e-7)
     # the full model's own stretch says the same
     full = m.full.at(q={"z": PARAMS["drop"] - PARAMS["rest"]}).settle()

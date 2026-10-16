@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-Five changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, and actuators and the bus are sized from a simulated mission. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+Six changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, actuators and the bus are sized from a simulated mission, and the engine and the agent are measured on golden mechanisms. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+
+### Golden mechanisms
+
+The engine is checked on five golden mechanisms and the agent on four ([#113](https://github.com/rioharper/armature/issues/113), [ADR 0008](docs/adr/0008-the-agent-is-measured-on-golden-mechanisms.md)).
+
+- **Golden projects, with their answers beside them** ([#114](https://github.com/rioharper/armature/issues/114)). The 2R arm, the cable platform, the wheel leg, the parallelogram and the mass on a cable each become a project-form directory in `engine/tests/golden/`. Each holds a `params.py`, a `mechanism.py` doing `from params import BANDS, PARAMS` as a project's does, and a `mechanism_checks.py`, so one copied beside the template's `run_all.py` compiles. `golden/__init__.py` loads each in-process under its own module names, and the fixture tests and eight other test files read their descriptions from it. The trap variants (the wrong counterweight, the skid pad) and the spring control stay test-side. `test_rigid.py`'s copy of the bob on a cable is gone. `golden/answers.py`, beside the directories and imported by none, holds the four `Answer` records tier 2 needs, each computed from the golden `PARAMS` in closed form or mpmath, never by the engine, with a test that each bait lies outside its ±2 % window:
+  - the platform's tilt at the edge midpoint, 20.761°, from a force and moment balance on the cables;
+  - the wheel leg's worst skid clearance over the hips' working range, −42.91 mm, against +50.79 mm at α = 0 alone;
+  - the cable's 7.1176 Hz;
+  - the cable's sag of 4.905 mm.
 
 ### Mission sizing
 

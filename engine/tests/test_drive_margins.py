@@ -30,14 +30,15 @@ from armature.drive import (CONFIRM_RATE, BrakeResistor, Bus, Current, Drive,
                             Thermal, after, capacitance_needed, charge,
                             electrical, energy, event, follow, hold, margins,
                             move, review, trace)
+from golden import arm_2r
 from test_drive_bus import ALPHA, J_WHEEL, STOP, W0, returned
 from test_drive_bus import driver as plain_driver
 from test_drive_bus import flywheel as spinning
 from test_drive_bus import motor as tiny_motor
 from test_drive_mission import (MGL, SWING, pendulum, swing_q, swing_qd,
                                 swing_qdd)
-from test_fixture_2r_arm import PARAMS as ARM
-from test_fixture_2r_arm import arm
+
+ARM, arm = arm_2r.PARAMS, arm_2r.mechanism
 
 SQ3 = math.sqrt(3)
 KT = 0.05      # N·m/A in d-q, motor side

@@ -14,34 +14,15 @@ import pytest
 import sympy as sp
 
 import armature
-from armature import actuator, body, gravity, joint, lock, site
+from armature import joint, lock
+from golden import arm_2r
 
-PARAMS = {"l1": 0.30, "l2": 0.25, "lc1": 0.15, "lc2": 0.125, "m1": 1.20,
-          "m2": 0.80, "I1": 0.012, "I2": 0.006, "Ix1": 0.00024,
-          "Ix2": 0.00016, "g": 9.81, "N1": 50.0, "N2": 30.0, "J1": 2e-5,
-          "J2": 1e-5, "limit": 0.5}
+# The description is the golden project's: a planar 2R arm in the xy plane,
+# gravity along −y, both links along +x at home, each link's inertia a
+# slender rod's on every axis.
+PARAMS = arm_2r.PARAMS
+arm = arm_2r.mechanism
 SEED = 20261011
-
-
-def arm(p):
-    """A planar 2R arm in the xy plane, gravity along −y, both links along +x
-    at home. Each link's inertia is a slender rod's, on every axis."""
-    return [
-        body("upper", mass=p["m1"], com=(p["lc1"], 0, 0),
-             inertia=np.diag([p["Ix1"], p["I1"], p["I1"]])),
-        body("fore", mass=p["m2"], com=(p["l1"] + p["lc2"], 0, 0),
-             inertia=np.diag([p["Ix2"], p["I2"], p["I2"]])),
-        joint("shoulder", "hinge", parent="world", child="upper",
-              axis=(0, 0, 1), point=(0, 0, 0), range=(-math.pi, math.pi)),
-        joint("elbow", "hinge", parent="upper", child="fore", axis=(0, 0, 1),
-              point=(p["l1"], 0, 0), range=(-2.6, 2.6)),
-        site("tip", body="fore", pos=(p["l1"] + p["l2"], 0, 0)),
-        actuator("shoulder_motor", joint="shoulder", gear=p["N1"],
-                 rotor_inertia=p["J1"], torque_limit=p["limit"]),
-        actuator("elbow_motor", joint="elbow", gear=p["N2"],
-                 rotor_inertia=p["J2"], torque_limit=p["limit"]),
-        gravity((0, -p["g"], 0)),
-    ]
 
 
 def shoulder_only(p):

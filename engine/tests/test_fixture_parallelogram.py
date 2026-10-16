@@ -23,47 +23,15 @@ import numpy as np
 import pytest
 
 import armature
-from armature import actuator, body, gravity, joint, loop, site
+from armature import joint
+from golden import parallelogram
 
-PARAMS = {"a": 0.40, "b": 0.35, "c": 0.08, "r2": -0.15, "r4": 0.20,
-          "m1": 3.0, "m2": 1.0, "m3": 2.0, "m4": 0.3, "g": 9.81,
-          "N1": 50.0, "N2": 30.0, "I": 2e-3}
-# The balance condition, solved for the two counterweights' COMs.
-PARAMS["r1"] = -(PARAMS["m4"] * PARAMS["r4"]
-                 + PARAMS["m2"] * PARAMS["a"]) / PARAMS["m1"]
-PARAMS["r3"] = -(PARAMS["m4"] * PARAMS["c"]
-                 + PARAMS["m2"] * PARAMS["r2"]) / PARAMS["m3"]
+# The description is the golden project's, its counterweights' COMs solved
+# from the balance condition in its params.py.
+PARAMS = parallelogram.PARAMS
+arm = parallelogram.mechanism
 WRONG = {**PARAMS, "m1": 2.5}  # the upper counterweight 0.5 kg light
 SEED = 20261011
-
-
-def arm(p):
-    """At home the upper arm lies along +x (θ1 = 0) and the crank along +y
-    (φ = π/2), so O = (0, 0), P = (a, 0), C = (0, c) and Q = (a, c). The
-    forearm hangs from P, its tip at (a, −b), and its lever runs up to Q."""
-    i = np.diag([p["I"]] * 3)
-    span = (-2.6, 2.6)
-    return [
-        body("upper", mass=p["m1"], com=(p["r1"], 0, 0), inertia=i),
-        body("fore", mass=p["m2"], com=(p["a"], p["r2"], 0), inertia=i),
-        body("crank", mass=p["m3"], com=(0, p["r3"], 0), inertia=i),
-        body("coupler", mass=p["m4"], com=(p["r4"], p["c"], 0), inertia=i),
-        joint("J1", "hinge", parent="world", child="upper", axis=(0, 0, 1),
-              point=(0, 0, 0), range=(-1.2, 1.2)),
-        joint("elbow", "hinge", parent="upper", child="fore", axis=(0, 0, 1),
-              point=(p["a"], 0, 0), range=span),
-        joint("J2", "hinge", parent="world", child="crank", axis=(0, 0, 1),
-              point=(0, 0, 0), range=span),
-        joint("pin", "hinge", parent="crank", child="coupler",
-              axis=(0, 0, 1), point=(0, p["c"], 0), range=span),
-        site("Q_fore", body="fore", pos=(p["a"], p["c"], 0)),
-        site("Q_coupler", body="coupler", pos=(p["a"], p["c"], 0)),
-        site("tip", body="fore", pos=(p["a"], -p["b"], 0)),
-        loop("parallelogram", "Q_coupler", "Q_fore"),
-        actuator("J1_motor", joint="J1", gear=p["N1"]),
-        actuator("J2_motor", joint="J2", gear=p["N2"]),
-        gravity((0, -p["g"], 0)),
-    ]
 
 
 def postures(n, seed=SEED):

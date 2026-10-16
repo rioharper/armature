@@ -11,11 +11,14 @@ from PIL import Image
 from scipy.spatial.transform import Rotation
 
 import armature
-from test_fixture_2r_arm import PARAMS as ARM_PARAMS
-from test_fixture_2r_arm import RIGID_ELBOW, arm
-from test_fixture_cable_platform import HOME, LEVEL, params, platform
+from golden import arm_2r, cable_platform
+from test_fixture_2r_arm import RIGID_ELBOW
+from test_fixture_cable_platform import LEVEL, params
 from test_fixture_five_bar import PARAMS as FIVE_BAR_PARAMS
 from test_fixture_five_bar import five_bar
+
+ARM_PARAMS, arm = arm_2r.PARAMS, arm_2r.mechanism
+HOME, platform = cable_platform.params.HOME, cable_platform.mechanism
 
 SEED = 20261011
 PLATFORM_PARAMS = params(HOME, 2.0)
@@ -227,8 +230,8 @@ def test_a_closed_chain_renders_at_its_closed_posture(tmp_path):
 def test_frames_list_each_contact_against_mujocos_geoms():
     """Each contact's shape and the shape it is against, in the base frame
     at home, read back from MuJoCo's own geoms at qpos0."""
-    from test_fixture_wheel_leg import PARAMS as LEG_PARAMS
-    from test_fixture_wheel_leg import wheel_leg
+    from golden import wheel_leg as golden_leg
+    LEG_PARAMS, wheel_leg = golden_leg.PARAMS, golden_leg.mechanism
     table = armature.frames(wheel_leg, LEG_PARAMS)
     data = _home(m := armature.compile(wheel_leg, LEG_PARAMS))
     row = table.row("Contacts", "tyre")

@@ -17,13 +17,15 @@ from scipy.spatial.transform import Rotation
 
 import armature
 from armature import ClosureError, lock, pose_envelope
-from test_fixture_2r_arm import PARAMS as ARM_PARAMS
-from test_fixture_2r_arm import arm
-from test_fixture_cable_platform import HOME, LEVEL, params, platform
+from golden import arm_2r, cable_platform
+from test_fixture_cable_platform import LEVEL, params
 from test_fixture_five_bar import PARAMS as FIVE_BAR_PARAMS
 from test_fixture_five_bar import five_bar, ref
 from test_planar import P as IBEX_PARAMS
 from test_planar import SAGITTAL
+
+ARM_PARAMS, arm = arm_2r.PARAMS, arm_2r.mechanism
+HOME, platform = cable_platform.params.HOME, cable_platform.mechanism
 
 SEED = 20261011
 UP = np.array([0.0, 0.0, 1.0])  # the platform hangs under gravity along −z

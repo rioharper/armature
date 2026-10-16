@@ -38,13 +38,15 @@ from armature.drive import (AGREE, Bus, Current, Drive, Driver, FluxBrake,
                             Simulated, Source, after, charge, electrical,
                             event, follow, hold, move, trace)
 from armature.elements import Cable
+from golden import cable_platform, wheel_leg as golden_leg
 from test_drive_mission import (AMPLITUDE, J_TOTAL, MGL, SWING, pendulum)
-from test_fixture_cable_platform import ANCHORS, ATTACH, G, HOME
 from test_fixture_cable_platform import params as hung_at
-from test_fixture_cable_platform import platform
 from test_fixture_wheel_leg import CARRIED
-from test_fixture_wheel_leg import PARAMS as WHEEL_LEG
-from test_fixture_wheel_leg import wheel_leg
+
+ANCHORS, ATTACH = cable_platform.params.ANCHORS, cable_platform.params.ATTACH
+G, HOME = cable_platform.params.G, cable_platform.params.HOME
+platform = cable_platform.mechanism
+WHEEL_LEG, wheel_leg = golden_leg.PARAMS, golden_leg.mechanism
 
 MISSION = importlib.import_module("armature.drive.mission")
 SQ3 = math.sqrt(3)
