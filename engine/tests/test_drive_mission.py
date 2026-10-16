@@ -5,8 +5,9 @@ Answer: a move's end is the start plus its distance along its direction,
 written out here; its limits are the numbers it was given, checked on the
 trace's own samples by difference; a geared pendulum's prescribed swing has
 a closed-form torque, N²J_m included, whose peak and RMS are worked here and
-by quadrature; a hold, the actuation seam and the five-bar are checked
-against `inverse` called directly at the same states.
+by quadrature; a hold and the actuation seam are checked against `inverse`
+called directly at the same states, and the five-bar's torques against its
+minimal-coordinate Lagrange model in 40-digit arithmetic, besides `inverse`.
 """
 
 import math
@@ -24,7 +25,7 @@ from armature.drive import (CONFIRM_RATE, SEARCH_RATE, Duty, Limits, Mission,
 from golden import arm_2r
 from test_fixture_2r_arm import joint_torque
 from test_fixture_five_bar import PARAMS as FIVE_BAR
-from test_fixture_five_bar import five_bar
+from test_fixture_five_bar import dynamic_torque, five_bar
 
 ARM, arm = arm_2r.PARAMS, arm_2r.mechanism
 
@@ -461,9 +462,12 @@ def test_the_actuation_seam_is_given_each_samples_time_and_the_params():
 
 
 # --- a closed chain ----------------------------------------------------------
-def test_a_five_bar_move_reads_inverse_called_directly():
-    """Each sample's torques are `inverse`'s at the same independent q, q̇
-    and q̈, the pin closed by `at()`; each speed is N times its joint's
+def test_a_five_bar_moves_by_its_lagrange_torques():
+    """Sixteen samples across the move and the hold have the mpmath Lagrange
+    model's torques at their independent q, q̇ and q̈, the pin closed by
+    `at()`, to 1e-7 (the central difference in ∂M/∂y; 4e-11 measured over
+    every sample). Every sample's are `inverse`'s at the same state, so
+    `trace` adds nothing of its own; each speed is N times its joint's
     rate."""
     m = armature.compile(five_bar, FIVE_BAR)
     assert m.independent == ("A", "E")
@@ -480,6 +484,11 @@ def test_a_five_bar_move_reads_inverse_called_directly():
         for name in ("motor_A", "motor_E"):
             assert t.torque[name][k] == pytest.approx(direct.torque[name],
                                                       rel=1e-12, abs=1e-15)
+    for k in np.linspace(0, len(t.t) - 1, 16).round().astype(int):
+        y, yd, ydd = (np.array([series[n][k] for n in m.independent])
+                      for series in (t.q, t.qd, t.qdd))
+        got = [t.torque["motor_A"][k], t.torque["motor_E"][k]]
+        assert got == pytest.approx(dynamic_torque(y, yd, ydd), rel=1e-7)
     np.testing.assert_allclose(t.speed["motor_A"], FIVE_BAR["N"] * t.qd["A"],
                                rtol=1e-15)
     assert set(t.qdd) == {"A", "E"} and "B" in t.qd and "B" in t.q

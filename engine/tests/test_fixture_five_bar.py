@@ -3,7 +3,8 @@
 Answer: a minimal-coordinate model written here in closed form, independent of
 the engine, evaluated in 40-digit arithmetic and differentiated by mpmath. The two actuated angles place B and D, the loop's pin C is where the
 circles about them meet on home's branch, and the potential, the kinetic
-energy, the static torques by virtual work and the modes all follow from it.
+energy, the static torques by virtual work and the modes all follow from it;
+with E held, it is the four-bar that locking E leaves.
 Trap: `mj_inverse`, which answers for the solver's soft constraint and was off
 by 61 % and 78 % on a five-bar, and the full-DOF eigenproblem, which adds the
 solver's constraint stiffness as modes.
@@ -18,7 +19,7 @@ import sympy as sp
 from mpmath import mp
 
 import armature
-from armature import actuator, body, gravity, joint, loop, site
+from armature import actuator, body, gravity, joint, lock, loop, site
 
 POINTS = {"A": (-0.05, 0.0), "B": (-0.10, -0.10), "C": (0.0, -0.25),
           "E": (0.05, 0.0), "D": (0.11, -0.09)}
@@ -282,7 +283,7 @@ def test_mj_inverse_is_never_called_with_constraint_rows(m, monkeypatch):
     s.linearise()
 
 
-def _dynamic_torque(y, yd, ydd, step=1e-5):
+def dynamic_torque(y, yd, ydd, step=1e-5):
     """τ N = M ÿ + (Ṁ ẏ − ½ ∂(ẏᵀ M ẏ)/∂y) + ∂V/∂y, with ∂M/∂y by central
     differences of the reference M."""
     dm = [(ref("mass", *(y + step * e)) - ref("mass", *(y - step * e)))
@@ -301,7 +302,7 @@ def test_dynamic_torques_match_lagrange(m, seed):
     s = m.at(q=dict(zip("AE", y)), qd=dict(zip("AE", yd)))
     inv = s.inverse(qdd=dict(zip("AE", ydd)))
     got = [inv.torque["motor_A"], inv.torque["motor_E"]]
-    assert got == pytest.approx(_dynamic_torque(y, yd, ydd), rel=1e-7)
+    assert got == pytest.approx(dynamic_torque(y, yd, ydd), rel=1e-7)
 
 
 # --- modes --------------------------------------------------------------------
@@ -321,8 +322,10 @@ def test_modes_are_on_the_manifold_and_match_minimal_coordinates(m, ya, ye):
 
 # --- settle and wrench --------------------------------------------------------
 def test_settle_under_the_static_torques_stays(m):
+    """Held at the virtual-work torques, not the engine's own `inverse`, the
+    loop stays where it was put."""
     s = m.at(q={"A": 0.3, "E": -0.2})
-    hold = dict(s.inverse().torque)
+    hold = dict(zip(("motor_A", "motor_E"), static_torque(0.3, -0.2)))
     settled = s.settle(hold)
     assert settled.stable
     assert settled.residual <= 1e-6
@@ -359,3 +362,86 @@ def test_symbolic_closure_is_the_pin_gap():
     home.update({q: 0 for q in view.q.values()})
     assert [sp.N(gap.dot(u).subs(home)) for u in (view.world.x, view.world.y,
                                                   view.world.z)] == [0, 0, 0]
+
+
+@pytest.mark.parametrize("ya, ye", postures(4))
+def test_symbolic_closure_vanishes_on_the_reference_loop(ya, ye):
+    """Away from home, the gap is zero at the dependent angles the closed
+    form gives, to 1e-14 m, the double precision they are handed over in
+    (1e-17 measured); and it opens when B is off them, so the zero is the
+    loop's and not the expression's."""
+    view = armature.symbolic(five_bar, PARAMS)
+    q = view.q
+
+    def gap(q_b):
+        at = {s: PARAMS[n] for n, s in view.params.items()}
+        at.update({q["A"]: ya, q["E"]: ye, q["B"]: q_b,
+                   q["D"]: ref("q_D", ya, ye)})
+        return max(abs(sp.N(view.closures["pin"].dot(u).subs(at)))
+                   for u in (view.world.x, view.world.y, view.world.z))
+
+    closed = float(ref("q_B", ya, ye))
+    assert gap(closed) < 1e-14
+    assert gap(closed + 0.01) > 1e-3
+
+
+# --- the four-bar left by locking E -------------------------------------------
+E_HELD = -0.2
+
+
+def four_bar_torque(y, yd=0.0, ydd=0.0):
+    """The motor at A's torque on the four-bar A-B-C-D, D fixed where E is
+    held: the reference's Lagrange torque at y_E = E_HELD with ẏ_E = ÿ_E = 0,
+    whose A row is τ N = M₁₁ ÿ + ½ ∂M₁₁/∂y ẏ² + ∂V/∂y, l3 still and E's
+    rotor with it."""
+    return dynamic_torque(np.array([y, E_HELD]), np.array([yd, 0.0]),
+                          np.array([ydd, 0.0]))[0]
+
+
+@pytest.fixture(scope="module")
+def four_bar():
+    return armature.compile(armature.reduce(
+        five_bar, lock("E", E_HELD, assumption="A4")), PARAMS)
+
+
+def test_locking_e_leaves_a_four_bar_on_one_motor(four_bar):
+    assert four_bar.actuators == ("motor_A",)
+    assert four_bar.independent == ("A",)
+    assert four_bar.dependent == ("B", "D")
+
+
+@pytest.mark.parametrize("ya, yd, ydd", [(0.3, 0.0, 0.0), (-0.35, 0.0, 0.0),
+                                         (0.3, 1.2, -4.0), (-0.1, -2.0, 8.0)])
+def test_the_locked_variant_inverse_is_the_four_bar(four_bar, ya, yd, ydd):
+    """To 1e-7, the central difference in M′; with E held, the motor at A
+    needs what the five-bar's motor A would, the loop closed the same way."""
+    s = four_bar.at(q={"A": ya}, qd={"A": yd})
+    got = s.inverse(qdd={"A": ydd}).torque["motor_A"]
+    assert got == pytest.approx(four_bar_torque(ya, yd, ydd), rel=1e-7)
+    assert s.q["D"] == pytest.approx(float(ref("q_D", ya, E_HELD)), abs=1e-11)
+
+
+def test_release_settles_where_the_five_bar_balances(four_bar):
+    """Motor A held at the four-bar's torque, E let go and uncommanded: the
+    full five-bar comes to rest where ∂V/∂y_A = N τ_A and ∂V/∂y_E = 0,
+    solved in mpmath from the locked posture, a minimum (the Hessian there is
+    positive definite). E moves by that root's y_E − E_HELD, about 0.32 rad,
+    to 1e-5, the settle's rest."""
+    ya = 0.3
+    tau = four_bar_torque(ya)
+    out = four_bar.at(q={"A": ya}).release(hold={"motor_A": tau})
+
+    def balance(a, e):
+        grad = _partials(potential, a, e)
+        return [grad[0] - PARAMS["N"] * mp.mpf(tau), grad[1]]
+
+    rest = [float(x) for x in mp.findroot(balance, (mp.mpf(ya),
+                                                    mp.mpf(E_HELD)))]
+    assert np.all(np.linalg.eigvalsh(ref("hessian", *rest)) > 0)
+    assert out.settled.stable
+    assert out.residual <= 1e-6  # the pin closed at rest
+    assert out.assumed == {"E": E_HELD}
+    assert list(out.sized.values()) == [out.moved["E"]]
+    assert out.moved["E"] == pytest.approx(rest[1] - E_HELD, abs=1e-5)
+    assert out.settled.moved["A"] == pytest.approx(rest[0] - ya, abs=1e-5)
+    assert abs(out.moved["E"]) > 0.3  # the lock was wrong, and sized

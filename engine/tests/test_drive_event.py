@@ -12,6 +12,8 @@ and the mechanics, never from the event module:
 - the 2R arm, both motors shorted partway through a move, loses
   ½q̇ᵀM q̇ + V from the closed-form M and potential by what the shorts
   dissipate, to first order in the step;
+- the bare five-bar, likewise, ½ẏᵀM ẏ + V in its actuated angles from the
+  40-digit minimal-coordinate model;
 - a flux-braking flywheel regenerates (E − R_φ·i_max)·i_max, raising the
   bus by ½C(V² − V₀²) to the onset, where the flux brake takes it;
 - fixture 3, held by its motors at the torques `inverse` gives, presses
@@ -45,6 +47,8 @@ from golden import arm_2r, cable_platform, wheel_leg as golden_leg
 from test_fixture_2r_arm import gravity_potential, mass_matrix
 from test_drive_mission import (AMPLITUDE, J_TOTAL, MGL, SWING, pendulum)
 from test_fixture_cable_platform import params as hung_at
+from test_fixture_five_bar import (PARAMS as FIVE_BAR, five_bar,
+                                   potential as bar_potential, ref as bar_ref)
 from test_fixture_wheel_leg import CARRIED
 
 ANCHORS, ATTACH = cable_platform.params.ANCHORS, cable_platform.params.ATTACH
@@ -300,6 +304,49 @@ def test_an_estop_stops_the_2r_arm_by_its_closed_form_energy():
         dissipated = np.trapezoid(sum(c * tr.speed[a] ** 2
                                       for a in ARM_MOTORS), tr.t)
         gaps.append(abs(e[0] - e[-1] - dissipated) / dissipated)
+    assert gaps[0] < 5e-4
+    assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
+
+
+BAR_MOTORS = {"motor_A": "A", "motor_E": "E"}  # each motor's joint
+
+
+def test_an_estop_stops_the_five_bar_by_its_mpmath_energy():
+    """The first loop the event integrator moves: both motors shorted
+    halfway through a reach, ½ẏᵀM(y)ẏ + V(y) in the actuated angles, M and
+    V the minimal-coordinate model's in 40 digits, falls by ∫Σ c·ω_m²,
+    c = Kt·Ke/R_φ, to first order in the step. R_φ = 20 Ω puts the shorts
+    at c = N²Kt²/R_φ = 0.2 N·m·s/rad on the joint, a time constant near
+    M/c = 60 ms, which the step resolves."""
+    r = 20.0
+    m = armature.compile(five_bar, FIVE_BAR)
+    reach = move({"A": 0.0, "E": 0.0}, end={"A": 0.25, "E": -0.15},
+                 limits=Limits(v=2.0, a=20.0, j=400.0, along="coordinate"))
+    stop = event(after(reach, 0.5), {a: "short" for a in BAR_MOTORS}, 0.3)
+    t = trace(m, Mission("e-stop", [reach, stop]), 1000.0,
+              drive=drive(tuple(BAR_MOTORS), r))
+    simulated, = t.events
+    c = KT * KT / r
+
+    def stored(tr, k):
+        y = np.array([tr.q["A"][k], tr.q["E"][k]])
+        yd = np.array([tr.qd["A"][k], tr.qd["E"][k]])
+        return 0.5 * yd @ bar_ref("mass", *y) @ yd + float(bar_potential(*y))
+
+    gaps = []
+    for run in (simulated.run, simulated.half):
+        tr = run.trace
+        assert abs(tr.qd["A"][0]) > 1.0  # it stops from the reach's speed
+        for a, dof in BAR_MOTORS.items():
+            np.testing.assert_allclose(tr.speed[a], FIVE_BAR["N"] * tr.qd[dof],
+                                       rtol=1e-12, atol=1e-12)
+            np.testing.assert_allclose(tr.torque[a], -c * tr.speed[a],
+                                       rtol=1e-12, atol=1e-12)
+        assert np.all(run.v == V_S)
+        dissipated = np.trapezoid(sum(c * tr.speed[a] ** 2
+                                      for a in BAR_MOTORS), tr.t)
+        gaps.append(abs(stored(tr, 0) - stored(tr, -1) - dissipated)
+                    / dissipated)
     assert gaps[0] < 5e-4
     assert gaps[1] == pytest.approx(gaps[0] / 2, rel=0.1)  # first order
 

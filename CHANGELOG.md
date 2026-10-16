@@ -17,6 +17,12 @@ The engine is checked on five golden mechanisms and the agent on four ([#113](ht
   - **The 2R arm.** An e-stop, both motors shorted halfway through a swing, loses ½q̇ᵀM q̇ + V by what the shorts dissipate, M and V in closed form, within 5e-4 (2.3e-4 measured), halving with the step. `linearise` reads K = ∂g/∂q at sampled postures, and hanging straight down its modes are eig(M⁻¹K) in closed form.
   - **The cable platform.** At placements away from rest, turned and displaced, `inverse`'s generalised force is ∇V of the test's own potential, to 1e-6. `test_search.py`'s tension floor is no longer a pinned 4.987626 N: it is the slackest cable at that potential's minimum at the mirror corner, which the search matches within 1e-5 N (3e-7 N measured), the mirror corner by symmetry.
   - **The spring and cable.** The trap is shown failing: a central difference of `qfrc_bias` alone reads 0 N/m on both, where `linearise` reads 1000 N/m, and the derivation's own check of it is a strict xfail. A searched first-mode margin over k ± 20 % is worst at k_low, √(k_low/m)/2π. At rest the spring's slide carries m·g, while the cable's carries nothing and the cable's tension is m·g. `inverse` on the elastic cable needs m·g − k·stretch.
+- **Tier 1 on the bare five-bar** ([#116](https://github.com/rioharper/armature/issues/116)), against its minimal-coordinate model in 40-digit mpmath:
+  - **Events.** The first loop the event integrator moves: both motors shorted halfway through a reach, ½ẏᵀM ẏ + V falls by what the shorts dissipate within 5e-4 (3.8e-4 measured), halving with the step.
+  - **`settle`.** Held at the virtual-work torques, rather than the engine's own `inverse`, the loop stays.
+  - **Missions.** `trace`'s torques are the Lagrange model's to 1e-7 (4e-11 measured), where they were checked against `inverse` called directly.
+  - **Symbolic.** The pin gap is zero at sampled postures' closed-form dependent angles, to 1e-14 m, and opens when B is moved off them.
+  - **Release.** Locking E leaves a four-bar on motor A. Its `inverse` is the model's with E held, at rest and moving, to 1e-7. Released under that torque, the full five-bar settles where an mpmath root of ∂V/∂y = (Nτ_A, 0) puts it, 0.32 rad from the lock, to 1e-5.
 
 ### Mission sizing
 
