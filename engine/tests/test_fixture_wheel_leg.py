@@ -503,7 +503,8 @@ def most_torque(n=21):
         "scipy's bounded Powell line search along A accepts its line's "
         "local minimum at A = -0.51, worse than its start, and never "
         "returns to the A = 1 face; it reads 1.165 A_peak against the "
-        "grid's 0.983, and eight polish starts find it"))),
+        "grid's 0.983, and eight polish starts find it; ADR 0005's "
+        "revisit trigger, #126"))),
     "motor_E"])
 def test_the_holds_peak_current_is_the_largest_static_torque(hold_margins,
                                                              name):
