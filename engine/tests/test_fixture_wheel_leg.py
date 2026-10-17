@@ -11,11 +11,16 @@ travel X and the two hip angles are free; the loop places the pin, the floor
 fixes the hub's height (so the torso's), and rolling turns the wheel. The
 static motor torques follow by virtual work, the wheel's normal load is the
 weight it carries less any lift, its friction is the push, and the cone holds
-while the push stays under μ times the load.
+while the push stays under μ times the load. Searched over the hips with the
+tyre resting on the floor, a skid pad's clearance is the answer's mpmath
+minimum, and a hold's peak current is the largest static torque over Kt on
+a dense grid; its energy is R·i²·t over the driver's efficiency.
 Trap: the leg's own five-bar statics, which a solve without the contact row
-answers with a torso that has nothing to stand on.
+answers with a torso that has nothing to stand on; and first contact
+checked at α = 0 alone, where the skid's margin passes.
 """
 
+import functools
 import math
 
 import mujoco
@@ -24,10 +29,14 @@ import pytest
 from mpmath import mp
 
 import armature
-from armature import contact, shape
+from armature import (Budget, Choice, Coordinates, Infeasible, Margin, Space,
+                      contact, search, shape)
 from armature.contact import TOUCH
+from armature.drive import Mission, energy, hold, margins
+from armature.sampler import PLACE_TOL
 from golden import wheel_leg as golden_leg
 from golden.answers import SKID_CLEARANCE, SKID_WORST_AT
+from test_drive_margins import DQ, I_PEAK, KT, R, on_a_bus
 
 # The description is the golden project's; its tables are the reference's.
 LEG = golden_leg.params
@@ -215,6 +224,9 @@ def test_mj_inverse_is_never_called(m, monkeypatch):
 # over every leg length, never sees it touch.
 SKID_PARAMS = PARAMS | {"r_skid": LEG.R_SKID}
 HIPS = [(PT["A"][i] + PT["E"][i]) / 2 for i in range(2)]
+# The hips over their working range; the torso's travel and the wheel's
+# turn, which neither the skid nor a hold reads, held at home.
+WORKING = dict(LEG.WORKSPACE) | {"x": (0.0, 0.0), "hub": (0.0, 0.0)}
 
 
 def with_skid(p):
@@ -242,12 +254,12 @@ def skid_clearance(ya, ye):
     return float(b[1] - c[1] + PARAMS["r"] - SKID_PARAMS["r_skid"])
 
 
-def alpha_zero(count):
+def alpha_zero(count, ends=(-1.2, 0.9)):
     """About `count` hip pairs with α = 0, from the shortest leg to the
-    longest: for each A, the E that puts the pin straight below the hips,
-    walked out from home so each root seeds the next."""
+    longest: for each A out to `ends`, the E that puts the pin straight
+    below the hips, walked out from home so each root seeds the next."""
     out = [(0.0, 0.0)]
-    for end in (-1.2, 0.9):
+    for end in ends:
         ye = mp.mpf(0)
         for ya in np.linspace(0, end, count // 2 + 1)[1:]:
             ye = mp.findroot(lambda e, a=mp.mpf(ya): leg(a, e)["c"][0]
@@ -278,6 +290,47 @@ def test_resting_on_the_tyre_matches_the_closed_form_lift(skid_m):
     for s in near.states:
         lift = placed(mp.mpf(s.q["x"]), mp.mpf(s.q["A"]), mp.mpf(s.q["E"]))
         assert s.q["y"] == pytest.approx(float(lift["lift"]), abs=1e-12)
+
+
+def test_coordinates_rest_on_the_tyre_as_the_sampler_does():
+    """The search's `Coordinates` takes `rest_on` straight to the sampler's
+    map: the torso's height is solved, not an axis, and at every point of
+    the hips' working range the tyre touches, at the closed form's lift."""
+    space = Space(state=Coordinates(with_skid, SKID_PARAMS, within=WORKING,
+                                    rest_on={"tyre": "y"}))
+    seen = []
+
+    def fn(p):
+        s = p.state
+        assert abs(armature.clearance(s, "tyre")) <= PLACE_TOL
+        lift = placed(mp.mpf(s.q["x"]), mp.mpf(s.q["A"]), mp.mpf(s.q["E"]))
+        assert s.q["y"] == pytest.approx(float(lift["lift"]), abs=1e-9)
+        seen.append((s.q["A"], s.q["E"]))
+        return 1.0
+
+    worst = search(Margin("touching", fn, "m", over=space,
+                          budget=Budget(global_points=16, polish_starts=0)))
+    assert space.dims == 4  # x, A, E and the hub; y is solved
+    assert set(worst.at["state"]) == {"x", "y", "A", "E", "hub"}
+    assert len(seen) == worst.n == 16 + 2 ** 4
+    assert {(a, e) for a, e in seen if a in LEG.WORKSPACE["A"]
+            and e in LEG.WORKSPACE["E"]} == {
+        (a, e) for a in LEG.WORKSPACE["A"] for e in LEG.WORKSPACE["E"]}
+
+
+def test_coordinates_rest_on_refuses_a_point_it_cannot_bring_to_touch():
+    """Solving the torso's travel cannot lift the tyre off the floor or
+    bring it down, so with the hips turned the point is `Infeasible` under
+    the contact, as the sampler's map names it. A `rest_on` the map refuses
+    raises when the space is made."""
+    turned = {"y": (0.0, 0.0), "A": (0.3, 0.3), "E": (0.0, 0.0)}
+    axis = Coordinates(with_skid, SKID_PARAMS, within=turned,
+                       rest_on={"tyre": "x"})
+    with pytest.raises(Infeasible, match="contact 'tyre'"):
+        Space(state=axis).axes["state"].value((0.5,) * axis.dims)
+    with pytest.raises(ValueError, match="no contact named"):
+        Space(state=Coordinates(with_skid, SKID_PARAMS,
+                                rest_on={"wheel": "y"}))
 
 
 def test_the_skid_is_missed_at_alpha_zero_alone(skid_m):
@@ -321,6 +374,49 @@ def test_the_skids_worst_clearance_is_the_answer(skid_m):
     assert abs(alpha(ya, ye)) > 0.5
 
 
+def skid(state):
+    """The skid pad's clearance above the floor (mm): a margin against
+    first contact, which touching fails."""
+    return armature.clearance(state, "skid") * 1e3
+
+
+def test_searching_the_hips_finds_the_skid_away_from_alpha_zero():
+    """Searched over the hips' working range, the tyre resting on the floor
+    at every point, the skid's clearance is the answer's mpmath minimum,
+    on the E = 2 face and well away from α = 0, and the margin fails."""
+    worst = search(Margin("skid clearance", lambda p: skid(p.state), "mm",
+                          over=Space(state=Coordinates(
+                              with_skid, SKID_PARAMS, within=WORKING,
+                              rest_on={"tyre": "y"}))))
+    print(worst)
+    assert not worst.passes
+    # the answer is a grid's least, so the search lands at or a hair below
+    assert worst.value <= SKID_CLEARANCE.value + 1e-9
+    assert worst.value == pytest.approx(SKID_CLEARANCE.value, abs=1e-4)
+    at = worst.at["state"]
+    assert (at["A"], at["E"]) == pytest.approx(SKID_WORST_AT, abs=2.5e-3)
+    assert skid_clearance(at["A"], at["E"]) * 1e3 == pytest.approx(
+        worst.value, abs=1e-6)
+    assert abs(alpha(at["A"], at["E"])) > 0.5
+    assert not worst.rejected
+
+
+def test_the_same_margin_at_alpha_zero_alone_passes(skid_m):
+    """The trap: the same margin over the hips that stand the leg straight
+    under them, every leg length inside the working range, passes by about
+    5 cm, at the answer's bait, while the search above finds the skid."""
+    (a0, a1), (e0, e1) = LEG.WORKSPACE["A"], LEG.WORKSPACE["E"]
+    straight = [(a, e) for a, e in alpha_zero(80, ends=(a0, a1))
+                if e0 <= e <= e1]
+    worst = search(Margin("skid clearance at alpha = 0",
+                          lambda p: skid(_standing(skid_m, 0.0, *p.hips)),
+                          "mm", over=Space(hips=Choice(straight))))
+    print(worst)
+    assert worst.passes
+    assert worst.value == pytest.approx(SKID_CLEARANCE.bait, abs=1e-6)
+    assert not SKID_CLEARANCE.inside(worst.value)
+
+
 def test_a_far_turned_wheel_closes_in_the_legs_steps(m, monkeypatch):
     """The hub joint is outside the loop, so turning the wheel 90 rad adds
     no continuation steps: the loop is walked only as far as the hips go."""
@@ -349,3 +445,109 @@ def test_rest_on_is_for_postures_only(skid_m):
     with pytest.raises(ValueError, match="postures only"):
         armature.sample_states(skid_m, qd_limits=limits, qdd_limits=limits,
                                rest_on={"tyre": "y"})
+
+
+# --- the drive chain: a hold, searched over the hips ---------------------------
+# Standing still, each hip motor carries its virtual-work torque, so its d-q
+# current is static_torque / Kt through a lossless gearbox, and the hold's
+# energy is the windings' copper loss, R·i²·t, over the driver's efficiency.
+# The hub carries nothing: with no push, the floor is level and its friction
+# idle.
+HIP_MOTORS = ("motor_A", "motor_E")
+ACTUATORS = (*HIP_MOTORS, "hub_motor")
+STAND = (0.3, -0.2)  # the hips (A, E) the hold as written keeps [rad]
+HOLD = 2.0           # how long it keeps them [s]
+
+
+def holding(p):
+    """The leg held still at the space's state, the tyre on the floor."""
+    return Mission("searched hold", [hold(p.state, 0.01)])
+
+
+def stand(m):
+    return Mission("stand", [hold(_standing(m, 0.0, *STAND), HOLD)])
+
+
+@pytest.fixture(scope="module")
+def hold_margins(m):
+    space = Space(state=Coordinates(wheel_leg, PARAMS, within=WORKING,
+                                    rest_on={"tyre": "y"}))
+    return {g.name: g for g in margins(on_a_bus(ACTUATORS, eta=1.0),
+                                       [holding, stand(m)], space)}
+
+
+@functools.cache
+def most_torque(n=21):
+    """Each hip motor's largest static torque over the hips' WORKSPACE
+    (N·m, motor side), and the hips (A, E) where it falls: a dense grid,
+    then a grid as dense over the cells round its largest point."""
+    (a0, a1), (e0, e1) = LEG.WORKSPACE["A"], LEG.WORKSPACE["E"]
+    da, de = (a1 - a0) / (n - 1), (e1 - e0) / (n - 1)
+
+    def largest(i, a_lo, a_hi, e_lo, e_hi):
+        return max((abs(static_torque(0.0, a, e)[i]), a, e)
+                   for a in np.linspace(a_lo, a_hi, n)
+                   for e in np.linspace(e_lo, e_hi, n))
+
+    out = {}
+    for i, name in enumerate(HIP_MOTORS):
+        _, a, e = largest(i, a0, a1, e0, e1)
+        out[name] = largest(i, max(a - da, a0), min(a + da, a1),
+                            max(e - de, e0), min(e + de, e1))
+    return out
+
+
+@pytest.mark.parametrize("name", [
+    pytest.param("motor_A", marks=pytest.mark.xfail(strict=True, reason=(
+        "the search misses it: from the best Sobol point (A = 0.94) "
+        "scipy's bounded Powell line search along A accepts its line's "
+        "local minimum at A = -0.51, worse than its start, and never "
+        "returns to the A = 1 face; it reads 1.165 A_peak against the "
+        "grid's 0.983, and eight polish starts find it"))),
+    "motor_E"])
+def test_the_holds_peak_current_is_the_largest_static_torque(hold_margins,
+                                                             name):
+    """Searched over the hips, each hip driver's peak-current margin is its
+    rating less the largest static torque over Kt, in line amperes, on the
+    A = 1 face; the hold as written reads its own torque's."""
+    worst = search(hold_margins[f"{name}: driver peak current"])
+    print(worst)
+    torque, a, e = most_torque()[name]
+    answer = I_PEAK - torque / (KT * DQ)
+    written = {c.choices["mission"]: c.value for c in worst.cases}
+    held = abs(static_torque(0.0, *STAND)[HIP_MOTORS.index(name)])
+    assert written["stand"] == pytest.approx(I_PEAK - held / (KT * DQ),
+                                             rel=1e-7)
+    assert worst.at["mission"] == "holding"
+    assert worst.truth.agrees
+    # the grid's largest torque is a lower bound, so the search lands on
+    # its slack or a hair below
+    assert worst.value <= answer + 1e-9
+    assert worst.value == pytest.approx(answer, abs=1e-4)
+    at = worst.at["state"]
+    assert (at["A"], at["E"]) == pytest.approx((a, e), abs=0.02)
+
+
+def test_the_holds_energy_is_its_copper_loss_through_the_driver(m):
+    """Over the hold as written, each winding loses R·i²·t, i the static
+    torque over Kt, and the source gives that over the driver's 0.95."""
+    report, = energy(on_a_bus(ACTUATORS, eta=1.0), [stand(m)], model=m)
+    current = static_torque(0.0, *STAND) / KT
+    copper = R * float(np.sum(current ** 2)) * HOLD
+    assert current[2] == pytest.approx(0.0, abs=1e-9)
+    assert report.copper == pytest.approx(copper, rel=1e-7)
+    assert report.source == pytest.approx(copper / 0.95, rel=1e-7)
+    assert report.regenerated == pytest.approx(0.0, abs=1e-12)
+
+
+def test_settle_under_the_static_torques_stays(m):
+    """Held at the virtual-work torques, not the engine's own `inverse`,
+    the leg stands where it was put, on its wheel."""
+    s = _standing(m, 0.0, *STAND)
+    settled = s.settle(dict(zip(ACTUATORS, static_torque(0.0, *STAND))))
+    assert settled.stable
+    assert settled.residual <= 1e-6
+    for name in m.coordinates:
+        assert abs(settled.moved[name]) < 1e-5
+    assert settled.contacts["tyre"].normal == pytest.approx(
+        weight_carried(), rel=1e-3)

@@ -36,11 +36,12 @@ case=Choice(CASES)))`, where `fn(point)` reads each axis by name and raises
 returns its `Worst`: the least slack over a seeded Sobol set, every corner and
 a Powell polish, with where, n, the seed, the pre-polish best and the coverage.
 `Band("m2", BANDS)` searches a parameter's tolerance band, and
-`state=Coordinates(mechanism, PARAMS, within=, poses=)` gives `fn` a ready
-`p.state`, compiled with the point's band values; a point that cannot close
-is rejected under the loop that refused it. A margin's `truth=` is evaluated
-at the worst point and the pre-polish best, and `worst.truth` says whether it
-agrees with `fn` within `agree=`.
+`state=Coordinates(mechanism, PARAMS, within=, poses=, rest_on=)` gives `fn`
+a ready `p.state`, compiled with the point's band values and each `rest_on`
+contact touching; a point that cannot close is rejected under the loop that
+refused it. A margin's `truth=` is evaluated at the worst point and the
+pre-polish best, and `worst.truth` says whether it agrees with `fn` within
+`agree=`.
 
 `armature.drive` sizes actuators from a mission (ADR 0006). A `Motor`
 names the basis of every constant: `Kt(1.22, per="A_rms", side="output")`,

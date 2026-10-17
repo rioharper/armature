@@ -38,8 +38,8 @@ Two axes touch the mechanism. A `Band` is a parameter's tolerance band, and
 `Coordinates` its independent coordinates as a ready `State`, compiled
 with the point's band values and placed by the sampler's map, so the
 search and the sampler mean one set of states by "over the envelope". A
-point the map refuses is `Infeasible`, under the loop, joint or envelope
-that refused it.
+point the map refuses is `Infeasible`, under the loop, joint, envelope or
+`rest_on` contact that refused it.
 
 A margin with a `truth` is confirmed where the search ends: `truth` is
 evaluated at the worst point and at the pre-polish best, each the very
@@ -248,17 +248,22 @@ class Band(Interval):
 
 class Coordinates(_Axis):
     """A mechanism's independent coordinates, as a ready `State` at rest:
-    `Coordinates(mechanism, params, within=None, poses=None)`, with
-    `within` and `poses` as `armature.sample` takes them. Name the axis
-    `state` and `fn` reads `p.state`.
+    `Coordinates(mechanism, params, within=None, poses=None,
+    rest_on=None)`, with `within`, `poses` and `rest_on` as
+    `armature.sample` takes them. Name the axis `state` and `fn` reads
+    `p.state`.
 
     Each point is mapped by the sampler's `unit_cube`: every hinge and
     slide over its joint range or `within`, every loop closed, every
-    floating body inside its pose envelope. Its corners are the corners of
-    those ranges. A point the map refuses, a loop that cannot close or a
-    pose outside the envelope, raises `Infeasible` with the map's reason,
-    such as `"loop 'pin'"`. In a `Worst`'s `at` the state is written as its
-    independent coordinates, by name.
+    floating body inside its pose envelope, and each contact `rest_on`
+    names brought to touch by solving its coordinate, which is then no
+    axis: `rest_on={"tyre": "y"}` stands a torso on its wheel at every
+    point. Its corners are the corners of those ranges. A point the map
+    refuses, a loop that cannot close, a pose outside the envelope or a
+    contact it cannot bring to touch, raises `Infeasible` with the map's
+    reason, such as `"loop 'pin'"` or `"contact 'tyre'"`. In a `Worst`'s
+    `at` the state is written as its independent coordinates, by name, a
+    solved one among them.
 
     The mechanism compiles once at `params`, when the space is made, which
     fixes the axes: a space's dimension is known before it is searched.
@@ -268,10 +273,12 @@ class Coordinates(_Axis):
     run of points with the same band values, compiles once. Like the
     compiled model, it is for one thread at a time."""
 
-    def __init__(self, mechanism, params, within=None, poses=None):
+    def __init__(self, mechanism, params, within=None, poses=None,
+                 rest_on=None):
         self.mechanism, self.params = mechanism, MappingProxyType(dict(params))
         self.within = MappingProxyType(dict(within or {}))
         self.poses = MappingProxyType(dict(poses or {}))
+        self.rest_on = MappingProxyType(dict(rest_on or {}))
         self._nominal = self._last = None  # each a (band values, UnitCube)
 
     @property
@@ -315,7 +322,8 @@ class Coordinates(_Axis):
             if kept is not None and kept[0] == key:
                 return kept[1]
         cube = unit_cube(compile(self.mechanism, {**self.params, **bands}),
-                         poses=self.poses, within=self.within)
+                         poses=self.poses, within=self.within,
+                         rest_on=self.rest_on)
         if self._nominal is None and not key:
             self._nominal = (key, cube)
             return cube
