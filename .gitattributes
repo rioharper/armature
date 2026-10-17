@@ -1,0 +1,3 @@
+# The eval scaffolds run under bash in WSL, which reads a CRLF as part of the
+# command; keep them LF whatever core.autocrlf says.
+evals/**/*.sh text eol=lf
