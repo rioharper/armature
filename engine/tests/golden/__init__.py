@@ -3,7 +3,9 @@
 Each directory's `mechanism.py` does `from params import ...`, as a project's
 does, so this loads each one in-process with its own `params.py` standing in
 as `params`, under unique module names: `golden.arm_2r` is that directory's
-mechanism module, its `params` the parameter module. The known answers are in
+mechanism module, its `params` the parameter module. A project with a
+`missions.py` and a `drive.py` has them loaded the same way, as its
+`missions` and `drive`. The known answers are in
 `answers.py`, beside the directories and never inside one.
 """
 
@@ -24,20 +26,31 @@ def _module(path, name):
     return module
 
 
+PARTS = ("params", "mechanism", "missions", "drive")  # in import order
+
+
 def load(name):
     """The golden project `name`'s mechanism module, its params module as
-    `.params`."""
-    params = _module(HERE / name / "params.py", f"golden.{name}.params")
-    shadowed = sys.modules.get("params")
-    sys.modules["params"] = params
+    `.params`, and its missions and drive modules, where it has them, as
+    `.missions` and `.drive`."""
+    shadowed = {part: sys.modules.get(part) for part in PARTS}
+    loaded = {}
     try:
-        mechanism = _module(HERE / name / "mechanism.py", f"golden.{name}")
+        for part in PARTS:
+            path = HERE / name / f"{part}.py"
+            if path.is_file():
+                own = f"golden.{name}" + ("" if part == "mechanism"
+                                          else f".{part}")
+                loaded[part] = sys.modules[part] = _module(path, own)
     finally:
-        if shadowed is None:
-            del sys.modules["params"]
-        else:
-            sys.modules["params"] = shadowed
-    mechanism.params = params
+        for part, module in shadowed.items():
+            if module is None:
+                sys.modules.pop(part, None)
+            else:
+                sys.modules[part] = module
+    mechanism = loaded.pop("mechanism")
+    for part, module in loaded.items():
+        setattr(mechanism, part, module)
     return mechanism
 
 

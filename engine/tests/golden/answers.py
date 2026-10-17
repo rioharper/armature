@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from mpmath import mp
 
 from golden import cable_platform, spring_cable, wheel_leg
+from golden import parallelogram
 
 
 @dataclass(frozen=True)
@@ -208,6 +209,73 @@ CABLE_SAG = Answer(
     value=_m * G / _k * 1e3, unit="mm", bait=0.0,
     how="m g / k, the cable's stretch under the bob's weight; an "
         "inextensible cable does not stretch")
+
+# --- the parallelogram: its stop's peak bus voltage --------------------------
+
+def _stop():
+    """The stop's terms, in mpmath: J1's inertia J11, and J2's holding
+    torque from the coupling M12 = (m2 a r2 + m4 r4 c) cos(θ1 − φ), with φ
+    held, so J2 must supply M12 θ̈1 + ∂M12/∂θ1 θ̇1²."""
+    p, s = parallelogram.PARAMS, parallelogram.missions
+    mp_ = {k: mp.mpf(v) for k, v in p.items()}
+    j11 = (2 * mp_["I"] + mp_["m1"] * mp_["r1"] ** 2
+           + mp_["m4"] * mp_["r4"] ** 2 + mp_["m2"] * mp_["a"] ** 2
+           + mp_["N1"] ** 2 * mp_["J_m"])
+    k = mp_["m2"] * mp_["a"] * mp_["r2"] + mp_["m4"] * mp_["r4"] * mp_["c"]
+    w0, rate = mp.mpf(s.SLEW_SPEED), mp.mpf(s.SLEW_SPEED) / s.STOP_TIME
+    phi = mp.mpf(s.HELD) + mp.pi / 2
+
+    def held(t):
+        """J2's motor torque at t into the stop (N m)."""
+        theta = s.START + w0 * t - rate * t * t / 2
+        omega = w0 - rate * t
+        return k * (mp.cos(theta - phi) * -rate
+                    - mp.sin(theta - phi) * omega ** 2) / mp_["N2"]
+
+    return j11, w0, rate, held
+
+
+def stop_returned(t):
+    """The energy (J) the stop has returned to the bus by `t` (s): the
+    kinetic energy J1 gives up, ½J11(ω0² − ω²), less the copper loss
+    R_φ ∫(i1² + i2²), i = τ/Kt in d-q. The driver and gearbox are lossless,
+    and J2 does no work, φ held, so its current is all loss."""
+    drive = parallelogram.params.DRIVE
+    j11, w0, rate, held = _stop()
+    kt = mp.mpf(drive["kt"]) / mp.sqrt(3)  # d-q, from per A_rms, wye
+    r = mp.mpf(drive["r"]) / 2              # per phase, from line to line
+    i1 = j11 * rate / parallelogram.PARAMS["N1"] / kt
+    t = mp.mpf(t)
+    copper = r * (i1 ** 2 * t + mp.quad(lambda u: (held(u) / kt) ** 2,
+                                        [0, t]))
+    return j11 * (w0 ** 2 - (w0 - rate * t) ** 2) / 2 - copper
+
+
+def _most_returned():
+    """The most net energy the stop returns, and when (s): where J1's
+    returned power J11 α ω falls to the copper loss, just short of rest."""
+    stop = parallelogram.missions.STOP_TIME
+    turn = mp.findroot(lambda t: mp.diff(stop_returned, t), 0.95 * stop)
+    assert 0 < turn < stop
+    return stop_returned(turn), turn
+
+
+with mp.workdps(20):
+    _drive = parallelogram.params.DRIVE
+    _e, STOP_TURN = _most_returned()
+    STOP_RETURNED = float(_e)
+    _v0, _c = mp.mpf(_drive["v_bus"]), mp.mpf(_drive["c_bus"])
+    _peak = mp.sqrt(_v0 ** 2 + 2 * _e / _c)
+    STOP_CAPACITANCE = float(2 * _e / (_drive["v_max"] ** 2 - _v0 ** 2))
+
+PEAK_BUS_VOLTAGE = Answer(
+    value=float(_peak), unit="V", bait=_drive["v_bus"],
+    how="V = √(V₀² + 2E/C) on the capacitance alone, the source a PSU that "
+        "cannot sink: E the most the stop returns, ½J11(ω0² − ω²) less the "
+        "copper loss R_φ ∫(i1² + i2²) dt, J11 = 2I + m1 r1² + m4 r4² + m2 a² "
+        "+ N1² J_m, J2's current holding φ against the coupling "
+        "(m2 a r2 + m4 r4 c) cos(θ1 − φ); the bait is the PSU's own V₀, a "
+        "bus that never rises")
 
 ANSWERS = {name: value for name, value in globals().items()
            if isinstance(value, Answer)}

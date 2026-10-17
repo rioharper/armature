@@ -47,8 +47,10 @@ def mechanism(p):
         site("Q_coupler", body="coupler", pos=(p["a"], p["c"], 0)),
         site(TOOL, body="fore", pos=(p["a"], -p["b"], 0)),
         loop("parallelogram", "Q_coupler", "Q_fore"),
-        actuator("J1_motor", joint="J1", gear=p["N1"]),
-        actuator("J2_motor", joint="J2", gear=p["N2"]),
+        actuator("J1_motor", joint="J1", gear=p["N1"],
+                 rotor_inertia=p["J_m"]),
+        actuator("J2_motor", joint="J2", gear=p["N2"],
+                 rotor_inertia=p["J_m"]),
         gravity((0, -p["g"], 0)),
     ]
 
