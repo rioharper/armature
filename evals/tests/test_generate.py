@@ -195,6 +195,18 @@ def test_a_red_team_cases_false_alarm_grader_is_a_diagnostic(name):
     assert "peeked-read.md" in files and "red-team-dispatched.md" in files
 
 
+@pytest.mark.parametrize("name", _family(generate.Review))
+def test_a_false_alarm_is_failed_only_on_a_quoted_finding(name):
+    """#124's hand check: the judge flagged robustness points beside an
+    item the list calls correct, and kept no reason. The rubric fails only
+    on a finding it quotes, and never on one that leaves a listed number
+    standing."""
+    rubric = generate.graders(name)["false-alarm.md"]
+    assert "quote" in rubric.lower()
+    assert "robustness" in rubric
+    assert "the trap's own check" in rubric
+
+
 @pytest.mark.parametrize("text", [
     "tilt 20.76°", "20.8 °", "20.76 deg", "about 20.8 degrees", "21 degrees,"])
 def test_an_angles_window_reads_its_unit_spelled_out(text):
