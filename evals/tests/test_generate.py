@@ -106,8 +106,24 @@ def test_each_catch_grader_reads_the_report_and_quotes_the_answer(name):
             "peeked-bash.md"} <= set(files)
 
 
-def test_there_are_red_team_cases():
-    assert len(_family(generate.Review)) >= 2
+REVIEW = {"spring-cable-review": "spring_cable",
+          "cable-platform-review": "cable_platform",
+          "wheel-leg-review": "wheel_leg",
+          "parallelogram-review": "parallelogram"}
+
+
+@pytest.mark.parametrize("name", REVIEW)
+def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(name):
+    """Spec #113's four red-team cases, each a generated case whose scaffold
+    lays down its golden mechanism and then its own planted derivation."""
+    assert isinstance(generate.CASES.get(name), generate.Review)
+    scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
+        encoding="utf-8")
+    assert re.search(rf'planted\.sh" {REVIEW[name]} "\$here/planted"\s*$',
+                     scaffold)
+    assert (generate.EVALS / name / "planted").is_dir()
+    case = (generate.EVALS / name / "case.yaml").read_text(encoding="utf-8")
+    assert f"name: {name}\n" in case
 
 
 @pytest.mark.parametrize("name", _family(generate.Review))

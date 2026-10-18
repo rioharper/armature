@@ -344,6 +344,61 @@ CASES.update({
                "29.0 V peak",
                "J11, the inertia J1 brakes, about 0.297 kg m², the rotors' "
                "N1² J_m included")),
+    "cable-platform-review": Review(
+        answer="PLATFORM_TILT",
+        planted="docs/testing/DR-01-deck-tilt.md",
+        claim=r"deck tilt at the edge midpoint, on A3 \| ([\d.]+)°",
+        bait='A3, "the platform stays level"',
+        where=("the Released? cell of A3 in analysis/derivation/00_setup.md",
+               "test_truth_release_a3_at_the_room_centre in "
+               "analysis/model/deck_checks.py, or release_at_the_centre() in "
+               "analysis/model/deck.py",
+               "the deck's tilt on A3: deck_tilt() and DERIVED in "
+               "analysis/model/deck.py, or "
+               "test_the_deck_meets_r2_at_the_edge_midpoint",
+               "the decision in docs/testing/DR-01-deck-tilt.md that R-2 "
+               "holds at the edge midpoint on A3"),
+        side="the deck's tilt at the edge midpoint with the platform free "
+             "to turn, settled on params.py's rest lengths, such as {answer} "
+             "or another number over R-2's 2°, from the full description or "
+             "from the platform's moment balance. The room centre's tilt of "
+             "about 0° is the derivation's own number, not a recomputed one",
+        sound=("the mechanism description in mechanism.py and the values "
+               "in params.py",
+               "the level-platform law at the room centre: four equal "
+               "tensions of 12.16 N, T = m g L / 4h, on 2.9743 m rest "
+               "lengths",
+               "at the room centre the platform, free to turn, hangs level",
+               "the level variant rests at the edge midpoint on params.py's "
+               "rest lengths, every cable taut: the law balances the "
+               "platform's forces there")),
+    "wheel-leg-review": Review(
+        answer="SKID_CLEARANCE",
+        planted="docs/testing/DR-01-skid-clearance.md",
+        claim=r"least skid clearance at α = 0 \| ([\d.]+) mm",
+        bait='A3, "first contact is checked at α = 0"',
+        where=("the Released? cell of A3 in analysis/derivation/00_setup.md",
+               "SKID_AT_ALPHA_ZERO and its space, straight(), in "
+               "analysis/model/skid.py",
+               "test_r5_holds_at_alpha_zero in analysis/model/skid_checks.py",
+               "the decision in docs/testing/DR-01-skid-clearance.md that R-5 "
+               "holds"),
+        side="the skid pad's least clearance over the hips' whole working "
+             "range, the tyre on the floor, such as {answer} or another "
+             "negative number, the pad below the floor, found with the leg "
+             "swung away from α = 0, from the engine's clearance searched "
+             "over both hips or from B_y − C_y + r − r_skid. The 50.79 mm at "
+             "α = 0 is the derivation's own number, not a recomputed one",
+        sound=("the mechanism description in mechanism.py and the values "
+               "in params.py",
+               "the skid pad as a sphere of radius R_SKID round the knee B on "
+               "link l1, against the floor",
+               "the pad's clearance at home, 120 mm, B_y − C_y + r − r_skid",
+               "the tyre carries the weight of everything but the rail cart, "
+               "49.05 N, g times the torso, the wheel and the four links",
+               "the postures straight() returns stand the pin C under the "
+               "hips' midpoint, α = 0, and over them the least clearance is "
+               "50.79 mm")),
 })
 
 FINDING = """\

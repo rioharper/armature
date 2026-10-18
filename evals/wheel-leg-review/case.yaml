@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: wheel-leg-review
+description: >-
+  Red team, on the five-bar leg on a wheel. The planted derivation searches
+  the knee's skid pad clearance only over the postures at alpha = 0, the leg
+  straight under the hips, as A3 scopes it, so R-5 reads met. Caught when the
+  review raises a BLOCKER or MAJOR there with the least skid_clearance over
+  the hips' whole working range, found away from alpha = 0, inside the
+  window.
+tags: [red-team, wheel_leg]
+context:
+  scaffold_script: scaffold.sh
