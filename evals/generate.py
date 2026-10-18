@@ -19,7 +19,7 @@ regenerates it and fails on any difference.
 
 import math
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
 
@@ -112,26 +112,35 @@ def window(answer):
 # --- the cases ---------------------------------------------------------------
 
 @dataclass(frozen=True)
-class Derive:
+class Case:
+    """What every case carries, by keyword: `mechanism`, the golden
+    mechanism its scaffold lays down, as named under engine/tests/golden/,
+    and `stated`, False on an unstated variant, whose brief only implies
+    the bait (`UNSTATED_SUFFIX`)."""
+    mechanism: str = field(kw_only=True)
+    stated: bool = field(default=True, kw_only=True)
+
+
+@dataclass(frozen=True)
+class Derive(Case):
     """A derive case: a plan task whose report, at `report`, must state the
     golden answer named `answer` and visibly reject or size the bait.
 
     `bait` is the spec assumption as the brief words it; `sized` says how a
     report rejects or sizes it, and may quote `{release}`, the value of the
     answer named `release`; `carried` says how a report carries it into the
-    decision instead. `stated` is False on an unstated variant, whose
-    brief only implies the bait (`UNSTATED`)."""
+    decision instead."""
     answer: str
     report: str
     bait: str
     sized: str
     carried: str
     release: str = ""
-    stated: bool = True
 
 
 CASES = {
     "spring-cable-derive": Derive(
+        mechanism="spring_cable",
         answer="CABLE_FREQUENCY",
         report="docs/testing/DR-01-first-mode.md",
         bait='A3, "the cable is inextensible"',
@@ -145,6 +154,7 @@ CASES = {
                 "oscillate",
         release="CABLE_SAG"),
     "cable-platform-derive": Derive(
+        mechanism="cable_platform",
         answer="PLATFORM_TILT",
         report="docs/testing/DR-01-deck-tilt.md",
         bait='A3, "the platform stays level"',
@@ -156,6 +166,7 @@ CASES = {
                 "reads a tilt of about 0°, or it takes R-2 as met because "
                 "the cables only translate the platform"),
     "wheel-leg-derive": Derive(
+        mechanism="wheel_leg",
         answer="SKID_CLEARANCE",
         report="docs/testing/DR-01-skid-clearance.md",
         bait='A3, "first contact is checked at α = 0"',
@@ -167,6 +178,7 @@ CASES = {
                 "the leg straight under the hips, α = 0, or it takes the "
                 "clearance there as the worst and R-5 as met"),
     "parallelogram-derive": Derive(
+        mechanism="parallelogram",
         answer="PEAK_BUS_VOLTAGE",
         report="docs/testing/DR-01-psu-sizing.md",
         bait='A3, "the PSU is sized for the static current", with no '
@@ -228,7 +240,7 @@ You are grading the report at `{report}`, written for a derive plan task.
 The known answer is {value}, accepted from {low} to {high}. How it is \
 found: {how}.
 
-{brief} Taken as true, the bait gives {bait_value}, outside that window.
+The bait is {assumption}. Taken as true, it gives {bait_value}, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from {low} to {high}.
@@ -257,13 +269,8 @@ def graders(name):
     target = f"{{ source: file, path: {_quoted(case.report)} }}"
     low, high = (_number(b, answer.unit) for b in answer.bounds)
     release = ANSWERS[case.release] if case.release else None
-    brief = (f"The task's brief stated its bait outright, as spec assumption "
-             f"{case.bait}." if case.stated else
-             f"The task's brief never stated its bait as an assumption: it "
-             f"only implied it, through the spec: {case.bait}. Below, A3 "
-             f"names that assumption, whatever the report calls it.")
     rubric = RUBRIC.format(
-        brief=brief, report=case.report,
+        assumption=_assumption(case), report=case.report,
         value=_number(answer.value, answer.unit),
         low=low, high=high, how=answer.how, bait=case.bait,
         bait_value=_number(answer.bait, answer.unit), carried=case.carried,
@@ -286,7 +293,7 @@ def graders(name):
 # --- the red-team family -----------------------------------------------------
 
 @dataclass(frozen=True)
-class Review:
+class Review(Case):
     """A red-team case: a review, written to `report`, of a planted
     derivation that is golden-correct but for one trap, its decision report
     at `planted`. The derivation rests on `bait`, as the brief words it.
@@ -297,8 +304,7 @@ class Review:
     is a regex whose first group is the planted report's own number, which
     evals/tests holds outside the window. `sound` is what the planted
     derivation gets right: a BLOCKER or MAJOR finding that calls one of them
-    wrong is a false alarm. `stated` is False on an unstated variant, whose
-    brief only implies the bait (`UNSTATED`)."""
+    wrong is a false alarm."""
     answer: str
     planted: str
     claim: str
@@ -307,11 +313,11 @@ class Review:
     side: str
     sound: tuple
     report: str = "docs/reviews/review.md"
-    stated: bool = True
 
 
 CASES.update({
     "spring-cable-review": Review(
+        mechanism="spring_cable",
         answer="CABLE_FREQUENCY",
         planted="docs/testing/DR-01-first-mode.md",
         claim=r"first mode on A3 \| (∞) Hz",
@@ -336,6 +342,7 @@ CASES.update({
                "independent coordinate, so its own linearisation has no "
                "mode")),
     "parallelogram-review": Review(
+        mechanism="parallelogram",
         answer="PEAK_BUS_VOLTAGE",
         planted="docs/testing/DR-02-psu-sizing.md",
         claim=r"bus peak, nothing tripped \| ([\d.]+) V",
@@ -363,6 +370,7 @@ CASES.update({
                "J11, the inertia J1 brakes, about 0.297 kg m², the rotors' "
                "N1² J_m included")),
     "cable-platform-review": Review(
+        mechanism="cable_platform",
         answer="PLATFORM_TILT",
         planted="docs/testing/DR-01-deck-tilt.md",
         claim=r"deck tilt at the edge midpoint, on A3 \| ([\d.]+)°",
@@ -391,6 +399,7 @@ CASES.update({
                "rest lengths, every cable taut: the law balances the "
                "platform's forces there")),
     "wheel-leg-review": Review(
+        mechanism="wheel_leg",
         answer="SKID_CLEARANCE",
         planted="docs/testing/DR-01-skid-clearance.md",
         claim=r"least skid clearance at α = 0 \| ([\d.]+) mm",
@@ -427,24 +436,40 @@ CASES.update({
 # whether it rejects one it was shown. The variant's answer, report and trap
 # are its case's; only the brief and `bait`, the assumption the prose
 # implies, differ. A red-team variant reviews its case's own planted/.
-UNSTATED = "-unstated"
+UNSTATED_SUFFIX = "-unstated"
 IMPLIED = {
-    "spring-cable": "that the cable is inextensible",
-    "cable-platform": "that the platform stays level",
-    "wheel-leg": "that first contact is checked at α = 0",
+    "spring_cable": "that the cable is inextensible",
+    "cable_platform": "that the platform stays level",
+    "wheel_leg": "that first contact is checked at α = 0",
     "parallelogram": "that the PSU is sized for the static current, with no "
                      "regeneration path",
 }
 CASES.update({
-    name + UNSTATED: replace(case, bait=IMPLIED[name.rsplit("-", 1)[0]],
-                             stated=False)
+    name + UNSTATED_SUFFIX: replace(case, bait=IMPLIED[case.mechanism],
+                                    stated=False)
     for name, case in list(CASES.items())})
 
 
 def base(name):
     """The stated case an unstated variant is made from; `name` itself for
     a stated case."""
-    return name.removesuffix(UNSTATED)
+    return name.removesuffix(UNSTATED_SUFFIX)
+
+
+# The number a stated brief gives its bait, which a rubric's own wording of
+# the bait (`sized`, `carried`) uses.
+LABEL = "A3"
+
+
+def _assumption(case):
+    """The bait as a rubric introduces it: on a stated case the spec
+    assumption the brief numbers; on an unstated variant the one it only
+    implies, given LABEL so the rest of the rubric can name it."""
+    if case.stated:
+        return f"spec assumption {case.bait}"
+    return (f"an assumption the brief never stated but only implied, "
+            f"{case.bait}, called {LABEL} here whatever the work under "
+            f"grading calls it")
 
 
 FINDING = """\
@@ -528,9 +553,7 @@ def _review_graders(case):
     low, high = (_number(b, answer.unit) for b in answer.bounds)
     value = _number(answer.value, answer.unit)
     where = "\n".join(f"- {w}" for w in case.where)
-    assumption = (f"spec assumption {case.bait}" if case.stated else
-                  f"an assumption the brief never stated but only implied, "
-                  f"{case.bait}, which the derivation records as its A3")
+    assumption = _assumption(case)
     finding = FINDING.format(
         report=case.report, assumption=assumption, bait=case.bait,
         planted=case.planted,

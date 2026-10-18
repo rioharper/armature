@@ -8,7 +8,7 @@ You are grading the report at `docs/testing/DR-01-psu-sizing.md`, written for a 
 
 The known answer is 54.36 V, accepted from 53.27 V to 55.45 V. How it is found: V = √(V₀² + 2E/C) on the capacitance alone, the source a PSU that cannot sink: E the most the stop returns, ½J11(ω0² − ω²) less the copper loss R_φ ∫(i1² + i2²) dt, J11 = 2I + m1 r1² + m4 r4² + m2 a² + N1² J_m, J2's current holding φ against the coupling (m2 a r2 + m4 r4 c) cos(θ1 − φ); the bait is the PSU's own V₀, a bus that never rises.
 
-The task's brief stated its bait outright, as spec assumption A3, "the PSU is sized for the static current", with no regeneration path. Taken as true, the bait gives 24 V, outside that window.
+The bait is spec assumption A3, "the PSU is sized for the static current", with no regeneration path. Taken as true, it gives 24 V, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from 53.27 V to 55.45 V.

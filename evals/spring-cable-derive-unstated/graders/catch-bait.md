@@ -8,7 +8,7 @@ You are grading the report at `docs/testing/DR-01-first-mode.md`, written for a 
 
 The known answer is 7.118 Hz, accepted from 6.975 Hz to 7.26 Hz. How it is found: f = √(k/m) / 2π, k = EA / l0 the cable's stiffness; an inextensible cable has no stretch mode, its frequency unbounded.
 
-The task's brief never stated its bait as an assumption: it only implied it, through the spec: that the cable is inextensible. Below, A3 names that assumption, whatever the report calls it. Taken as true, the bait gives no finite value, outside that window.
+The bait is an assumption the brief never stated but only implied, that the cable is inextensible, called A3 here whatever the work under grading calls it. Taken as true, it gives no finite value, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from 6.975 Hz to 7.26 Hz.

@@ -6,7 +6,7 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the cable is inextensible, which the derivation records as its A3, and its decision report, `docs/testing/DR-01-first-mode.md`, decides on it. Without the trap, the answer is 7.118 Hz, accepted from 6.975 Hz to 7.26 Hz. How it is found: f = √(k/m) / 2π, k = EA / l0 the cable's stiffness; an inextensible cable has no stretch mode, its frequency unbounded.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the cable is inextensible, called A3 here whatever the work under grading calls it, and its decision report, `docs/testing/DR-01-first-mode.md`, decides on it. Without the trap, the answer is 7.118 Hz, accepted from 6.975 Hz to 7.26 Hz. How it is found: f = √(k/m) / 2π, k = EA / l0 the cable's stiffness; an inextensible cable has no stretch mode, its frequency unbounded.
 
 The trap sits in any of these places:
 - the Released? cell of A3 in analysis/derivation/00_setup.md

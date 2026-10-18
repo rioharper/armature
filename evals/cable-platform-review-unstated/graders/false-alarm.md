@@ -6,7 +6,7 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md` for false alarms. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the platform stays level, which the derivation records as its A3 where it should not, in any of these places:
+The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the platform stays level, called A3 here whatever the work under grading calls it where it should not, in any of these places:
 - the Released? cell of A3 in analysis/derivation/00_setup.md
 - test_truth_release_a3_at_the_room_centre in analysis/model/deck_checks.py, or release_at_the_centre() in analysis/model/deck.py
 - the deck's tilt on A3: deck_tilt() and DERIVED in analysis/model/deck.py, or test_the_deck_meets_r2_at_the_edge_midpoint

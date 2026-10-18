@@ -6,7 +6,7 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md` for false alarms. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the PSU is sized for the static current, with no regeneration path, which the derivation records as its A3 where it should not, in any of these places:
+The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the PSU is sized for the static current, with no regeneration path, called A3 here whatever the work under grading calls it where it should not, in any of these places:
 - JOG_STOP and the DRIVE_MARGINS declared on it in analysis/model/bus.py
 - the Released? cell of A3 in analysis/derivation/00_setup.md
 - the regeneration section of docs/testing/DR-02-psu-sizing.md

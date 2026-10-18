@@ -75,9 +75,11 @@ def _a_case_and_its_unstated_variant(mechanism, names):
     Returns the stated case's name."""
     stated = [n for n in names if generate.CASES[n].stated]
     assert len(stated) == 1, (mechanism, names)
-    assert sorted(names) == [stated[0], stated[0] + generate.UNSTATED], (
+    assert sorted(names) == [stated[0],
+                             stated[0] + generate.UNSTATED_SUFFIX], (
         mechanism, names)
     for name in names:
+        assert generate.CASES[name].mechanism == mechanism, name
         case = (generate.EVALS / name / "case.yaml").read_text(
             encoding="utf-8")
         assert f"name: {name}\n" in case
@@ -232,7 +234,8 @@ NUMBERED_BAIT = re.compile(r"^- A3\. ", re.M)
 
 def test_every_case_has_an_unstated_variant():
     stated = [n for n, c in generate.CASES.items() if c.stated]
-    assert sorted(UNSTATED) == sorted(n + generate.UNSTATED for n in stated)
+    assert sorted(UNSTATED) == sorted(n + generate.UNSTATED_SUFFIX
+                                      for n in stated)
 
 
 @pytest.mark.parametrize("name", UNSTATED)
@@ -267,8 +270,8 @@ def test_an_unstated_variants_rubric_says_the_bait_was_only_implied(name):
                                   or stated["catch-finding.md"])
 
 
-@pytest.mark.parametrize("name", [n for n in UNSTATED
-                                  if n.endswith("-review" + generate.UNSTATED)])
+@pytest.mark.parametrize("name", [n for n in UNSTATED if isinstance(
+    generate.CASES[n], generate.Review)])
 def test_an_unstated_red_team_variant_reviews_its_cases_planted_derivation(
         name):
     scaffold = (generate.EVALS / name / "scaffold.sh").read_text(

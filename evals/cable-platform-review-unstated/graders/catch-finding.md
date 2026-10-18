@@ -6,7 +6,7 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the platform stays level, which the derivation records as its A3, and its decision report, `docs/testing/DR-01-deck-tilt.md`, decides on it. Without the trap, the answer is 20.76 °, accepted from 20.35 ° to 21.18 °. How it is found: the angle between the platform's axis and the vertical, acos(R_zz), at the rest where Σ T_i u_i = m g ẑ and Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ) = 0, each T_i = EA/l0_i · (|span_i| − l0_i) while taut, hung at (0.5, 2.0, 1.2) m on the level-platform law's rest lengths.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the platform stays level, called A3 here whatever the work under grading calls it, and its decision report, `docs/testing/DR-01-deck-tilt.md`, decides on it. Without the trap, the answer is 20.76 °, accepted from 20.35 ° to 21.18 °. How it is found: the angle between the platform's axis and the vertical, acos(R_zz), at the rest where Σ T_i u_i = m g ẑ and Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ) = 0, each T_i = EA/l0_i · (|span_i| − l0_i) while taut, hung at (0.5, 2.0, 1.2) m on the level-platform law's rest lengths.
 
 The trap sits in any of these places:
 - the Released? cell of A3 in analysis/derivation/00_setup.md
