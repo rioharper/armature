@@ -837,7 +837,8 @@ def _powell(f, x):
         _, furthest = _step_bounds(x, direction)
         f_far = f(x + min(furthest, 1.0) * direction)
         if f_start > f_far:
-            t = (2.0 * (f_start + f_far - 2.0 * fx) * (f_start - fx - gain) ** 2
+            t = (2.0 * (f_start + f_far - 2.0 * fx)
+                 * (f_start - fx - gain) ** 2
                  - gain * (f_start - f_far) ** 2)
             if t < 0.0:
                 x, fx, step = _line(f, x, direction, fx)

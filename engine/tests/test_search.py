@@ -17,13 +17,14 @@ from collections import Counter
 
 import numpy as np
 import pytest
-from scipy.optimize import minimize, root
+from scipy.optimize import minimize, minimize_scalar, root
 from scipy.spatial.transform import Rotation
 
 import armature
 from armature import (Band, Budget, Choice, Coordinates, Direction, Infeasible,
                       Interval, Margin, Rejected, Space, body, joint, search)
 from armature.sampler import unit_cube
+from armature.search import _line, _step_bounds
 from golden import arm_2r, cable_platform, spring_cable
 from test_fixture_cable_platform import (ANCHORS, ATTACH, EA, LEVEL, gradient,
                                          law, params, potential, settled)
@@ -534,15 +535,30 @@ def test_the_result_is_never_above_the_pre_polish_best():
         return slack[-1]
 
     # The trap: the worst is a corner, straight down, at a kink. The
-    # polish's line searches close in on it, landing on it only where a
-    # component rounds to zero, so no point the polish evaluates is better
-    # than the corner it started from, and most are worse.
+    # polish's line searches close in on it, and most of what they evaluate
+    # is worse than the corner they started from.
     worst = search(margin(fn, load=Direction("xy")))
     polish = slack[64 + 4:]
-    assert polish and min(polish) >= 0.0
     assert sum(s > 0.0 for s in polish) > len(polish) / 2
     assert worst.value == worst.pre_polish == 0.0
     assert worst.at == worst.pre_polish_at == {"load": (0.0, -1.0, 0.0)}
+
+
+def test_a_line_step_never_ends_worse_than_its_start():
+    # From a kink, bounded Brent's minimum lands beside it, never on it:
+    # worse than the start. The step is refused and the start stands.
+    def kink(u):
+        return abs(u[0] - 0.3) + abs(u[1] - 0.6)
+
+    x = np.array([0.3, 0.6])
+    along = minimize_scalar(lambda a: kink(x + a * np.array([1.0, 0.0])),
+                            bounds=_step_bounds(x, np.array([1.0, 0.0])),
+                            method="bounded")
+    assert along.fun > 0.0
+    for direction in ([1.0, 0.0], [0.0, 1.0], [1.0, -1.0]):
+        at, value, step = _line(kink, x, np.array(direction), 0.0)
+        assert value == 0.0 and not np.any(step)
+        assert np.array_equal(at, x)
 
 
 def test_bounded_powell_alone_ends_worse_than_a_corner_it_starts_on():
