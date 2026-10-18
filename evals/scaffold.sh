@@ -5,10 +5,12 @@
 # unsandboxed, as the operator, in the run's empty workspace, with no
 # CLAUDE_PLUGIN_ROOT, so the plugin is reached from this file's own path. It:
 #  1. copies the model template's runner (run_all.py, test_derivation.py and
-#     pyproject.toml) into analysis/model/, then engine/tests/golden/<mechanism>/
-#     over it: the description, params.py, and drive.py and missions.py where
-#     the mechanism has them. The rest of the template is derive's to copy at
-#     Milestone 0;
+#     pyproject.toml) into analysis/model/, then the golden project over it:
+#     the description, params.py, and drive.py and missions.py where the
+#     mechanism has them. The rest of the template is derive's to copy at
+#     Milestone 0. The golden project is evals/golden/<mechanism>/ in the
+#     copy copy.sh makes, which holds no engine/tests/ (#128), and
+#     engine/tests/golden/<mechanism>/ in a checkout, for evals/tests;
 #  2. points pyproject.toml's engine at this plugin's engine/, by absolute path;
 #  3. runs `uv sync` with a persistent cache of its own, so the agent's
 #     sandboxed `uv run` needs no network grant (#112);
@@ -19,7 +21,8 @@ mechanism="${1:?usage: scaffold.sh <mechanism>}"
 evals="$(cd "$(dirname "$0")" && pwd)"
 root="$(dirname "$evals")"
 template="$root/skills/armature-derive/scripts/model_template"
-golden="$root/engine/tests/golden/$mechanism"
+golden="$evals/golden/$mechanism"
+[ -d "$golden" ] || golden="$root/engine/tests/golden/$mechanism"
 [ -f "$golden/mechanism.py" ] || { echo "no golden project at $golden" >&2; exit 1; }
 # uv reads a Windows path under Git Bash, a POSIX one elsewhere.
 engine="$(cd "$root/engine" && { pwd -W 2>/dev/null || pwd; })"
