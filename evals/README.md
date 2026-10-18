@@ -10,7 +10,7 @@ A run is caught only when every `catch-*` grader passed and no `peeked-*` grader
 - **A derive case** has two catch graders. `catch-window` is a regex that finds a number inside the answer's **window**, with its unit, in the report the brief fixes. `catch-bait` is an llm rubric that passes only when the bait is visibly rejected or sized. The right number with the bait carried into the decision is not caught.
 - **A red-team case** has two catch graders, both on the review the brief fixes. `catch-finding` is an llm rubric that passes only on a BLOCKER or MAJOR finding whose **Where** names the planted location and whose **Finding** carries a number recomputed on the trap's side; a MINOR or QUESTION is not caught. `catch-window` is the same generated window as a derive case's.
 - **`false-alarm`**, on a red-team case, is a diagnostic llm rubric that passes when no other BLOCKER or MAJOR finding calls something wrong that the golden derivation shows correct. It fails only on a finding it quotes, with the listed item it contradicts; a robustness point beside a listed item, or a finding on the trap's own check, is not a false alarm. `score.py` counts a run where it failed as a false alarm and reports the count beside the catch. False alarms never gate.
-- **`peeked-*`** passes when a Read, Grep, Glob or Bash call names `golden`, `evals/` or `test_fixture`, other than as an exclusion: an argument to `-not -path`, `! -path`, `--exclude` or `--exclude-dir`, or a glob opening with `!`. The engine's tests, answers included, are readable through the engine path in the case's `pyproject.toml`, so a run that read them is voided.
+- **`peeked-*`** passes when a Read, Grep, Glob or Bash call names `golden`, `evals/` or `test_fixture`, other than as an exclusion: an argument to `-not -path`, `! -path`, `--exclude` or `--exclude-dir`, or a glob opening with `!`. The agent reads the plugin through the engine path in the case's `pyproject.toml`. The copy a run starts from holds no `engine/tests/` (#128), but a run that reaches the answers some other way, such as through a checkout, is still voided.
 - **An unstated variant**, `<case>-unstated`, is its case with the bait taken out of the brief's numbered assumptions: no A3, the assumption implied only by the spec's prose. It has its case's answer, window, trap and graders, with only the bait's wording changed, so it measures finding the assumption and not only rejecting it. It gates like every other case. #124's baseline caught all 24 of its runs with the bait stated, so the stated cases alone cannot show the plugin is what catches the trap; the variant's Δ is the one to read.
 - **Every other grader is a diagnostic,** reported and never part of the catch: `skill-derive`, `red-team-dispatched` and `ran-the-model`.
 
@@ -23,9 +23,15 @@ On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; th
 - `bwrap` and `socat`, the sandbox's backend (`sudo apt install bubblewrap socat`);
 - `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
-Run the suite from a `git archive` copy of the plugin on the distro's own filesystem, such as `~/armature-eval`. From Git Bash, a script runs as `MSYS_NO_PATHCONV=1 wsl -d <distro> -- bash -l <script on /mnt/c/...>`.
+Run the suite from the copy of the plugin that `evals/copy.sh` makes on the distro's own filesystem. In the distro, from the main checkout (WSL's git can't follow a worktree's `.git`):
 
-**The plugin directory must hold no hard links.** `claude plugin eval` refuses every case, at $0 and before turn 1, if any file in the plugin has more than one name. uv hardlinks a venv's files from its cache, so an `engine/.venv` synced the default way trips it. Sync it with copies instead, `UV_LINK_MODE=copy uv sync` in `engine/`, or run the suite from a `git archive HEAD` copy of the plugin.
+```
+bash /mnt/c/<checkout>/evals/copy.sh ~/armature-eval
+```
+
+It writes a `git archive` of HEAD into an empty directory, so commit first. It leaves out `engine/tests/`, the fixture tests and the golden answers the agent could otherwise read through the engine path (#128). The golden projects go to `evals/golden/` instead, which the harness masks from the agent. From Git Bash, a script runs as `MSYS_NO_PATHCONV=1 wsl -d <distro> -- bash -l <script on /mnt/c/...>`.
+
+**The plugin directory must hold no hard links.** `claude plugin eval` refuses every case, at $0 and before turn 1, if any file in the plugin has more than one name. uv hardlinks a venv's files from its cache, so an `engine/.venv` synced the default way trips it. `copy.sh`'s copy has no venv, so it holds none.
 
 ## The commands
 
@@ -70,6 +76,7 @@ The agent's workspace is `sealed/home/cwd/`, and the session's trace is `out/tra
 
 ```
 evals/
+  copy.sh                 makes the copy of the plugin a run starts from
   scaffold.sh             lays down a case's spec-stage project
   planted.sh              lays down a red-team case's: scaffold.sh, then its planted/
   generate.py             writes every case's graders from its golden Answer
@@ -84,7 +91,7 @@ evals/
   <case>-unstated/        its unstated variant: the same files, but no planted/
 ```
 
-**The scaffold** runs unsandboxed, as you, in the run's empty workspace. It has no `CLAUDE_PLUGIN_ROOT`, so it reaches the plugin from its own path. It copies the model template's runner into `analysis/model/`, then `engine/tests/golden/<mechanism>/` over it. It points `pyproject.toml` at this plugin's `engine/` by absolute path, runs `uv sync` against the persistent cache `/var/tmp/armature-eval-uv`, and commits. The agent's sandboxed `uv run` then needs no network grant.
+**The scaffold** runs unsandboxed, as you, in the run's empty workspace. It has no `CLAUDE_PLUGIN_ROOT`, so it reaches the plugin from its own path. It copies the model template's runner into `analysis/model/`, then the golden project over it: `evals/golden/<mechanism>/` in `copy.sh`'s copy, `engine/tests/golden/<mechanism>/` in a checkout. It points `pyproject.toml` at this plugin's `engine/` by absolute path, runs `uv sync` against the persistent cache `/var/tmp/armature-eval-uv`, and commits. The agent's sandboxed `uv run` then needs no network grant.
 
 **A red-team case's scaffold** is `planted.sh`. It runs `scaffold.sh`, copies the template's gates and review artifact (`layout.py`, `layout_checks.py`, `report_truth.py`) beside the runner, then the case's `planted/` over the workspace, and commits the derivation on top of the spec stage. `planted/` holds only what the derivation adds, its notes, model modules and decision report, written by hand: golden-correct but for one trap, planted where derive's own gates let it through. The description is never in it, so it keeps one source. **An unstated red-team variant** has no `planted/` of its own: its `scaffold.sh` passes its case's to `planted.sh`, so the derivation under review has one source. `evals/tests/test_planted.py` assembles each stated case through its own `scaffold.sh` and holds three things: `run_all.py` passes; the planted report's number, `claim` in `CASES`, lies outside the window and the golden value inside; and no number inside the window appears in the planted derivation or in what its run prints, so a review cannot copy it. It is marked slow, and on Windows runs the scaffold under Git's bash with uv's own cache (`ARMATURE_EVAL_UV_CACHE`).
 

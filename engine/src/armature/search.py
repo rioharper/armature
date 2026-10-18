@@ -275,7 +275,46 @@ class Coordinates(_Axis):
     values (1–3 ms), and a band that would change the axes raises. The
     nominal compile and the last are kept, so a space without a band, or a
     run of points with the same band values, compiles once. Like the
-    compiled model, it is for one thread at a time."""
+    compiled model, it is for one thread at a time.
+
+    A contact margin, worked: a cart rides a vertical slide `z` on its
+    wheel, and an arm swings ±1 rad about y from a pivot `h` above the
+    wheel's centre, a toe of radius `r_toe` at its tip, `l` out. Both
+    shapes are contacts against the floor; `rest_on` stands the cart on
+    its wheel at every point, and the margin is the toe's clearance,
+    `armature.clearance`. By hand, `z` = r and the least clearance is
+    r + h − l sin 1 − r_toe = 103.78 mm, at swing = 1, the toe lowest:
+
+    >>> import numpy as np
+    >>> from armature import (Coordinates, Margin, Space, body, clearance,
+    ...                       contact, joint, search, shape)
+    >>> FLOOR = shape("plane", pos=(0, 0, 0), axis=(0, 0, 1))
+    >>> def cart(p):
+    ...     return [
+    ...         body("cart", mass=2.0, com=(0, 0, 0),
+    ...              inertia=np.diag([0.01] * 3)),
+    ...         body("arm", mass=0.5, com=(p["l"] / 2, 0, p["h"]),
+    ...              inertia=np.diag([0.001] * 3)),
+    ...         joint("z", "slide", parent="world", child="cart",
+    ...               point=(0, 0, 0), axis=(0, 0, 1), range=(-0.5, 0.5)),
+    ...         joint("swing", "hinge", parent="cart", child="arm",
+    ...               point=(0, 0, p["h"]), axis=(0, 1, 0), range=(-1, 1)),
+    ...         contact("wheel", body="cart", against=FLOOR, mu=0.8,
+    ...                 shape=shape("sphere", pos=(0, 0, 0), radius=p["r"])),
+    ...         contact("toe", body="arm", against=FLOOR, mu=0.8,
+    ...                 shape=shape("sphere", pos=(p["l"], 0, p["h"]),
+    ...                             radius=p["r_toe"])),
+    ...     ]
+    >>> P = {"r": 0.05, "h": 0.2, "l": 0.15, "r_toe": 0.02}
+    >>> space = Space(state=Coordinates(cart, P, rest_on={"wheel": "z"}))
+    >>> worst = search(Margin("toe clearance",
+    ...                       lambda pt: clearance(pt.state, "toe") * 1e3,
+    ...                       "mm", over=space))
+    >>> round(worst.value, 2), worst.passes
+    (103.78, True)
+    >>> {n: round(v, 6) for n, v in worst.at["state"].items()}
+    {'z': 0.05, 'swing': 1.0}
+    """
 
     def __init__(self, mechanism, params, within=None, poses=None,
                  rest_on=None):
