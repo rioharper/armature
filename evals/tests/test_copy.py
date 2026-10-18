@@ -16,7 +16,7 @@ import subprocess
 import pytest
 
 import generate
-from test_planted import _bash, _run
+from conftest import find_bash, run
 
 ROOT = generate.EVALS.parent
 GOLDEN = ROOT / "engine" / "tests" / "golden"
@@ -34,45 +34,49 @@ def _tree(index):
 
 
 @pytest.fixture(scope="module")
-def copy(tmp_path_factory):
-    bash = _bash()
+def plugin_copy(tmp_path_factory):
+    bash = find_bash()
     if bash is None:
         pytest.skip("no bash to run copy.sh with")
     tmp = tmp_path_factory.mktemp("copy")
     dest = tmp / "armature-eval"
-    made = _run([bash, (generate.EVALS / "copy.sh").as_posix(),
-                 dest.as_posix(), _tree(tmp / "index")], ROOT)
+    made = run([bash, (generate.EVALS / "copy.sh").as_posix(),
+                dest.as_posix(), _tree(tmp / "index")], ROOT)
     assert made.returncode == 0, made.stdout + made.stderr
     return dest
 
 
-def test_the_copy_holds_no_engine_tests(copy):
-    assert (copy / "engine" / "src" / "armature" / "__init__.py").is_file()
-    assert (copy / "engine" / "pyproject.toml").is_file()
-    assert not (copy / "engine" / "tests").exists()
-    assert not list(copy.rglob("test_fixture_*"))
-    assert not list(copy.rglob("answers.py"))
+def test_the_copy_holds_no_engine_tests(plugin_copy):
+    engine = plugin_copy / "engine"
+    assert (engine / "src" / "armature" / "__init__.py").is_file()
+    assert (engine / "pyproject.toml").is_file()
+    assert not (engine / "tests").exists()
+    assert not list(plugin_copy.rglob("test_fixture_*"))
+    assert not list(plugin_copy.rglob("answers.py"))
 
 
-def test_the_copy_holds_every_golden_project_under_evals(copy):
+def test_the_copy_holds_every_golden_project_under_evals(plugin_copy):
     assert MECHANISMS
     for name in MECHANISMS:
         for source in (GOLDEN / name).glob("*.py"):
-            copied = copy / "evals" / "golden" / name / source.name
+            copied = plugin_copy / "evals" / "golden" / name / source.name
             assert copied.read_bytes() == source.read_bytes(), copied
 
 
 @pytest.mark.slow
-def test_a_scaffold_in_the_copy_lays_down_the_golden_project(copy, tmp_path):
+def test_a_scaffold_in_the_copy_lays_down_the_golden_project(plugin_copy,
+                                                             tmp_path):
     """The scaffold reads the golden project from the copy, and points the
     project's engine at the copy's engine, which holds no tests."""
-    cache = _run(["uv", "cache", "dir"], tmp_path).stdout.strip()
-    scaffold = (copy / "evals" / "wheel-leg-derive" / "scaffold.sh").as_posix()
-    laid = _run([_bash(), scaffold], tmp_path, ARMATURE_EVAL_UV_CACHE=cache)
+    cache = run(["uv", "cache", "dir"], tmp_path).stdout.strip()
+    scaffold = (plugin_copy / "evals" / "wheel-leg-derive"
+                / "scaffold.sh").as_posix()
+    laid = run([find_bash(), scaffold], tmp_path,
+               ARMATURE_EVAL_UV_CACHE=cache)
     assert laid.returncode == 0, laid.stdout + laid.stderr
     model = tmp_path / "analysis" / "model"
     for source in (GOLDEN / "wheel_leg").glob("*.py"):
         assert (model / source.name).read_bytes() == source.read_bytes()
-    engine = (copy / "engine").resolve().as_posix()
+    engine = (plugin_copy / "engine").resolve().as_posix()
     pyproject = (model / "pyproject.toml").read_text(encoding="utf-8")
     assert f'path = "{engine}"' in pyproject.replace("\\", "/")

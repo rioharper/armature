@@ -14,16 +14,12 @@ scaffold runs under Git's bash, never WSL's, and its uv cache is uv's own.
 """
 
 import math
-import os
 import re
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
 import generate
+from conftest import find_bash, run
 from golden.answers import ANSWERS
 
 # The stated cases only: an unstated variant lays down its case's own
@@ -32,41 +28,20 @@ REVIEWS = [name for name, case in generate.CASES.items()
            if isinstance(case, generate.Review) and case.stated]
 
 
-def _bash():
-    """Git's bash on Windows, where `bash` on PATH may be WSL's; else
-    `bash`."""
-    if sys.platform == "win32":
-        git = shutil.which("git")
-        if git:
-            for up in Path(git).resolve().parents:
-                if (up / "bin" / "bash.exe").is_file():
-                    return str(up / "bin" / "bash.exe")
-        return None
-    return shutil.which("bash")
-
-
-def _run(args, cwd, **env):
-    """`args` in `cwd`, outside this suite's venv, its output as UTF-8."""
-    outside = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace",
-                          env={**outside, "PYTHONIOENCODING": "utf-8", **env})
-
-
 @pytest.fixture(scope="module", params=REVIEWS)
 def assembled(request, tmp_path_factory):
     """`(name, workspace, run_all's output)`: the case's project, laid down
     by its scaffold in an empty directory and run."""
-    name, bash = request.param, _bash()
+    name, bash = request.param, find_bash()
     if bash is None:
         pytest.skip("no bash to run the scaffold with")
     work = tmp_path_factory.mktemp(name)
-    cache = _run(["uv", "cache", "dir"], work).stdout.strip()
+    cache = run(["uv", "cache", "dir"], work).stdout.strip()
     scaffold = (generate.EVALS / name / "scaffold.sh").as_posix()
-    laid = _run([bash, scaffold], work, ARMATURE_EVAL_UV_CACHE=cache)
+    laid = run([bash, scaffold], work, ARMATURE_EVAL_UV_CACHE=cache)
     assert laid.returncode == 0, laid.stdout + laid.stderr
-    ran = _run(["uv", "run", "--frozen", "python", "run_all.py"],
-               work / "analysis" / "model")
+    ran = run(["uv", "run", "--frozen", "python", "run_all.py"],
+              work / "analysis" / "model")
     return name, work, ran
 
 
