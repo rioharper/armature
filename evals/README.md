@@ -28,7 +28,7 @@ Run the suite from a `git archive` copy of the plugin on the distro's own filesy
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $60 of plan usage and takes about 1.5 h:
+**The release run,** before every version bump. The first, #124, cost $39 of plan usage and took 79 min:
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
@@ -60,6 +60,8 @@ chmod 700 /tmp/claude-eval-XXXXXX /tmp/claude-eval-XXXXXX/sealed
 ```
 
 The agent's workspace is `sealed/home/cwd/`, and the session's trace is `out/trace.jsonl`. Don't run git, or anything else that loads configuration from its working directory, inside the kept directory.
+
+**Keep the workspaces off `/tmp`.** WSL's `/tmp` is a RAM disk (7.6 GB on a 16 GB machine), and a kept run is about 300 MB, so a full release run with `--keep-temp` fills it. The scaffolds then fail, and later runs fail to start with `ENOSPC`, while `--json` still reports `partial: false`. The harness keeps its workspaces under `TMPDIR`, so point it at the distro's disk (`export TMPDIR=~/eval-tmp`), and clear old `claude-eval-*` directories first.
 
 **Read it before the distro stops.** WSL empties `/tmp` when the distro shuts down, which it does soon after its last process exits. Chain the reading onto the eval in the same script, or keep a WSL shell open while you read. Once it is gone, the judge's `evidence` in `results/<timestamp>/aggregate-result.json` still holds the text of each file an llm grader read.
 
