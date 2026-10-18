@@ -24,7 +24,7 @@ def test_the_description_compiles_exactly():
 
 
 def test_truth_the_centre_hangs_on_four_equal_tensions():
-    """00_setup.md (2): at the room centre each cable carries
+    """00_setup.md (1): at the room centre each cable carries
     T = m g L / 4h, and the platform rests where it was hung."""
     params, want = centre_law(PARAMS["m"])
     rest = armature.compile(mechanism, params).at(

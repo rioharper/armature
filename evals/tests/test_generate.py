@@ -2,7 +2,7 @@
 
 import math
 import re
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
 
@@ -53,24 +53,34 @@ def test_the_checked_in_graders_are_what_generate_writes():
         "evals/generate.py`")
 
 
-DERIVE = {"spring-cable-derive": "spring_cable",
-          "cable-platform-derive": "cable_platform",
-          "wheel-leg-derive": "wheel_leg",
-          "parallelogram-derive": "parallelogram"}
+GOLDEN = generate.EVALS.parent / "engine" / "tests" / "golden"
+MECHANISMS = sorted(p.parent.name for p in GOLDEN.glob("*/mechanism.py")
+                    if p.parent.name != "arm_2r")
 
 
-@pytest.mark.parametrize("name", DERIVE)
-def test_every_golden_mechanism_but_the_2r_arm_has_a_derive_case(name):
-    """Spec #113's four derive cases, each a generated case whose scaffold
-    lays down its golden mechanism."""
-    assert isinstance(generate.CASES.get(name), generate.Derive)
-    scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
+def _scaffolded(kind, laid):
+    """The cases of `kind` whose scaffold.sh has a line `laid` matches,
+    the line that lays down their golden mechanism."""
+    return [name for name, case in generate.CASES.items()
+            if isinstance(case, kind)
+            and re.search(laid, (generate.EVALS / name / "scaffold.sh")
+                          .read_text(encoding="utf-8"), re.M)]
+
+
+def test_the_golden_mechanisms_are_read_from_the_golden_source():
+    assert len(MECHANISMS) >= 4 and "arm_2r" not in MECHANISMS
+
+
+@pytest.mark.parametrize("mechanism", MECHANISMS)
+def test_every_golden_mechanism_but_the_2r_arm_has_a_derive_case(mechanism):
+    """Spec #113's derive cases: each golden mechanism has one generated
+    case whose scaffold lays it down."""
+    names = _scaffolded(generate.Derive,
+                        rf'scaffold\.sh" {mechanism}\s*$')
+    assert len(names) == 1, (mechanism, names)
+    case = (generate.EVALS / names[0] / "case.yaml").read_text(
         encoding="utf-8")
-    assert re.search(rf"scaffold\.sh\" {DERIVE[name]}\s*$", scaffold)
-    golden = generate.EVALS.parent / "engine" / "tests" / "golden"
-    assert (golden / DERIVE[name] / "mechanism.py").is_file()
-    case = (generate.EVALS / name / "case.yaml").read_text(encoding="utf-8")
-    assert f"name: {name}\n" in case
+    assert f"name: {names[0]}\n" in case
 
 
 @pytest.mark.parametrize("name", generate.CASES)
@@ -106,24 +116,42 @@ def test_each_catch_grader_reads_the_report_and_quotes_the_answer(name):
             "peeked-bash.md"} <= set(files)
 
 
-REVIEW = {"spring-cable-review": "spring_cable",
-          "cable-platform-review": "cable_platform",
-          "wheel-leg-review": "wheel_leg",
-          "parallelogram-review": "parallelogram"}
-
-
-@pytest.mark.parametrize("name", REVIEW)
-def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(name):
-    """Spec #113's four red-team cases, each a generated case whose scaffold
-    lays down its golden mechanism and then its own planted derivation."""
-    assert isinstance(generate.CASES.get(name), generate.Review)
-    scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
+@pytest.mark.parametrize("mechanism", MECHANISMS)
+def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(
+        mechanism):
+    """Spec #113's red-team cases: each golden mechanism has one generated
+    case whose scaffold lays it down and then its own planted derivation."""
+    names = _scaffolded(generate.Review,
+                        rf'planted\.sh" {mechanism} "\$here/planted"\s*$')
+    assert len(names) == 1, (mechanism, names)
+    assert (generate.EVALS / names[0] / "planted").is_dir()
+    case = (generate.EVALS / names[0] / "case.yaml").read_text(
         encoding="utf-8")
-    assert re.search(rf'planted\.sh" {REVIEW[name]} "\$here/planted"\s*$',
-                     scaffold)
-    assert (generate.EVALS / name / "planted").is_dir()
-    case = (generate.EVALS / name / "case.yaml").read_text(encoding="utf-8")
-    assert f"name: {name}\n" in case
+    assert f"name: {names[0]}\n" in case
+
+
+FIGURE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?) ?(?:kg m²|mm|Hz|J|N|V|m)\b")
+NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")
+
+
+@pytest.mark.parametrize("name", _family(generate.Review))
+def test_each_figure_a_red_team_case_calls_sound_is_in_its_planted_files(
+        name):
+    """`sound` copies figures by hand from the planted derivation; each
+    must be some number in the planted files rounded to its places, so a
+    planted figure that moves fails here until `sound` follows it."""
+    planted = generate.EVALS / name / "planted"
+    numbers = [Decimal(n) for p in planted.rglob("*") if p.is_file()
+               for n in NUMBER.findall(p.read_text(encoding="utf-8"))]
+    figures = [Decimal(f) for sound in generate.CASES[name].sound
+               for f in FIGURE.findall(sound)]
+    assert figures, name
+    for figure in figures:
+        places = Decimal(1).scaleb(figure.as_tuple().exponent)
+        assert any(n.quantize(places, ROUND_HALF_UP) == figure
+                   for n in numbers
+                   if n.as_tuple().exponent <= figure.as_tuple().exponent), (
+            f"{figure} is in no planted file of {name}")
 
 
 @pytest.mark.parametrize("name", _family(generate.Review))

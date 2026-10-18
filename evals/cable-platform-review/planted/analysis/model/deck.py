@@ -40,9 +40,9 @@ def placed(point):
 
 
 def centre_law(m=PARAMS["m"]):
-    """00_setup.md (2): the level-platform law at the room centre. By the
-    rig's symmetry it pays out four equal tensions, each carrying a quarter
-    of the weight along its cable, T = m g L / 4h, on rest lengths
+    """00_setup.md (1) and (2): the level-platform law at the room centre.
+    By the rig's symmetry it pays out four equal tensions, each carrying a
+    quarter of the weight along its cable, T = m g L / 4h, on rest lengths
     L / (1 + T / EA). Returns the parameters and the tensions (N)."""
     span = ANCHORS - (HOME + ATTACH)
     length = np.linalg.norm(span, axis=1)

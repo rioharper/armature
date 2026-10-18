@@ -284,8 +284,7 @@ WHEEL_LEG = {
     "margins": Known("I", _in(
         _LEG, "test_the_holds_peak_current_is_the_largest_static_torque"),
         note="each hip motor matches the grid's largest static torque "
-             "over Kt, on the A = 1 face; motor A's is the face worst "
-             "the polish missed until #126"),
+             "over Kt, on the A = 1 face (#126)"),
     "capacitance_needed": Covered(("parallelogram", "capacitance_needed"),
                                   "a hold never regenerates, so the bus "
                                   "never rises for it to size"),

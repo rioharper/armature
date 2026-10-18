@@ -3,14 +3,14 @@
 Answer: the seeded sampler's own output from before the map was split out of
 it, pinned as a SHA-256 of every number it returned (each rounded to 1e-6,
 so a platform's last bits keep it and any real change moves it), and the
-ranges and envelopes each map was asked for. Trap: a map that draws its own randomness, so the same point gives two
-states, or a split that moves the seeded draws by one call and changes every
-sample a project's checks were written from.
+ranges and envelopes each map was asked for. Trap: a map that draws its own
+randomness, so the same point gives two states, or a split that moves the
+seeded draws by one call and changes every sample a project's checks were
+written from.
 """
 
 import hashlib
 import math
-from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -99,15 +99,35 @@ GOLDEN = {
 }
 
 
-def digest(samples, solved=()):
-    """A SHA-256 over every number `samples` returned, in order: each
-    state's coordinates and rates, the accelerations, every rejected draw
-    and its reason, the clearances and the residual. Each number is
-    rounded to 1e-6 (metres, radians, per second) first.
+def fields(samples, solved=()):
+    """Every name and number `samples` returned, in order: the draw count,
+    each state's coordinates and rates, the accelerations, every rejected
+    draw and its reason, the clearances and the residual.
 
     A rejected draw's `solved` coordinates, the ones `rest_on` solves, are
     left out: main drew a value for each and kept it in the rejection,
     though nothing read it, and the map has no axis for it."""
+    yield float(samples.drawn)
+    for s in samples.states:
+        yield from s.q.values()
+        yield from s.qd.values()
+    for qdd in samples.qdd or ():
+        for name, value in qdd.items():
+            yield from (name, value)
+    for r in samples.rejected:
+        yield r.reason
+        for name, value in r.q.items():
+            if name not in solved:
+                yield from (name, value)
+    for name, gaps in samples.clearance.items():
+        yield from (name, gaps)
+    yield samples.residual
+
+
+def digest(samples, solved=(), nudge=None):
+    """A SHA-256 over `fields(samples, solved)`, each number rounded to
+    1e-6 (metres, radians, per second) first, and nudged by `nudge` before
+    that where one is given."""
     h = hashlib.sha256()
 
     def put(value):
@@ -117,29 +137,14 @@ def digest(samples, solved=()):
             for part in value:
                 put(part)
         else:  # whole micro-units, so -0.0 and 0.0 are one number
-            micro = np.rint(np.asarray(value, dtype=float) * 1e6)
+            value = np.asarray(value, dtype=float)
+            if nudge is not None:
+                value = nudge(value)
+            micro = np.rint(value * 1e6)
             h.update(np.ascontiguousarray(micro, dtype="<i8").tobytes())
 
-    put(float(samples.drawn))
-    for s in samples.states:
-        for value in s.q.values():
-            put(value)
-        for value in s.qd.values():
-            put(value)
-    for qdd in samples.qdd or ():
-        for name, value in qdd.items():
-            put(name)
-            put(value)
-    for r in samples.rejected:
-        put(r.reason)
-        for name, value in r.q.items():
-            if name not in solved:
-                put(name)
-                put(value)
-    for name, gaps in samples.clearance.items():
-        put(name)
-        put(gaps)
-    put(samples.residual)
+    for value in fields(samples, solved):
+        put(value)
     return h.hexdigest()
 
 
@@ -147,26 +152,6 @@ def digest(samples, solved=()):
 def test_the_seeded_samples_are_unchanged_from_main(case):
     build, draw = CASES[case]
     assert digest(draw(build()), SOLVED.get(case, ())) == GOLDEN[case]
-
-
-def nudged(samples, f):
-    """`samples` with `f` applied to every number it holds."""
-    def each(value):
-        if isinstance(value, tuple):
-            return tuple(each(part) for part in value)
-        return f(np.asarray(value, dtype=float))
-
-    def keyed(values):
-        return {name: each(value) for name, value in values.items()}
-
-    return SimpleNamespace(
-        drawn=samples.drawn,
-        states=[SimpleNamespace(q=keyed(s.q), qd=keyed(s.qd))
-                for s in samples.states],
-        qdd=[keyed(qdd) for qdd in samples.qdd or ()],
-        rejected=[r._replace(q=keyed(r.q)) for r in samples.rejected],
-        clearance=keyed(samples.clearance),
-        residual=each(samples.residual))
 
 
 @pytest.mark.parametrize("case", ["planar torso", "wheel leg"])
@@ -186,9 +171,9 @@ def test_the_digest_survives_last_bit_noise_but_not_a_real_change(case):
         return f
 
     for k in (-4, -1, 1, 4):
-        assert digest(nudged(samples, ulps(k)), solved) == pinned
-    assert digest(nudged(samples, lambda x: x + 2e-12), solved) == pinned
-    assert digest(nudged(samples, lambda x: x + 2e-6), solved) != pinned
+        assert digest(samples, solved, ulps(k)) == pinned
+    assert digest(samples, solved, lambda x: x + 2e-12) == pinned
+    assert digest(samples, solved, lambda x: x + 2e-6) != pinned
 
 
 # --- the map: a point in the unit cube to a state -----------------------------

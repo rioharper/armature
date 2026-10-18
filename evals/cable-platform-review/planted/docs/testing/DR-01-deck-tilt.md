@@ -27,7 +27,7 @@ I expected exactly that: the attachment square is a scaled copy of the anchor sq
 | deck tilt at the edge midpoint, on A3 | 0.000° | deck.deck_tilt() |
 | R-2's limit | 2° | spec R-2 |
 | A3 released at the room centre: largest turn | 7.0e-14° | test_truth_release_a3_at_the_room_centre |
-| the law's tension at the room centre, each cable | 12.161 N | deck.centre_law(), (2) |
+| the law's tension at the room centre, each cable | 12.161 N | deck.centre_law(), (1) |
 | tensions at the edge midpoint, c1 to c4 | 16.78, 3.71, 3.71, 16.78 N | deck.at_the_edge() |
 
 ## The write-back
