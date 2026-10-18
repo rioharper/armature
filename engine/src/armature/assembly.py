@@ -317,8 +317,10 @@ class Closure:
         actuated = {model.joint(int(model.actuator_trnid[i, 0])).name
                     for i in range(model.nu)}
         followers = {c.a for c in compiled.description.couples}
+        # int(): `in` calls the enum's ==, which on Linux is False against
+        # a numpy int32 (the int32's own ==, on the left, is True) (#127)
         scalar = [n for n in compiled.coordinates
-                  if model.jnt_type[model.joint(n).id] in
+                  if int(model.jnt_type[model.joint(n).id]) in
                   (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE)]
         order = {n: i for i, n in enumerate(compiled.coordinates)}
         candidates = sorted(
