@@ -1,12 +1,14 @@
 """`generate.py`: each case's graders, generated from its golden `Answer`."""
 
+import math
 import re
 from decimal import Decimal
 
 import pytest
 
 import generate
-from golden.answers import ANSWERS, CABLE_FREQUENCY, SKID_CLEARANCE, Answer
+from golden.answers import (ANSWERS, CABLE_FREQUENCY, PLATFORM_TILT,
+                            SKID_CLEARANCE, Answer)
 
 
 def found(answer, text):
@@ -49,6 +51,34 @@ def test_the_checked_in_graders_are_what_generate_writes():
     assert generate.stale() == [], (
         "stale graders; run `uv run --project engine python "
         "evals/generate.py`")
+
+
+DERIVE = {"spring-cable-derive": "spring_cable",
+          "cable-platform-derive": "cable_platform",
+          "wheel-leg-derive": "wheel_leg",
+          "parallelogram-derive": "parallelogram"}
+
+
+@pytest.mark.parametrize("name", DERIVE)
+def test_every_golden_mechanism_but_the_2r_arm_has_a_derive_case(name):
+    """Spec #113's four derive cases, each a generated case whose scaffold
+    lays down its golden mechanism."""
+    assert isinstance(generate.CASES.get(name), generate.Derive)
+    scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
+        encoding="utf-8")
+    assert re.search(rf"scaffold\.sh\" {DERIVE[name]}\s*$", scaffold)
+    golden = generate.EVALS.parent / "engine" / "tests" / "golden"
+    assert (golden / DERIVE[name] / "mechanism.py").is_file()
+    case = (generate.EVALS / name / "case.yaml").read_text(encoding="utf-8")
+    assert f"name: {name}\n" in case
+
+
+@pytest.mark.parametrize("name", generate.CASES)
+def test_each_window_finds_its_answer_and_not_its_bait(name):
+    answer = ANSWERS[generate.CASES[name].answer]
+    assert found(answer, f"{answer.value:.4g} {answer.unit}")
+    if math.isfinite(answer.bait):
+        assert not found(answer, f"{answer.bait:.4g} {answer.unit}")
 
 
 @pytest.mark.parametrize("name", generate.CASES)
@@ -107,6 +137,18 @@ def test_a_red_team_cases_false_alarm_grader_is_a_diagnostic(name):
     assert "type: llm" in rubric and case.report in rubric
     assert all(sound in rubric for sound in case.sound)
     assert "peeked-read.md" in files and "red-team-dispatched.md" in files
+
+
+@pytest.mark.parametrize("text", [
+    "tilt 20.76°", "20.8 °", "20.76 deg", "about 20.8 degrees", "21 degrees,"])
+def test_an_angles_window_reads_its_unit_spelled_out(text):
+    assert found(PLATFORM_TILT, text)
+
+
+@pytest.mark.parametrize("text", [
+    "20.8 rad", "20.8 degC", "20.8 degreesC", "0.3623 rad", "0.0°"])
+def test_an_angles_window_reads_no_other_unit(text):
+    assert not found(PLATFORM_TILT, text)
 
 
 def test_a_window_across_a_power_of_ten_reads_both_sides():

@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: wheel-leg-derive
+description: >-
+  Derive, on the five-bar leg on a wheel. The brief's spec assumption A3 says
+  first contact is checked at alpha = 0, the leg straight under the hips; the
+  decision is whether the knee's skid pad clears the floor over the hips'
+  working range. Caught when the report gives the least skid_clearance inside
+  the window and finds it searched away from alpha = 0.
+tags: [derive, wheel_leg]
+context:
+  scaffold_script: scaffold.sh

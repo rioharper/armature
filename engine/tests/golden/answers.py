@@ -277,5 +277,11 @@ PEAK_BUS_VOLTAGE = Answer(
         "(m2 a r2 + m4 r4 c) cos(θ1 − φ); the bait is the PSU's own V₀, a "
         "bus that never rises")
 
+BUS_CAPACITANCE = Answer(
+    value=STOP_CAPACITANCE * 1e3, unit="mF", bait=_drive["c_bus"] * 1e3,
+    how="C = 2E / (V_trip² − V₀²), the least capacitance that holds the "
+        "stop's peak under the drivers' trip, E as for the peak bus voltage; "
+        "the bait is the drivers' own capacitance, nothing added")
+
 ANSWERS = {name: value for name, value in globals().items()
            if isinstance(value, Answer)}

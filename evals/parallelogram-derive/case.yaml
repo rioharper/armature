@@ -1,0 +1,14 @@
+schema_version: "1.1"
+name: parallelogram-derive
+description: >-
+  Derive, on the balanced parallelogram arm. The brief's spec assumption A3
+  says the PSU is sized for the static current, with no regeneration path;
+  the decision is the PSU and the bus capacitance for the missions. Caught
+  when the report gives the stop's peak bus voltage sqrt(V0^2 + 2E/C) inside
+  the window and sizes a path for the energy the stop returns. The golden
+  drive.py declares no DRIVE_MARGINS (#121): declaring and searching them is
+  derive's work here, and a scaffold whose run_all.py already failed on the
+  bus would hand the agent the trap.
+tags: [derive, parallelogram]
+context:
+  scaffold_script: scaffold.sh

@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: cable-platform-derive
+description: >-
+  Derive, on the platform on four cables. The brief's spec assumption A3 says
+  the platform stays level; the decision is whether the deck stays within 2
+  degrees of level at the edge midpoint, on the rest lengths the level law
+  set there. Caught when the report gives the settled tilt inside the window
+  and decides on the platform free to turn.
+tags: [derive, cable_platform]
+context:
+  scaffold_script: scaffold.sh

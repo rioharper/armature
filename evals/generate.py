@@ -74,6 +74,16 @@ def _escape(text):
     return "".join("\\" + c if c in r"\^$.|?*+()[]{}/" else c for c in text)
 
 
+# A unit a report may spell out instead of its symbol, longest first.
+SPELLED = {"°": ("degrees", "degree", "deg")}
+
+
+def _unit(unit):
+    names = (unit, *SPELLED.get(unit, ()))
+    return (_escape(unit) if len(names) == 1
+            else f"(?:{'|'.join(map(_escape, names))})")
+
+
 def window(answer):
     """A regex, JavaScript and Python alike, that finds a number inside
     `answer`'s window followed by its unit. Exact for a number of up to
@@ -96,7 +106,7 @@ def window(answer):
     alternatives += [p + r"\d+" for p in longer]
     before = r"(?<![\d.])" if sign else rf"(?<![\d.{MINUS}])"
     return (f"{before}{sign}(?:{'|'.join(alternatives)})"
-            rf"\s*{_escape(answer.unit)}(?![\w/])")
+            rf"\s*{_unit(answer.unit)}(?![\w/])")
 
 
 # --- the cases ---------------------------------------------------------------
@@ -132,6 +142,44 @@ CASES = {
                 "it takes R-4 as met because an inextensible cable cannot "
                 "oscillate",
         release="CABLE_SAG"),
+    "cable-platform-derive": Derive(
+        answer="PLATFORM_TILT",
+        report="docs/testing/DR-01-deck-tilt.md",
+        bait='A3, "the platform stays level"',
+        sized="it releases A3: it lets the platform turn, settling it or "
+              "balancing its moments as well as its forces on the cables' "
+              "rest lengths, and it decides R-2 on the tilt that gives "
+              "rather than on a level platform",
+        carried="It decides R-2 on A3: it says the deck stays level or "
+                "reads a tilt of about 0°, or it takes R-2 as met because "
+                "the cables only translate the platform"),
+    "wheel-leg-derive": Derive(
+        answer="SKID_CLEARANCE",
+        report="docs/testing/DR-01-skid-clearance.md",
+        bait='A3, "first contact is checked at α = 0"',
+        sized="it rejects A3: it checks the pad's clearance over the hips' "
+              "whole working range, not only with the leg straight under "
+              "the hips, and finds its worst away from α = 0, where the leg "
+              "swings out",
+        carried="It decides R-5 on A3: it checks the clearance only with "
+                "the leg straight under the hips, α = 0, or it takes the "
+                "clearance there as the worst and R-5 as met"),
+    "parallelogram-derive": Derive(
+        answer="PEAK_BUS_VOLTAGE",
+        report="docs/testing/DR-01-psu-sizing.md",
+        bait='A3, "the PSU is sized for the static current", with no '
+             'regeneration path',
+        sized="it rejects A3: it says the stop returns energy to the bus, "
+              "that the PSU behind its diode cannot sink it, so it lands on "
+              "the bus capacitance alone, and it sizes a path for it, such "
+              "as the bus capacitance that holds the stop under the "
+              "drivers' overvoltage trip, at least {release}, or a brake "
+              "resistor or shunt regulator",
+        carried="It sizes the PSU and the bus by the static or holding "
+                "current alone: it says the bus stays at the PSU's own "
+                "voltage, or that the drivers' own capacitance is enough, or "
+                "it takes R-6 as met without the energy the stop returns",
+        release="BUS_CAPACITANCE"),
 }
 
 # Every case's diagnostics, reported beside the catch and never part of it.
