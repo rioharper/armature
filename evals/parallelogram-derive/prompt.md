@@ -15,6 +15,6 @@ The spec's assumptions, as I wrote them:
 
 Requirement R-6 says no driver may trip in any mission in `missions.py`.
 
-Next in the plan is derive task DR-01: size the PSU and the bus capacitance for the missions. Give the peak bus voltage the stop drives the bus to as it stands, on the drivers' own capacitance, in volts, and say whether R-6 holds. Then give the PSU and the bus capacitance you would buy. Write the report to `docs/testing/DR-01-psu-sizing.md`.
+Next in the plan is derive task DR-01: size the PSU and the bus capacitance for the missions. Give the highest bus voltage any mission in `missions.py` reaches as it stands, on the drivers' own capacitance, in volts, and say whether R-6 holds. Then give the PSU and the bus capacitance you would buy. Write the report to `docs/testing/DR-01-psu-sizing.md`.
 
 I'm away until tomorrow, so don't wait for me: make the call, write the report, and stop.
