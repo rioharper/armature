@@ -44,8 +44,9 @@ copies. It holds the description's elements and their validation, the compiler, 
 queries on a state (`pose`, `jacobian`, `inverse`, `settle`, `wrench`, `linearise`,
 `release`), the reductions and `account`, the symbolic view, the sampler, the worst-case
 search (`armature.search`, which takes a `Margin` over a `Space` of named axes) and the
-review artifact. It is a standard Python package with its own tests, outside this file's rules, so
-a fix reaches a project as a version bump, never a re-copy. Its docstrings are its
+review artifact. It is a standard Python package, outside this file's rules, so a fix
+reaches a project as a version bump, never a re-copy. Its tests check it on the golden
+mechanisms, against the verb matrix in `engine/tests/golden/matrix.py` (ADR 0008). Its docstrings are its
 reference, and `armature/__init__.py` is the map.
 
 The project keeps its half beside its milestone modules:

@@ -17,12 +17,12 @@ The **catch rate** is the share of with-arm runs caught. `score.py` computes it,
 
 ## Where it runs
 
-On WSL2, `Ubuntu-24.04`, on the maintainer's machine. Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
+On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; the maintainer's is `Ubuntu`, now 26.04, not ADR 0008's `Ubuntu-24.04`. Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
 - `claude` 2.1.301 or later, logged in (`claude auth status`);
 - `bwrap` and `socat`, the sandbox's backend (`sudo apt install bubblewrap socat`);
 - `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
 
-Reach the plugin by its `/mnt/c/...` path. From Git Bash, a script runs as `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-24.04 -- bash -l <script on /mnt/c/...>`.
+Reach the plugin by its `/mnt/c/...` path. From Git Bash, a script runs as `MSYS_NO_PATHCONV=1 wsl -d <distro> -- bash -l <script on /mnt/c/...>`.
 
 **The plugin directory must hold no hard links.** `claude plugin eval` refuses every case, at $0 and before turn 1, if any file in the plugin has more than one name. uv hardlinks a venv's files from its cache, so an `engine/.venv` synced the default way trips it. Sync it with copies instead, `UV_LINK_MODE=copy uv sync` in `engine/`, or run the suite from a `git archive HEAD` copy of the plugin.
 
