@@ -497,15 +497,7 @@ def most_torque(n=21):
     return out
 
 
-@pytest.mark.parametrize("name", [
-    pytest.param("motor_A", marks=pytest.mark.xfail(strict=True, reason=(
-        "the search misses it: from the best Sobol point (A = 0.94) "
-        "scipy's bounded Powell line search along A accepts its line's "
-        "local minimum at A = -0.51, worse than its start, and never "
-        "returns to the A = 1 face; it reads 1.165 A_peak against the "
-        "grid's 0.983, and eight polish starts find it; ADR 0005's "
-        "revisit trigger, #126"))),
-    "motor_E"])
+@pytest.mark.parametrize("name", ["motor_A", "motor_E"])
 def test_the_holds_peak_current_is_the_largest_static_torque(hold_margins,
                                                              name):
     """Searched over the hips, each hip driver's peak-current margin is its

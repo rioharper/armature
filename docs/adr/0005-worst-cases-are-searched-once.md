@@ -44,3 +44,18 @@ margin's evaluation cost makes the default budget unaffordable.
 slack is above 0, for a limit that reaching is itself the failure. The bus's
 peak V is the one: a driver latches at its trip, so a bus that reaches the
 lowest trip has tripped it and stops there, at 0 V of slack.
+
+**Amended 2026-10-18 (#126):** the revisit trigger fired. On the wheel leg's
+hold, review found motor A's peak-current worst on the A = 1 face, 0.983
+A_peak, where the search read 1.165. From the best Sobol point, A = 0.94,
+scipy's bounded line search along A stepped to a basin at A = −0.51, worse
+than its start, and the polish never came back. The polish now runs
+Powell's iteration as scipy does, with one change in its line search:
+bounded Brent's local minimum is compared with the line's two ends, each on
+a face, and the least of the three is taken only where it is below the
+start. No step ends worse than its start, and a face worst is reached from
+a start near it. The rest of the method and the default budget stand.
+Raising `POLISH_STARTS` to eight found this worst only by starting from
+more points, and still missed a synthetic face worst behind a basin, which
+the changed line search finds. The cost is two evaluations per line search,
+drawn from the same per-start cap.
