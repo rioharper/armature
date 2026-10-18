@@ -1,6 +1,6 @@
 # Eval cases: the agent measured on golden mechanisms
 
-Tier 2 of [ADR 0008](../docs/adr/0008-the-agent-is-measured-on-golden-mechanisms.md). Each **eval case** runs the plugin's agent through `claude plugin eval` against a **golden mechanism** whose brief states its **bait** outright. Tier 1, the engine against the same mechanisms, is `uv run pytest` in `engine/`.
+Tier 2 of [ADR 0008](../docs/adr/0008-the-agent-is-measured-on-golden-mechanisms.md). Each **eval case** runs the plugin's agent through `claude plugin eval` against a **golden mechanism** whose brief states its **bait** outright, or, in the case's **unstated variant**, only implies it. Tier 1, the engine against the same mechanisms, is `uv run pytest` in `engine/`.
 
 ## The gate
 
@@ -9,8 +9,9 @@ The suite gates every version bump. A partial run, or any case caught in fewer t
 A run is caught only when every `catch-*` grader passed and no `peeked-*` grader did:
 - **A derive case** has two catch graders. `catch-window` is a regex that finds a number inside the answer's **window**, with its unit, in the report the brief fixes. `catch-bait` is an llm rubric that passes only when the bait is visibly rejected or sized. The right number with the bait carried into the decision is not caught.
 - **A red-team case** has two catch graders, both on the review the brief fixes. `catch-finding` is an llm rubric that passes only on a BLOCKER or MAJOR finding whose **Where** names the planted location and whose **Finding** carries a number recomputed on the trap's side; a MINOR or QUESTION is not caught. `catch-window` is the same generated window as a derive case's.
-- **`false-alarm`**, on a red-team case, is a diagnostic llm rubric that passes when no other BLOCKER or MAJOR finding calls something wrong that the golden derivation shows correct. `score.py` counts a run where it failed as a false alarm and reports the count beside the catch. False alarms never gate.
+- **`false-alarm`**, on a red-team case, is a diagnostic llm rubric that passes when no other BLOCKER or MAJOR finding calls something wrong that the golden derivation shows correct. It fails only on a finding it quotes, with the listed item it contradicts; a robustness point beside a listed item, or a finding on the trap's own check, is not a false alarm. `score.py` counts a run where it failed as a false alarm and reports the count beside the catch. False alarms never gate.
 - **`peeked-*`** passes when a Read, Grep, Glob or Bash call names `golden`, `evals/` or `test_fixture`, other than as an exclusion: an argument to `-not -path`, `! -path`, `--exclude` or `--exclude-dir`, or a glob opening with `!`. The agent reads the plugin through the engine path in the case's `pyproject.toml`. The copy a run starts from holds no `engine/tests/` (#128), but a run that reaches the answers some other way, such as through a checkout, is still voided.
+- **An unstated variant**, `<case>-unstated`, is its case with the bait taken out of the brief's numbered assumptions: no A3, the assumption implied only by the spec's prose. It has its case's answer, window, trap and graders, with only the bait's wording changed, so it measures finding the assumption and not only rejecting it. It gates like every other case. #124's baseline caught all 24 of its runs with the bait stated, so the stated cases alone cannot show the plugin is what catches the trap; the variant's Δ is the one to read.
 - **Every other grader is a diagnostic,** reported and never part of the catch: `skill-derive`, `red-team-dispatched` and `ran-the-model`.
 
 The **catch rate** is the share of with-arm runs caught. `score.py` computes it, with the baseline's catch rate, Δ, the `peeked` count and the diagnostics. It exits 1 unless the result is whole and every case is at 2/3 or above. The built-in score is never the gate, because it averages graders and so credits half a catch. That is why `claude plugin eval` runs with `--threshold 0`: its exit code then flags only errors and partial runs.
@@ -34,11 +35,11 @@ It writes a `git archive` of HEAD into an empty directory, so commit first. It l
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $40 of plan usage and takes about 80 min:
+**The release run,** before every version bump. It costs about $80 of plan usage and takes about 160 min, twice #124's $39 and 79 min now that every case has its unstated variant:
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
-  --threshold 0 -j 2 --max-cost-usd 90 --allow-tools Bash Write Edit Skill Agent \
+  --threshold 0 -j 2 --max-cost-usd 180 --allow-tools Bash Write Edit Skill Agent \
   --scaffold --trust-plugin --no-publish --json <out>.json
 uv run --project engine python evals/score.py <out>.json
 ```
@@ -87,13 +88,14 @@ evals/
     scaffold.sh           execs ../scaffold.sh (or ../planted.sh) with its golden mechanism
     planted/              a red-team case's derivation, laid out as in the project
     graders/              generated: never edit them by hand
+  <case>-unstated/        its unstated variant: the same files, but no planted/
 ```
 
 **The scaffold** runs unsandboxed, as you, in the run's empty workspace. It has no `CLAUDE_PLUGIN_ROOT`, so it reaches the plugin from its own path. It copies the model template's runner into `analysis/model/`, then the golden project over it: `evals/golden/<mechanism>/` in `copy.sh`'s copy, `engine/tests/golden/<mechanism>/` in a checkout. It points `pyproject.toml` at this plugin's `engine/` by absolute path, runs `uv sync` against the persistent cache `/var/tmp/armature-eval-uv`, and commits. The agent's sandboxed `uv run` then needs no network grant.
 
-**A red-team case's scaffold** is `planted.sh`. It runs `scaffold.sh`, copies the template's gates and review artifact (`layout.py`, `layout_checks.py`, `report_truth.py`) beside the runner, then the case's `planted/` over the workspace, and commits the derivation on top of the spec stage. `planted/` holds only what the derivation adds, its notes, model modules and decision report, written by hand: golden-correct but for one trap, planted where derive's own gates let it through. The description is never in it, so it keeps one source. `evals/tests/test_planted.py` assembles each case through its own `scaffold.sh` and holds three things: `run_all.py` passes; the planted report's number, `claim` in `CASES`, lies outside the window and the golden value inside; and no number inside the window appears in the planted derivation or in what its run prints, so a review cannot copy it. It is marked slow, and on Windows runs the scaffold under Git's bash with uv's own cache (`ARMATURE_EVAL_UV_CACHE`).
+**A red-team case's scaffold** is `planted.sh`. It runs `scaffold.sh`, copies the template's gates and review artifact (`layout.py`, `layout_checks.py`, `report_truth.py`) beside the runner, then the case's `planted/` over the workspace, and commits the derivation on top of the spec stage. `planted/` holds only what the derivation adds, its notes, model modules and decision report, written by hand: golden-correct but for one trap, planted where derive's own gates let it through. The description is never in it, so it keeps one source. **An unstated red-team variant** has no `planted/` of its own: its `scaffold.sh` passes its case's to `planted.sh`, so the derivation under review has one source. `evals/tests/test_planted.py` assembles each stated case through its own `scaffold.sh` and holds three things: `run_all.py` passes; the planted report's number, `claim` in `CASES`, lies outside the window and the golden value inside; and no number inside the window appears in the planted derivation or in what its run prints, so a review cannot copy it. It is marked slow, and on Windows runs the scaffold under Git's bash with uv's own cache (`ARMATURE_EVAL_UV_CACHE`).
 
-**The graders are generated.** `generate.py` holds each case's answer, report path and bait conditions in `CASES`, and writes its graders from the named `Answer` in `engine/tests/golden/answers.py`. The window's regex comes from the golden value and is never written by hand. After a change to a golden project's parameters, or to `CASES`, re-run:
+**The graders are generated.** `generate.py` holds each case's answer, report path and bait conditions in `CASES`, and writes its graders from the named `Answer` in `engine/tests/golden/answers.py`. An unstated variant's entry is its case's, with `bait` replaced by the assumption the prose implies (`IMPLIED`) and `stated` false; its brief is written by hand, like every brief. The window's regex comes from the golden value and is never written by hand. After a change to a golden project's parameters, or to `CASES`, re-run:
 
 ```
 uv run --project engine python evals/generate.py

@@ -19,7 +19,7 @@ regenerates it and fails on any difference.
 
 import math
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 from pathlib import Path
 
@@ -119,13 +119,15 @@ class Derive:
     `bait` is the spec assumption as the brief words it; `sized` says how a
     report rejects or sizes it, and may quote `{release}`, the value of the
     answer named `release`; `carried` says how a report carries it into the
-    decision instead."""
+    decision instead. `stated` is False on an unstated variant, whose
+    brief only implies the bait (`UNSTATED`)."""
     answer: str
     report: str
     bait: str
     sized: str
     carried: str
     release: str = ""
+    stated: bool = True
 
 
 CASES = {
@@ -223,8 +225,7 @@ You are grading the report at `{report}`, written for a derive plan task.
 The known answer is {value}, accepted from {low} to {high}. How it is \
 found: {how}.
 
-The task's brief stated its bait outright, as spec assumption {bait}. Taken \
-as true, the bait gives {bait_value}, outside that window.
+{brief} Taken as true, the bait gives {bait_value}, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from {low} to {high}.
@@ -253,8 +254,14 @@ def graders(name):
     target = f"{{ source: file, path: {_quoted(case.report)} }}"
     low, high = (_number(b, answer.unit) for b in answer.bounds)
     release = ANSWERS[case.release] if case.release else None
+    brief = (f"The task's brief stated its bait outright, as spec assumption "
+             f"{case.bait}." if case.stated else
+             f"The task's brief never stated its bait as an assumption: it "
+             f"only implied it, through the spec: {case.bait}. Below, A3 "
+             f"names that assumption, whatever the report calls it.")
     rubric = RUBRIC.format(
-        report=case.report, value=_number(answer.value, answer.unit),
+        brief=brief, report=case.report,
+        value=_number(answer.value, answer.unit),
         low=low, high=high, how=answer.how, bait=case.bait,
         bait_value=_number(answer.bait, answer.unit), carried=case.carried,
         sized=case.sized.format(release=release and _number(
@@ -287,7 +294,8 @@ class Review:
     is a regex whose first group is the planted report's own number, which
     evals/tests holds outside the window. `sound` is what the planted
     derivation gets right: a BLOCKER or MAJOR finding that calls one of them
-    wrong is a false alarm."""
+    wrong is a false alarm. `stated` is False on an unstated variant, whose
+    brief only implies the bait (`UNSTATED`)."""
     answer: str
     planted: str
     claim: str
@@ -296,6 +304,7 @@ class Review:
     side: str
     sound: tuple
     report: str = "docs/reviews/review.md"
+    stated: bool = True
 
 
 CASES.update({
@@ -407,13 +416,41 @@ CASES.update({
                "50.79 mm")),
 })
 
+# --- the unstated variants ---------------------------------------------------
+
+# Each case above has a variant, `<case>-unstated`, whose brief never lists
+# the bait as a numbered spec assumption: the spec's prose only implies it, so
+# the variant measures whether the agent finds the assumption, not only
+# whether it rejects one it was shown. The variant's answer, report and trap
+# are its case's; only the brief and `bait`, the assumption the prose
+# implies, differ. A red-team variant reviews its case's own planted/.
+UNSTATED = "-unstated"
+IMPLIED = {
+    "spring-cable": "that the cable is inextensible",
+    "cable-platform": "that the platform stays level",
+    "wheel-leg": "that first contact is checked at α = 0",
+    "parallelogram": "that the PSU is sized for the static current, with no "
+                     "regeneration path",
+}
+CASES.update({
+    name + UNSTATED: replace(case, bait=IMPLIED[name.rsplit("-", 1)[0]],
+                             stated=False)
+    for name, case in list(CASES.items())})
+
+
+def base(name):
+    """The stated case an unstated variant is made from; `name` itself for
+    a stated case."""
+    return name.removesuffix(UNSTATED)
+
+
 FINDING = """\
 You are grading the design review at `{report}`. It reviews a derivation in \
 this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, \
 giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on spec \
-assumption {bait}, and its decision report, `{planted}`, decides on it. \
+The derivation is correct but for one planted trap. It rests on \
+{assumption}, and its decision report, `{planted}`, decides on it. \
 Without the trap, the answer is {value}, accepted from {low} to {high}. How \
 it is found: {how}.
 
@@ -444,24 +481,35 @@ You are grading the design review at `{report}` for false alarms. It \
 reviews a derivation in this project, and rates each finding BLOCKER, \
 MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on spec \
-assumption {bait} where it should not, in any of these places:
+The derivation is correct but for one planted trap: it rests on \
+{assumption} where it should not, in any of these places:
 {where}
 
 These parts of it are correct, each checked against an answer independent \
 of the derivation:
 {sound}
 
-PASS if no BLOCKER or MAJOR finding, other than those on the planted trap, \
-asserts that something in the list above is wrong. A finding on the trap is \
-never a false alarm, however it is worded. A finding about something the \
-list does not cover, such as a missing datasheet, an argued exemption or a \
-process gap, is not a false alarm either: judge only against the list. \
-MINOR and QUESTION findings never count. If the review is missing or empty, \
-PASS: the catch graders fail it.
+A false alarm is a BLOCKER or MAJOR finding, other than those on the \
+planted trap, that asserts something in the list above is wrong: that a \
+listed number, value or result is incorrect. None of these is a false alarm:
+- A finding on the trap, however it is worded. That includes the trap's own \
+check: a finding that the check beside the trap, or the derivation's own \
+number there, is not enough to close the question.
+- A robustness finding beside a listed item that leaves the item's number \
+standing: a missing tolerance or sensitivity, an unchecked margin or edge \
+case, or a call for more checks.
+- A finding about something the list does not cover, such as a missing \
+datasheet, an argued exemption or a process gap: judge only against the \
+list.
+- A MINOR or QUESTION finding.
 
-FAIL if a BLOCKER or MAJOR finding, other than those on the planted trap, \
-asserts that something in the list above is wrong.
+FAIL only on a false alarm you can quote. Quote its rating, its Where, and \
+the sentence of its Finding that says the listed item is wrong, then name \
+the item in the list it contradicts. A finding you cannot quote that way is \
+not a false alarm.
+
+PASS if the review raises no false alarm. If the review is missing or \
+empty, PASS: the catch graders fail it.
 
 Judge only what the review says. Do not recompute anything.
 """
@@ -477,11 +525,16 @@ def _review_graders(case):
     low, high = (_number(b, answer.unit) for b in answer.bounds)
     value = _number(answer.value, answer.unit)
     where = "\n".join(f"- {w}" for w in case.where)
+    assumption = (f"spec assumption {case.bait}" if case.stated else
+                  f"an assumption the brief never stated but only implied, "
+                  f"{case.bait}, which the derivation records as its A3")
     finding = FINDING.format(
-        report=case.report, bait=case.bait, planted=case.planted,
+        report=case.report, assumption=assumption, bait=case.bait,
+        planted=case.planted,
         value=value, low=low, high=high, how=answer.how, where=where,
         side=case.side.format(answer=value))
-    alarm = ALARM.format(report=case.report, bait=case.bait, where=where,
+    alarm = ALARM.format(report=case.report, assumption=assumption,
+                         where=where,
                          sound="\n".join(f"- {s}" for s in case.sound))
     files = {
         "catch-finding.md": _file(source, ["type: llm", f"focus: {target}"],

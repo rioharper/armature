@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: parallelogram-derive-unstated
+description: >-
+  parallelogram-derive, its bait unstated: the brief lists no A3, and implies
+  the assumption only through the spec's prose, by the supply described as
+  covering the balanced arm's near-zero holding current, with no brake
+  resistor. The same golden answer, window and catch; it measures finding the
+  assumption, not only rejecting it.
+tags: [derive, parallelogram, unstated]
+context:
+  scaffold_script: scaffold.sh

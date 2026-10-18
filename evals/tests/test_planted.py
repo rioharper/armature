@@ -26,8 +26,10 @@ import pytest
 import generate
 from golden.answers import ANSWERS
 
+# The stated cases only: an unstated variant lays down its case's own
+# planted/, so assembling it again would check the same derivation.
 REVIEWS = [name for name, case in generate.CASES.items()
-           if isinstance(case, generate.Review)]
+           if isinstance(case, generate.Review) and case.stated]
 
 
 def _bash():
