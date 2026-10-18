@@ -2,8 +2,8 @@ schema_version: "1.1"
 name: wheel-leg-review-unstated
 description: >-
   wheel-leg-review, its bait unstated: the brief lists no A3, and implies the
-  assumption only through the spec's prose, by the contact checks the spec
-  runs with the leg straight under the hips. The same golden answer, window
+  assumption only through the spec's prose, by `R_SKID` chosen to clear the
+  floor with the leg straight under the hips. The same golden answer, window
   and catch; it measures finding the assumption, not only rejecting it.
 tags: [red-team, wheel_leg, unstated]
 context:
