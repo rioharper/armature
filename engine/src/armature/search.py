@@ -16,10 +16,19 @@ The method is fixed, because each knob would be a way to under-search:
   cube: a scrambled, seeded Sobol set, then every corner (an interval's
   ends, a direction's axis directions in both signs), then bounded Powell
   from the best few points.
-- The result is the minimum over every point evaluated. The polish does not
-  always improve on its start: at a kink, its line search closes in on the
-  optimum without landing on it and ends worse, so its own answer is never
-  the result.
+- The result is the minimum over every point evaluated, the polish's
+  included, so nothing it steps through is lost.
+
+The polish is scipy's bounded Powell, with one change in its line search.
+Bounded Brent finds a local minimum along the line, which may be worse
+than the line's start, and scipy steps there anyway. The polish's line
+search compares that minimum with the line's two ends, each on a face of
+the cube, and steps to the least of the three only where it is below the
+start. So no step ends worse than its start, and a worst on a face is
+found from a start near it even when the line holds a deeper-looking basin
+between. On the wheel leg's hold, scipy's line along A stepped from
+A = 0.94 to a basin at A = −0.51 worse than its start and never came back,
+reading 1.165 A_peak against the A = 1 face's 0.983 (#126).
 
 The polish's bounds reach `REACH` past the unit cube, and a point beyond it
 is evaluated at the nearest face, so a line search lands exactly on a face
@@ -60,7 +69,7 @@ from types import MappingProxyType
 from typing import NamedTuple
 
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize_scalar
 from scipy.stats import qmc
 
 from .compiler import compile
@@ -801,15 +810,76 @@ class _Run:
         for slack, _, u in sorted(ranked, key=lambda r: r[:2])[:starts]:
             spent = 0
             try:
-                minimize(objective, u, method="Powell",
-                         bounds=[(-REACH, 1.0 + REACH)] * len(u),
-                         options={"xtol": POLISH_XTOL, "ftol": POLISH_FTOL,
-                                  "maxfev": cap})
+                _powell(objective, u)
             except _Spent:
                 pass
             except _Found:
                 break
         return best, before
+
+
+def _powell(f, x):
+    """Powell's method from `x` within the polish's reach, as scipy's
+    bounded Powell runs it, but each line search through `_line`, so no
+    step ends worse than its start. Stops once an iteration gains less
+    than `POLISH_FTOL`, relative; `f` raises to stop it sooner."""
+    directions = np.eye(len(x))
+    fx = f(x)
+    while True:
+        start, f_start = x, fx
+        biggest, gain = 0, 0.0
+        for i, direction in enumerate(directions):
+            before = fx
+            x, fx, _ = _line(f, x, direction, fx)
+            if before - fx > gain:
+                biggest, gain = i, before - fx
+        if 2.0 * (f_start - fx) <= POLISH_FTOL * (
+                abs(f_start) + abs(fx)) + 1e-20:
+            return
+        # Powell's extrapolation: a new direction, x − start, replaces the
+        # one that gained most, where that keeps the set from collapsing
+        direction = x - start
+        _, reach = _segment(x, direction)
+        f_far = f(x + min(reach, 1.0) * direction)
+        if f_start > f_far:
+            t = (2.0 * (f_start + f_far - 2.0 * fx) * (f_start - fx - gain) ** 2
+                 - gain * (f_start - f_far) ** 2)
+            if t < 0.0:
+                x, fx, step = _line(f, x, direction, fx)
+                if np.any(step):
+                    directions[biggest] = directions[-1]
+                    directions[-1] = step
+
+
+def _line(f, x, direction, fx):
+    """The least of `f` along `x + α·direction` within the polish's reach,
+    from `x`, where `f` reads `fx`: bounded Brent's local minimum, or either
+    end of the line, each on a face of the cube, whichever is least. The
+    start stands unless one is lower than it, so a step never ends worse
+    than its start. Returns the point, its value and the step taken."""
+    if not np.any(direction):
+        return x, fx, direction
+    low, high = _segment(x, direction)
+    along = minimize_scalar(lambda a: f(x + a * direction),
+                            bounds=(low, high), method="bounded",
+                            options={"xatol": POLISH_XTOL})
+    best, value = 0.0, fx
+    for a, fa in ((along.x, along.fun), (low, f(x + low * direction)),
+                  (high, f(x + high * direction))):
+        if fa < value:
+            best, value = a, fa
+    step = best * direction
+    return x + step, value, step
+
+
+def _segment(x, direction):
+    """The steps (low, high) that keep `x + α·direction` within the
+    polish's reach, `REACH` past each face of the unit cube."""
+    moving = direction != 0.0
+    ends = (np.array([[-REACH], [1.0 + REACH]]) - x[moving]) / direction[
+        moving]
+    low, high = np.sort(ends, axis=0)
+    return float(low.max()), float(high.min())
 
 
 def _power_of_two(n):

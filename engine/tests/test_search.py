@@ -534,11 +534,13 @@ def test_the_result_is_never_above_the_pre_polish_best():
         return slack[-1]
 
     # The trap: the worst is a corner, straight down, at a kink. The
-    # polish's line searches close in on it without landing on it, so every
-    # point the polish evaluates is worse than the corner it started from.
+    # polish's line searches close in on it, landing on it only where a
+    # component rounds to zero, so no point the polish evaluates is better
+    # than the corner it started from, and most are worse.
     worst = search(margin(fn, load=Direction("xy")))
     polish = slack[64 + 4:]
-    assert polish and min(polish) > 0.0
+    assert polish and min(polish) >= 0.0
+    assert sum(s > 0.0 for s in polish) > len(polish) / 2
     assert worst.value == worst.pre_polish == 0.0
     assert worst.at == worst.pre_polish_at == {"load": (0.0, -1.0, 0.0)}
 
@@ -561,6 +563,25 @@ def test_the_polish_finds_an_interior_worst_between_the_samples():
     assert worst.pre_polish > -1.0 + 1e-6
     assert worst.value == pytest.approx(-1.0, abs=1e-12)
     assert worst.value <= worst.pre_polish
+
+
+def test_the_polish_finds_a_face_worst_past_a_worse_basin_on_its_line():
+    # Along x, from the best Sobol points near the x = 1 face, the line
+    # holds a basin at x = 0.4 (0.2 + (y - 0.37)²) and the face, worse
+    # still (0.2 + 0.72 − 2e^(−25/36)). A bounded line search drawn to the
+    # basin ends worse than its start, so the polish must never take that
+    # step, and must try the line's ends, which lie on the faces.
+    def fn(p):
+        return (0.2 + 2 * (p.x - 0.4) ** 2
+                - 2 * math.exp(-((p.x - 1.1) / 0.12) ** 2)
+                + (p.y - 0.37) ** 2)
+
+    face = 0.92 - 2 * math.exp(-25 / 36)
+    worst = search(margin(fn, x=Interval(0, 1), y=Interval(0, 1)))
+    assert worst.pre_polish > face + 1e-3
+    assert worst.value == pytest.approx(face, abs=1e-9)
+    assert worst.at["x"] == 1.0
+    assert worst.at["y"] == pytest.approx(0.37, abs=1e-4)
 
 
 def test_the_global_set_is_a_power_of_two_and_the_corners_are_all_there():
