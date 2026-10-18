@@ -308,8 +308,13 @@ def test_a_path_only_excluded_is_no_peek(command):
     "cd /home/rio\ncat ../engine/tests/golden/answers.py",
     "cd /home/rio\nevals/planted.sh",
     "rg sag --glob 'golden/**'",
-    "grep -rn test_fixture engine"])
+    "grep -rn test_fixture engine",
+    "python -c \"open('engine/tests/golden/answers.py')\"",
+    "python - <<'EOF'\nprint(open(\"engine/tests/golden/answers.py\").read())"
+    "\nEOF"])
 def test_a_path_read_is_a_peek(command):
+    """A path named inside quoted code is read too (#130): only an
+    exclusion's argument is no peek."""
     assert peeks("peeked-bash", {"command": command})
 
 
