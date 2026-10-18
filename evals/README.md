@@ -17,7 +17,7 @@ The **catch rate** is the share of with-arm runs caught. `score.py` computes it,
 
 ## Where it runs
 
-On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; the maintainer's is `Ubuntu`, now 26.04, not ADR 0008's `Ubuntu-24.04`. Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
+On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; the maintainer's is `Ubuntu` (26.04). Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
 - `claude` 2.1.301 or later, installed natively in the distro (`curl -fsSL https://claude.ai/install.sh | bash`) and logged in there (`claude auth status`). A Windows `claude` from npm is on WSL's PATH through `/mnt/c` and shadows a missing Linux one; it runs the suite on Windows, which scores every case 0 in seconds. Check that `command -v claude` is not under `/mnt/`;
 - `bwrap` and `socat`, the sandbox's backend (`sudo apt install bubblewrap socat`);
 - `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
@@ -28,7 +28,7 @@ Run the suite from a `git archive` copy of the plugin on the distro's own filesy
 
 ## The commands
 
-**The release run,** before every version bump. The first, #124, cost $39 of plan usage and took 79 min:
+**The release run,** before every version bump. It costs about $40 of plan usage and takes about 80 min:
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
@@ -49,7 +49,7 @@ claude plugin eval . --case spring-cable-derive --runs 1 --ablation none \
 uv run --project engine python evals/score.py <out>.json
 ```
 
-Never run it per commit.
+Never run it per commit. Keep paths into `evals/` and `engine/tests/golden/` out of those three files, and out of anything else the agent reads: a run that reads the answers is voided, and a pointer in its context invites the read.
 
 ## Reading a kept workspace
 
