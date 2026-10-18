@@ -1,15 +1,16 @@
 """The sampler's map from the unit cube to a state, shared with the search.
 
 Answer: the seeded sampler's own output from before the map was split out of
-it, pinned as a SHA-256 of every number it returned (each value's IEEE
-bytes, so one ulp moves it), and the ranges and envelopes each map was asked
-for. Trap: a map that draws its own randomness, so the same point gives two
+it, pinned as a SHA-256 of every number it returned (each rounded to 1e-6,
+so a platform's last bits keep it and any real change moves it), and the
+ranges and envelopes each map was asked for. Trap: a map that draws its own randomness, so the same point gives two
 states, or a split that moves the seeded draws by one call and changes every
 sample a project's checks were written from.
 """
 
 import hashlib
 import math
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -73,33 +74,36 @@ CASES = {
 }
 SOLVED = {"wheel leg": ("y",)}  # what each case's rest_on solves
 
-# Captured from main at 32aba6b, before the map was split out, on Windows
-# x86-64 with NumPy's PCG64: the bytes are this platform's.
+# Main's samples at 32aba6b, before the map was split out, on Windows x86-64
+# with NumPy's PCG64; recorded rounded at b0e38f3 from the same samples,
+# still bit-identical to 32aba6b's there, so Linux's last bits agree too.
+# On Windows every number sits at least 1.6e-10 from a rounding edge.
 GOLDEN = {
-    "arm": "837d3501b9a3e31722dee5aacf132d2dfda2d9ded2dba5381ff96d7e4fdd7aac",
+    "arm": "46b1133670f2a299dfc2f1ea6827fcb39529a7f9dfcd1519b0ce24551f344812",
     "arm, rates":
-        "8041aab41d0f1764c7469c6efc6391f83c146c5fbe20095c183064f926c9ef2b",
+        "704d6287a9ee6d3514056e7f927b99394c517d5395ce7ddc00a3b5c4b313939e",
     "platform":
-        "606aac46cec95190d2a1e6ccb8cf9e96e8def536e86e8e078e045df83ec4f8d2",
+        "c826792eb64afd453d3e1fcbc82eaa3161dd6715cdfdf6faf7db31cbdf39fb44",
     "level platform":
-        "89060085e87263b82f1d31234a2bfdb75f124cdb6d8cdcff1648fd431d28e189",
+        "72208b0507e0c170841ce5fcb9f9bf035ff04b6cb1ec95d7430c8d622e3e5f50",
     "held yaw":  # the chain's two tilts redrawn until inside the envelope
-        "2274f50e6aa41ebdf069511191d8da34b0a5deb543c86e18d94fb35cbfb48b31",
+        "fceec940ed2b57a0cb48bb3160aef7f64557152356f3f8e7271f8e02c7f3d72b",
     "wheel leg":  # 9 of 33 draws refused
-        "49d0ea3cef9284c75c3b3f9a8035f85f7a71ae7f3f955daa3fe79a79793a29ad",
+        "abcc6e73064a68e6c7397b1d7ceeabcbab21851a69cd09a001a3395e742ee4a4",
     "five-bar":  # 6 of 30 draws refused
-        "d16ca7c975333ce2af63e04815526160dd6db6f19ebc65b7a99efe18f08cbf5c",
+        "1578f51baa51f49bc63af7df41aeff5abb9d55405fe5f1966dcd62b2ec4fe58f",
     "five-bar, rates":
-        "39c0498f66a4ca53e7441251fe21f6a6c5646af4a8ea75c71d331ea3b1e3f3df",
+        "d301505a5627ee14147637fe5181f59caa36ea29219f44640531713d947c4240",
     "planar torso":  # 14 of 38 draws refused
-        "8883bb4fc5abe85373e8439693a7723d11e346b3645bf00d816ba202c3b94673",
+        "fffb140decfe02e24c2aa1c6854776f988569e65746e4f8173c876642d2e06eb",
 }
 
 
 def digest(samples, solved=()):
     """A SHA-256 over every number `samples` returned, in order: each
     state's coordinates and rates, the accelerations, every rejected draw
-    and its reason, the clearances and the residual.
+    and its reason, the clearances and the residual. Each number is
+    rounded to 1e-6 (metres, radians, per second) first.
 
     A rejected draw's `solved` coordinates, the ones `rest_on` solves, are
     left out: main drew a value for each and kept it in the rejection,
@@ -112,8 +116,9 @@ def digest(samples, solved=()):
         elif isinstance(value, tuple):  # a Placement, or (position, rotation)
             for part in value:
                 put(part)
-        else:
-            h.update(np.ascontiguousarray(value, dtype="<f8").tobytes())
+        else:  # whole micro-units, so -0.0 and 0.0 are one number
+            micro = np.rint(np.asarray(value, dtype=float) * 1e6)
+            h.update(np.ascontiguousarray(micro, dtype="<i8").tobytes())
 
     put(float(samples.drawn))
     for s in samples.states:
@@ -139,9 +144,51 @@ def digest(samples, solved=()):
 
 
 @pytest.mark.parametrize("case", list(CASES))
-def test_the_seeded_samples_are_bit_identical_to_main(case):
+def test_the_seeded_samples_are_unchanged_from_main(case):
     build, draw = CASES[case]
     assert digest(draw(build()), SOLVED.get(case, ())) == GOLDEN[case]
+
+
+def nudged(samples, f):
+    """`samples` with `f` applied to every number it holds."""
+    def each(value):
+        if isinstance(value, tuple):
+            return tuple(each(part) for part in value)
+        return f(np.asarray(value, dtype=float))
+
+    def keyed(values):
+        return {name: each(value) for name, value in values.items()}
+
+    return SimpleNamespace(
+        drawn=samples.drawn,
+        states=[SimpleNamespace(q=keyed(s.q), qd=keyed(s.qd))
+                for s in samples.states],
+        qdd=[keyed(qdd) for qdd in samples.qdd or ()],
+        rejected=[r._replace(q=keyed(r.q)) for r in samples.rejected],
+        clearance=keyed(samples.clearance),
+        residual=each(samples.residual))
+
+
+@pytest.mark.parametrize("case", ["planar torso", "wheel leg"])
+def test_the_digest_survives_last_bit_noise_but_not_a_real_change(case):
+    """Linux's libm and BLAS differ from Windows' in the last bits of the
+    closures and rotations, so a few ulps either way must keep the digest;
+    a micrometre or a microradian must not."""
+    build, draw = CASES[case]
+    samples, solved = draw(build()), SOLVED.get(case, ())
+    pinned = digest(samples, solved)
+
+    def ulps(k):
+        def f(x):
+            for _ in range(abs(k)):
+                x = np.nextafter(x, math.copysign(math.inf, k))
+            return x
+        return f
+
+    for k in (-4, -1, 1, 4):
+        assert digest(nudged(samples, ulps(k)), solved) == pinned
+    assert digest(nudged(samples, lambda x: x + 2e-12), solved) == pinned
+    assert digest(nudged(samples, lambda x: x + 2e-6), solved) != pinned
 
 
 # --- the map: a point in the unit cube to a state -----------------------------
