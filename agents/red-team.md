@@ -86,5 +86,3 @@ Severity:
 ## Report back
 
 Report the verdict, the findings file path, and the per-severity counts to the dispatching conversation, which routes the fixes.
-
-<!-- Maintainers: an edit to this file is checked on demand with `claude plugin eval --case`, as the plugin's `evals/README.md` says. -->

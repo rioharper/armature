@@ -82,5 +82,3 @@ Run last; it needs every artifact in view at once.
 - Does the **plan's BOM match the spec's chosen parts**, or has one been revised without the other?
 - Do **frames, symbols, and naming agree** across spec, derivation, and plan? The derivation consumes the spec's symbol table verbatim.
 - Are the documents at **revs that reference each other correctly**, or is the derivation validating a spec two revisions old?
-
-<!-- Maintainers: an edit to this file is checked on demand with `claude plugin eval --case`, as the plugin's `evals/README.md` says. -->
