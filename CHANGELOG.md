@@ -44,6 +44,7 @@ The engine is checked on five golden mechanisms and the agent on four ([#113](ht
   - the red team was dispatched in none of the 12 review runs ([#129](https://github.com/rioharper/armature/issues/129)).
 
   The friction is in `evals/README.md`: install `claude` natively in the distro, and keep kept workspaces off WSL's RAM-disk `/tmp`. uv 0.13.1 also warns that the engine's `uv-build>=0.9,<0.13` excludes it, harmlessly.
+- **A review the user asks for goes to the red team** ([#129](https://github.com/rioharper/armature/issues/129)). Read as a triggering defect, not a brief to rewrite: the red team's description routed only on an artifact being drafted or finished, so a user asking for a derivation to be reviewed adversarially got the main session's own review. It now dispatches on every review of an artifact the user asks for, and `armature-derive`'s description hands a finished derivation's review to it. The agent writes its report at a path the dispatch names, so a report path the user fixed survives the hand-off. The review briefs still don't name the plugin, and `red-team-dispatched` stays a diagnostic. No test covers a description; the next release run's `red-team-dispatched` is its check.
 
 ### Mission sizing
 

@@ -1,5 +1,6 @@
 """`generate.py`: each case's graders, generated from its golden `Answer`."""
 
+import json
 import math
 import re
 from decimal import ROUND_HALF_UP, Decimal
@@ -199,3 +200,48 @@ def test_a_window_across_a_power_of_ten_reads_both_sides():
     answer = Answer(value=10.0, unit="°", how="", bait=0.0)
     assert all(found(answer, f"{x} °") for x in ("9.81", "10", "10.19"))
     assert not any(found(answer, f"{x}°") for x in ("9.7", "10.3", "1.0"))
+
+
+def peeks(grader, tool_input):
+    """Whether `grader`'s input_match finds `tool_input`, serialised as JSON
+    compact or spaced, the same either way."""
+    match = generate.DIAGNOSTICS[grader][1]
+    found = {re.search(match, json.dumps(tool_input, separators=sep))
+             is not None for sep in ((",", ":"), (", ", ": "))}
+    assert len(found) == 1, tool_input
+    return found.pop()
+
+
+@pytest.mark.parametrize("command", [
+    'find /home/rio/armature-eval -name "layout.py" -not -path "*/evals/*"',
+    'find . -name "derivation-report-template.md" -not -path "*/evals/*"',
+    "find . -name '*.py' ! -path '*/golden/*'",
+    "grep -rn sag . --exclude-dir=golden --exclude='*test_fixture*'",
+    "grep -rn sag . --exclude-dir golden",
+    "rg sag --glob '!evals/**'",
+    "rg sag -g '!**/golden/**' -g=!test_fixture*"])
+def test_a_path_only_excluded_is_no_peek(command):
+    """#130: a run voided for a `find` that excluded `evals/`."""
+    assert not peeks("peeked-bash", {"command": command})
+
+
+@pytest.mark.parametrize("command", [
+    "cat engine/tests/golden/answers.py",
+    'find . -path "*/evals/*"',
+    "ls evals/",
+    'find . -not -path "*/evals/*" -name x; cat evals/wheel-leg-derive/x.md',
+    "cd /home/rio\ncat ../engine/tests/golden/answers.py",
+    "cd /home/rio\nevals/planted.sh",
+    "rg sag --glob 'golden/**'",
+    "grep -rn test_fixture engine"])
+def test_a_path_read_is_a_peek(command):
+    assert peeks("peeked-bash", {"command": command})
+
+
+def test_the_other_tools_peek_on_a_read_and_not_on_an_exclusion():
+    assert not peeks("peeked-grep", {"pattern": "sag",
+                                     "glob": "!**/evals/**"})
+    assert peeks("peeked-grep", {"pattern": "sag",
+                                 "path": "engine/tests/golden"})
+    assert peeks("peeked-read", {"file_path": "/x/engine/tests/golden/a.py"})
+    assert peeks("peeked-glob", {"pattern": "**/test_fixture*"})
