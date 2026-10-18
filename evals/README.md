@@ -8,6 +8,8 @@ The suite gates every version bump. A partial run, or any case caught in fewer t
 
 A run is caught only when every `catch-*` grader passed and no `peeked-*` grader did:
 - **A derive case** has two catch graders. `catch-window` is a regex that finds a number inside the answer's **window**, with its unit, in the report the brief fixes. `catch-bait` is an llm rubric that passes only when the bait is visibly rejected or sized. The right number with the bait carried into the decision is not caught.
+- **A red-team case** has two catch graders, both on the review the brief fixes. `catch-finding` is an llm rubric that passes only on a BLOCKER or MAJOR finding whose **Where** names the planted location and whose **Finding** carries a number recomputed on the trap's side; a MINOR or QUESTION is not caught. `catch-window` is the same generated window as a derive case's.
+- **`false-alarm`**, on a red-team case, is a diagnostic llm rubric that passes when no other BLOCKER or MAJOR finding calls something wrong that the golden derivation shows correct. `score.py` counts a run where it failed as a false alarm and reports the count beside the catch. False alarms never gate.
 - **`peeked-*`** passes when a Read, Grep, Glob or Bash call names `golden`, `evals/` or `test_fixture`. The engine's tests, answers included, are readable through the engine path in the case's `pyproject.toml`, so a run that read them is voided.
 - **Every other grader is a diagnostic,** reported and never part of the catch: `skill-derive`, `red-team-dispatched` and `ran-the-model`.
 
@@ -66,17 +68,21 @@ The agent's workspace is `sealed/home/cwd/`, and the session's trace is `out/tra
 ```
 evals/
   scaffold.sh             lays down a case's spec-stage project
+  planted.sh              lays down a red-team case's: scaffold.sh, then its planted/
   generate.py             writes every case's graders from its golden Answer
   score.py                the catch rate, from --json
   tests/                  uv run --project engine pytest evals/tests
   <case>/
     case.yaml             its name and its scaffold
     prompt.md             its brief, and its settings in the frontmatter
-    scaffold.sh           execs ../scaffold.sh with its golden mechanism
+    scaffold.sh           execs ../scaffold.sh (or ../planted.sh) with its golden mechanism
+    planted/              a red-team case's derivation, laid out as in the project
     graders/              generated: never edit them by hand
 ```
 
 **The scaffold** runs unsandboxed, as you, in the run's empty workspace. It has no `CLAUDE_PLUGIN_ROOT`, so it reaches the plugin from its own path. It copies the model template's runner into `analysis/model/`, then `engine/tests/golden/<mechanism>/` over it. It points `pyproject.toml` at this plugin's `engine/` by absolute path, runs `uv sync` against the persistent cache `/var/tmp/armature-eval-uv`, and commits. The agent's sandboxed `uv run` then needs no network grant.
+
+**A red-team case's scaffold** is `planted.sh`. It runs `scaffold.sh`, copies the template's gates and review artifact (`layout.py`, `layout_checks.py`, `report_truth.py`) beside the runner, then the case's `planted/` over the workspace, and commits the derivation on top of the spec stage. `planted/` holds only what the derivation adds, its notes, model modules and decision report, written by hand: golden-correct but for one trap, planted where derive's own gates let it through. The description is never in it, so it keeps one source. `evals/tests/test_planted.py` assembles each case through its own `scaffold.sh` and holds three things: `run_all.py` passes; the planted report's number, `claim` in `CASES`, lies outside the window and the golden value inside; and no number inside the window appears in the planted derivation or in what its run prints, so a review cannot copy it. It is marked slow, and on Windows runs the scaffold under Git's bash with uv's own cache (`ARMATURE_EVAL_UV_CACHE`).
 
 **The graders are generated.** `generate.py` holds each case's answer, report path and bait conditions in `CASES`, and writes its graders from the named `Answer` in `engine/tests/golden/answers.py`. The window's regex comes from the golden value and is never written by hand. After a change to a golden project's parameters, or to `CASES`, re-run:
 

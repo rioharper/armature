@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: parallelogram-review
+description: >-
+  Red team, on the balanced parallelogram. The planted derivation sizes the
+  PSU's regeneration on the e-stop from jog speed alone, leaving out the
+  stop from J1's top speed that missions.py writes, so the PSU behind its
+  diode reads as needing no regeneration path. Caught when the review raises
+  a BLOCKER or MAJOR there with the top-speed stop's peak bus voltage,
+  sqrt(V0^2 + 2E/C), inside the window.
+tags: [red-team, parallelogram]
+context:
+  scaffold_script: scaffold.sh

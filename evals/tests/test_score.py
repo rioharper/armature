@@ -51,6 +51,29 @@ def test_the_diagnostics_are_counted_and_never_part_of_the_catch():
     assert row.diagnostics == {"skill-derive": 3}
 
 
+def test_a_red_team_runs_false_alarm_is_counted_and_never_part_of_the_catch():
+    """`false-alarm` passes when the review raised no BLOCKER or MAJOR that
+    the golden derivation shows wrong; a run where it failed is a false
+    alarm, counted beside the catch and never voiding it."""
+    alarmed = run("catch-finding", "catch-window", "!false-alarm")
+    quiet = run("catch-finding", "catch-window", "false-alarm")
+    [row] = score.score(doc(("c", {"with": [alarmed, quiet, alarmed]})))
+    assert (row.caught, row.false_alarms) == (3, 2)
+    assert "false-alarm" not in row.diagnostics
+
+
+def test_false_alarms_are_reported_and_never_gate(tmp_path, capsys):
+    alarmed = run("catch-finding", "catch-window", "!false-alarm")
+    code, out = _main(tmp_path, doc(("r", {"with": [alarmed] * 3})), capsys)
+    assert code == 0
+    assert "false alarms 3/3" in out
+
+
+def test_a_derive_case_reports_no_false_alarm_count(tmp_path, capsys):
+    _, out = _main(tmp_path, doc(("a", {"with": [CAUGHT] * 3})), capsys)
+    assert "false alarm" not in out
+
+
 def _main(tmp_path, document, capsys):
     path = tmp_path / "out.json"
     path.write_text(json.dumps(document), encoding="utf-8")

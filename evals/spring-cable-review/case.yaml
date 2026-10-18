@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: spring-cable-review
+description: >-
+  Red team, on the mass on a cable. The planted derivation releases A3, the
+  inextensible cable, only on the bob's static sag, and then decides the
+  first mode on A3, so R-4 reads met. Caught when the review raises a
+  BLOCKER or MAJOR there with the elastic cable's mode, f = sqrt(k/m) / 2 pi,
+  inside the window.
+tags: [red-team, spring_cable]
+context:
+  scaffold_script: scaffold.sh

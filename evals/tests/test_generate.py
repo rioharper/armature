@@ -59,7 +59,11 @@ def test_each_brief_fixes_the_path_its_graders_read(name):
     assert (generate.EVALS / name / "scaffold.sh").is_file()
 
 
-@pytest.mark.parametrize("name", generate.CASES)
+def _family(kind):
+    return [n for n, c in generate.CASES.items() if isinstance(c, kind)]
+
+
+@pytest.mark.parametrize("name", _family(generate.Derive))
 def test_each_catch_grader_reads_the_report_and_quotes_the_answer(name):
     case, files = generate.CASES[name], generate.graders(name)
     answer = ANSWERS[case.answer]
@@ -70,6 +74,39 @@ def test_each_catch_grader_reads_the_report_and_quotes_the_answer(name):
     assert "PASS" in rubric and "FAIL" in rubric
     assert {"peeked-read.md", "peeked-grep.md", "peeked-glob.md",
             "peeked-bash.md"} <= set(files)
+
+
+def test_there_are_red_team_cases():
+    assert len(_family(generate.Review)) >= 2
+
+
+@pytest.mark.parametrize("name", _family(generate.Review))
+def test_a_red_team_case_is_caught_on_a_located_finding_with_its_number(name):
+    """The catch: a BLOCKER or MAJOR finding naming the planted location
+    with a recomputed number, and the window, both on the review."""
+    case, files = generate.CASES[name], generate.graders(name)
+    answer = ANSWERS[case.answer]
+    assert {"catch-finding.md", "catch-window.md"} <= set(files)
+    assert not any(f.startswith("catch-bait") for f in files)
+    assert case.report in files["catch-window.md"]
+    assert generate.window(answer) in files["catch-window.md"]
+    rubric = files["catch-finding.md"]
+    assert case.report in rubric and case.planted in rubric
+    assert answer.how in rubric
+    assert all(where in rubric for where in case.where)
+    assert "BLOCKER or MAJOR" in rubric and "MINOR or QUESTION" in rubric
+    assert (generate.EVALS / name / "planted" / case.planted).is_file()
+
+
+@pytest.mark.parametrize("name", _family(generate.Review))
+def test_a_red_team_cases_false_alarm_grader_is_a_diagnostic(name):
+    """`false-alarm` is named outside `catch-*`, so score.py never gates on
+    it, and it lists what the golden derivation shows correct."""
+    case, files = generate.CASES[name], generate.graders(name)
+    rubric = files["false-alarm.md"]
+    assert "type: llm" in rubric and case.report in rubric
+    assert all(sound in rubric for sound in case.sound)
+    assert "peeked-read.md" in files and "red-team-dispatched.md" in files
 
 
 def test_a_window_across_a_power_of_ten_reads_both_sides():

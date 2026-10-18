@@ -4,9 +4,12 @@
 
 A run is caught only when every `catch-*` grader passed and no `peeked-*`
 grader did: the built-in score averages graders, so it credits half a catch,
-and a run that read the answers is a copy. Every other grader is a
-diagnostic, counted and never part of the catch. Exits 1 unless the result is
-whole and every case is caught in at least 2/3 of its runs (evals/README.md).
+and a run that read the answers is a copy. A red-team run whose
+`false-alarm` grader failed raised a BLOCKER or MAJOR the golden derivation
+shows wrong: it is counted beside the catch, and never gates. Every other
+grader is a diagnostic, counted and never part of the catch. Exits 1 unless
+the result is whole and every case is caught in at least 2/3 of its runs
+(evals/README.md).
 """
 
 import json
@@ -15,12 +18,14 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 
 GATE = Fraction(2, 3)
+ALARM = "false-alarm"
 
 
 @dataclass
 class Row:
-    """One case: its with-arm runs, caught and peeked, its baseline's, and how
-    many with-arm runs passed each diagnostic."""
+    """One case: its with-arm runs, caught and peeked, its baseline's, how
+    many with-arm runs passed each diagnostic, and how many raised a false
+    alarm, None for a case with no `false-alarm` grader."""
     case: str
     runs: int
     caught: int
@@ -28,6 +33,7 @@ class Row:
     base_runs: int
     base_caught: int
     diagnostics: dict = field(default_factory=dict)
+    false_alarms: int | None = None
 
     @property
     def delta(self):
@@ -64,9 +70,17 @@ def _diagnostics(runs):
     counts = {}
     for run in runs:
         for name, ok in _graders(run).items():
-            if not name.startswith(("catch-", "peeked-")):
+            if not name.startswith(("catch-", "peeked-", ALARM)):
                 counts[name] = counts.get(name, 0) + ok
     return counts
+
+
+def _false_alarms(runs):
+    """How many of `runs` failed their `false-alarm` grader, or None where
+    none carries one."""
+    alarms = [ok for run in runs for name, ok in _graders(run).items()
+              if name == ALARM]
+    return sum(not ok for ok in alarms) if alarms else None
 
 
 def score(doc):
@@ -75,9 +89,10 @@ def score(doc):
     for case in doc["cases"]:
         runs, caught, peeked = _arm(case, "with")
         base_runs, base_caught, _ = _arm(case, "without")
+        with_runs = case["arms"].get("with") or []
         rows.append(Row(case["name"], runs, caught, peeked, base_runs,
-                        base_caught,
-                        _diagnostics(case["arms"].get("with") or [])))
+                        base_caught, _diagnostics(with_runs),
+                        _false_alarms(with_runs)))
     return rows
 
 
@@ -87,8 +102,10 @@ def main(argv):
     for r in rows:
         base = (f"baseline {r.base_caught}/{r.base_runs}  Δ {r.delta:+.2f}"
                 if r.delta is not None else "no baseline")
+        alarms = ("" if r.false_alarms is None
+                  else f"  false alarms {r.false_alarms}/{r.runs}")
         print(f"{'PASS' if r.passes else 'FAIL'}  {r.case}: caught "
-              f"{r.caught}/{r.runs}  {base}  peeked {r.peeked}")
+              f"{r.caught}/{r.runs}  {base}  peeked {r.peeked}{alarms}")
         print("      " + ", ".join(f"{n} {k}/{r.runs}"
                                    for n, k in r.diagnostics.items()))
     whole = not doc.get("partial")

@@ -7,7 +7,10 @@ A case's catch graders are generated, never written by hand, so a change to a
 golden project's parameters cannot leave a stale window:
 - `catch-window`, a regex that finds any number inside the answer's window,
   with its unit, in the file the brief fixes;
-- `catch-bait`, the llm rubric, its numbers and the answer's `how` quoted.
+- `catch-bait`, the llm rubric, its numbers and the answer's `how` quoted;
+  on a red-team case, `catch-finding` instead, which passes on a BLOCKER or
+  MAJOR finding naming the planted location with a recomputed number, and
+  the diagnostic `false-alarm`.
 Every case's diagnostic graders are written here too, so all cases carry the
 same ones. The output is checked in, because `claude plugin eval` reads the
 graders' frontmatter statically, and `evals/tests/test_generate.py`
@@ -189,6 +192,8 @@ formatting decide the verdict.
 def graders(name):
     """The graders `name`'s case is generated with, by file name."""
     case = CASES[name]
+    if isinstance(case, Review):
+        return _review_graders(case)
     answer = ANSWERS[case.answer]
     source = f"{case.answer} in engine/tests/golden/answers.py"
     target = f"{{ source: file, path: {_quoted(case.report)} }}"
@@ -206,6 +211,176 @@ def graders(name):
             f"pattern: {_quoted(window(answer))}"]),
         "catch-bait.md": _file(source, ["type: llm", f"focus: {target}"],
                                rubric),
+    }
+    for grader, (tool, match) in DIAGNOSTICS.items():
+        files[f"{grader}.md"] = _file("", [
+            "type: tool_used", f"tool: {tool}",
+            f"input_match: {_quoted(match)}"])
+    return files
+
+
+# --- the red-team family -----------------------------------------------------
+
+@dataclass(frozen=True)
+class Review:
+    """A red-team case: a review, written to `report`, of a planted
+    derivation that is golden-correct but for one trap, its decision report
+    at `planted`. The derivation rests on `bait`, as the brief words it.
+
+    Caught on a BLOCKER or MAJOR finding whose Where names one of `where`,
+    the places the trap sits, and whose Finding carries a number recomputed
+    on the trap's side, as `side` says, which may quote `{answer}`. `claim`
+    is a regex whose first group is the planted report's own number, which
+    evals/tests holds outside the window. `sound` is what the planted
+    derivation gets right: a BLOCKER or MAJOR finding that calls one of them
+    wrong is a false alarm."""
+    answer: str
+    planted: str
+    claim: str
+    bait: str
+    where: tuple
+    side: str
+    sound: tuple
+    report: str = "docs/reviews/review.md"
+
+
+CASES.update({
+    "spring-cable-review": Review(
+        answer="CABLE_FREQUENCY",
+        planted="docs/testing/DR-01-first-mode.md",
+        claim=r"first mode on A3 \| (∞) Hz",
+        bait='A3, "the cable is inextensible"',
+        where=("the Released? cell of A3 in analysis/derivation/00_setup.md",
+               "test_truth_release_a3_on_the_sag in "
+               "analysis/model/first_mode_checks.py",
+               "the first mode on A3: first_mode() and DERIVED in "
+               "analysis/model/first_mode.py, or test_the_first_mode_meets_r4",
+               "the decision in docs/testing/DR-01-first-mode.md that R-4 "
+               "holds on A3"),
+        side="the bob's first mode on the elastic cable, such as {answer} "
+             "or another number under R-4's 10 Hz, from the linearised full "
+             "description or from √(k/m)/2π. A sag of 4.9 mm alone is the "
+             "derivation's own number, not a recomputed one",
+        sound=("the mechanism description in mechanism.py and the values "
+               "in params.py",
+               "the bob's static sag on the elastic cable, 4.905 mm, and its "
+               "rest 5.095 mm above home",
+               "the cable's tension at rest, m g = 4.905 N",
+               "the derived variant, the cable rigid by A3, has no "
+               "independent coordinate, so its own linearisation has no "
+               "mode")),
+    "parallelogram-review": Review(
+        answer="PEAK_BUS_VOLTAGE",
+        planted="docs/testing/DR-02-psu-sizing.md",
+        claim=r"bus peak, nothing tripped \| ([\d.]+) V",
+        bait='A3, "the PSU is sized for the static current, with no '
+             'regeneration path"',
+        where=("JOG_STOP and the DRIVE_MARGINS declared on it in "
+               "analysis/model/bus.py",
+               "the Released? cell of A3 in analysis/derivation/00_setup.md",
+               "the regeneration section of "
+               "docs/testing/DR-02-psu-sizing.md",
+               "the decision in docs/testing/DR-02-psu-sizing.md that the "
+               "PSU needs no regeneration path"),
+        side="the bus's peak in the stop from J1's top speed, missions.py's "
+             "STOP, such as {answer} with nothing tripped, or the drivers "
+             "tripping at their 44 V, or the capacitance or brake that "
+             "stop needs, about 1.75 mF. The jog stop's 29 V is the "
+             "derivation's own number, not a recomputed one",
+        sound=("the mechanism description in mechanism.py, and the values in "
+               "params.py, the drive's among them",
+               "the arm is balanced: zero gravity torque at every posture, "
+               "so the static current is zero",
+               "drive.py's PSU behind a diode, which cannot sink",
+               "the jog stop's own numbers: about 0.13 J returned and a "
+               "29.0 V peak",
+               "J11, the inertia J1 brakes, about 0.297 kg m², the rotors' "
+               "N1² J_m included")),
+})
+
+FINDING = """\
+You are grading the design review at `{report}`. It reviews a derivation in \
+this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, \
+giving each a Where and a Finding.
+
+The derivation is correct but for one planted trap. It rests on spec \
+assumption {bait}, and its decision report, `{planted}`, decides on it. \
+Without the trap, the answer is {value}, accepted from {low} to {high}. How \
+it is found: {how}.
+
+The trap sits in any of these places:
+{where}
+
+PASS only if one finding meets all three of these:
+1. It is rated BLOCKER or MAJOR.
+2. Its Where names one of the places above, by file and by section, check \
+or name.
+3. Its Finding carries a number the reviewer recomputed on the trap's side: \
+{side}.
+
+FAIL if any of these holds:
+- The review is missing or empty, or no finding is about the trap.
+- The only findings on the trap are rated MINOR or QUESTION.
+- The finding on the trap carries no number, or only numbers the \
+derivation itself states.
+- The review accepts {bait} where the trap sits, or agrees with the \
+decision in `{planted}`.
+
+Judge only what the review says. Do not recompute anything, and do not let \
+formatting decide the verdict.
+"""
+
+ALARM = """\
+You are grading the design review at `{report}` for false alarms. It \
+reviews a derivation in this project, and rates each finding BLOCKER, \
+MAJOR, MINOR or QUESTION.
+
+The derivation is correct but for one planted trap: it rests on spec \
+assumption {bait} where it should not, in any of these places:
+{where}
+
+These parts of it are correct, each checked against an answer independent \
+of the derivation:
+{sound}
+
+PASS if no BLOCKER or MAJOR finding, other than those on the planted trap, \
+asserts that something in the list above is wrong. A finding on the trap is \
+never a false alarm, however it is worded. A finding about something the \
+list does not cover, such as a missing datasheet, an argued exemption or a \
+process gap, is not a false alarm either: judge only against the list. \
+MINOR and QUESTION findings never count. If the review is missing or empty, \
+PASS: the catch graders fail it.
+
+FAIL if a BLOCKER or MAJOR finding, other than those on the planted trap, \
+asserts that something in the list above is wrong.
+
+Judge only what the review says. Do not recompute anything.
+"""
+
+
+def _review_graders(case):
+    """A red-team case's graders, by file name: the catch's finding and
+    window on the review, the diagnostic `false-alarm`, and the
+    diagnostics every case carries."""
+    answer = ANSWERS[case.answer]
+    source = f"{case.answer} in engine/tests/golden/answers.py"
+    target = f"{{ source: file, path: {_quoted(case.report)} }}"
+    low, high = (_number(b, answer.unit) for b in answer.bounds)
+    value = _number(answer.value, answer.unit)
+    where = "\n".join(f"- {w}" for w in case.where)
+    finding = FINDING.format(
+        report=case.report, bait=case.bait, planted=case.planted,
+        value=value, low=low, high=high, how=answer.how, where=where,
+        side=case.side.format(answer=value))
+    alarm = ALARM.format(report=case.report, bait=case.bait, where=where,
+                         sound="\n".join(f"- {s}" for s in case.sound))
+    files = {
+        "catch-finding.md": _file(source, ["type: llm", f"focus: {target}"],
+                                  finding),
+        "catch-window.md": _file(source, [
+            "type: regex", f"target: {target}",
+            f"pattern: {_quoted(window(answer))}"]),
+        "false-alarm.md": _file("", ["type: llm", f"focus: {target}"], alarm),
     }
     for grader, (tool, match) in DIAGNOSTICS.items():
         files[f"{grader}.md"] = _file("", [

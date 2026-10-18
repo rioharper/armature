@@ -36,8 +36,10 @@ grep -qF "path = \"$engine\"" "$model/pyproject.toml" \
 # /var/tmp outlives the run and reboots; the sandbox hides it from the agent,
 # which never needs it once the venv is synced. Never download a Python into
 # the run's temporary home: the system's 3.12 is the one the venv is built on.
-( cd "$model" && UV_CACHE_DIR=/var/tmp/armature-eval-uv UV_PYTHON_DOWNLOADS=never \
-    uv sync --quiet )
+# ARMATURE_EVAL_UV_CACHE is for evals/tests, which runs this where /var/tmp
+# is not writable (Git Bash); an eval run's scaffold never sees it.
+( cd "$model" && UV_CACHE_DIR="${ARMATURE_EVAL_UV_CACHE:-/var/tmp/armature-eval-uv}" \
+    UV_PYTHON_DOWNLOADS=never uv sync --quiet )
 
 printf '.venv/\n__pycache__/\n.pytest_cache/\nreview/\n' > .gitignore
 git init -q
