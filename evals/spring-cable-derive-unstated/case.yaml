@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: spring-cable-derive-unstated
+description: >-
+  spring-cable-derive, its bait unstated: the brief lists no A3, and implies
+  the assumption only through the spec's prose, by the bob hanging the cable's
+  length below the anchor. The same golden answer, window and catch; it
+  measures finding the assumption, not only rejecting it.
+tags: [derive, spring_cable, unstated]
+context:
+  scaffold_script: scaffold.sh

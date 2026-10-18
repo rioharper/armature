@@ -2,6 +2,7 @@
 
 import math
 import re
+from dataclasses import replace
 from decimal import ROUND_HALF_UP, Decimal
 
 import pytest
@@ -67,6 +68,21 @@ def _scaffolded(kind, laid):
                           .read_text(encoding="utf-8"), re.M)]
 
 
+def _a_case_and_its_unstated_variant(mechanism, names):
+    """Each golden mechanism's case of a family comes twice: once with its
+    bait stated, and once as `<case>-unstated`, the bait only implied.
+    Returns the stated case's name."""
+    stated = [n for n in names if generate.CASES[n].stated]
+    assert len(stated) == 1, (mechanism, names)
+    assert sorted(names) == [stated[0], stated[0] + generate.UNSTATED], (
+        mechanism, names)
+    for name in names:
+        case = (generate.EVALS / name / "case.yaml").read_text(
+            encoding="utf-8")
+        assert f"name: {name}\n" in case
+    return stated[0]
+
+
 def test_the_golden_mechanisms_are_read_from_the_golden_source():
     assert len(MECHANISMS) >= 4 and "arm_2r" not in MECHANISMS
 
@@ -77,10 +93,7 @@ def test_every_golden_mechanism_but_the_2r_arm_has_a_derive_case(mechanism):
     case whose scaffold lays it down."""
     names = _scaffolded(generate.Derive,
                         rf'scaffold\.sh" {mechanism}\s*$')
-    assert len(names) == 1, (mechanism, names)
-    case = (generate.EVALS / names[0] / "case.yaml").read_text(
-        encoding="utf-8")
-    assert f"name: {names[0]}\n" in case
+    _a_case_and_its_unstated_variant(mechanism, names)
 
 
 @pytest.mark.parametrize("name", generate.CASES)
@@ -122,12 +135,10 @@ def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(
     """Spec #113's red-team cases: each golden mechanism has one generated
     case whose scaffold lays it down and then its own planted derivation."""
     names = _scaffolded(generate.Review,
-                        rf'planted\.sh" {mechanism} "\$here/planted"\s*$')
-    assert len(names) == 1, (mechanism, names)
-    assert (generate.EVALS / names[0] / "planted").is_dir()
-    case = (generate.EVALS / names[0] / "case.yaml").read_text(
-        encoding="utf-8")
-    assert f"name: {names[0]}\n" in case
+                        rf'planted\.sh" {mechanism} '
+                        r'"\$here/(?:\.\./[\w-]+-review/)?planted"\s*$')
+    stated = _a_case_and_its_unstated_variant(mechanism, names)
+    assert (generate.EVALS / stated / "planted").is_dir()
 
 
 FIGURE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?) ?(?:kg m²|mm|Hz|J|N|V|m)\b")
@@ -140,7 +151,7 @@ def test_each_figure_a_red_team_case_calls_sound_is_in_its_planted_files(
     """`sound` copies figures by hand from the planted derivation; each
     must be some number in the planted files rounded to its places, so a
     planted figure that moves fails here until `sound` follows it."""
-    planted = generate.EVALS / name / "planted"
+    planted = generate.EVALS / generate.base(name) / "planted"
     numbers = [Decimal(n) for p in planted.rglob("*") if p.is_file()
                for n in NUMBER.findall(p.read_text(encoding="utf-8"))]
     figures = [Decimal(f) for sound in generate.CASES[name].sound
@@ -169,7 +180,8 @@ def test_a_red_team_case_is_caught_on_a_located_finding_with_its_number(name):
     assert answer.how in rubric
     assert all(where in rubric for where in case.where)
     assert "BLOCKER or MAJOR" in rubric and "MINOR or QUESTION" in rubric
-    assert (generate.EVALS / name / "planted" / case.planted).is_file()
+    assert (generate.EVALS / generate.base(name) / "planted"
+            / case.planted).is_file()
 
 
 @pytest.mark.parametrize("name", _family(generate.Review))
@@ -199,3 +211,54 @@ def test_a_window_across_a_power_of_ten_reads_both_sides():
     answer = Answer(value=10.0, unit="°", how="", bait=0.0)
     assert all(found(answer, f"{x} °") for x in ("9.81", "10", "10.19"))
     assert not any(found(answer, f"{x}°") for x in ("9.7", "10.3", "1.0"))
+
+
+UNSTATED = [n for n, c in generate.CASES.items() if not c.stated]
+NUMBERED_BAIT = re.compile(r"^- A3\. ", re.M)
+
+
+def test_every_case_has_an_unstated_variant():
+    stated = [n for n, c in generate.CASES.items() if c.stated]
+    assert sorted(UNSTATED) == sorted(n + generate.UNSTATED for n in stated)
+
+
+@pytest.mark.parametrize("name", UNSTATED)
+def test_an_unstated_variant_differs_from_its_case_only_in_its_bait(name):
+    """The same golden answer, report and trap: only the brief's bait, and
+    the bait's wording in the rubric, change."""
+    variant, case = generate.CASES[name], generate.CASES[generate.base(name)]
+    assert case.stated and variant.bait != case.bait
+    assert replace(variant, bait=case.bait, stated=True) == case
+
+
+@pytest.mark.parametrize("name", UNSTATED)
+def test_an_unstated_variants_brief_never_numbers_its_bait(name):
+    """The stated case's brief lists the bait as spec assumption A3; its
+    variant's lists no A3, so the agent must find the assumption in the
+    spec's prose."""
+    def brief(n):
+        return (generate.EVALS / n / "prompt.md").read_text(encoding="utf-8")
+    assert NUMBERED_BAIT.search(brief(generate.base(name)))
+    assert not NUMBERED_BAIT.search(brief(name))
+    assert "- A1. " in brief(name)
+
+
+@pytest.mark.parametrize("name", UNSTATED)
+def test_an_unstated_variants_rubric_says_the_bait_was_only_implied(name):
+    files = generate.graders(name)
+    rubric = files.get("catch-bait.md") or files["catch-finding.md"]
+    stated = generate.graders(generate.base(name))
+    assert generate.CASES[name].bait in rubric
+    assert "never stated" in rubric
+    assert "never stated" not in (stated.get("catch-bait.md")
+                                  or stated["catch-finding.md"])
+
+
+@pytest.mark.parametrize("name", [n for n in UNSTATED
+                                  if n.endswith("-review" + generate.UNSTATED)])
+def test_an_unstated_red_team_variant_reviews_its_cases_planted_derivation(
+        name):
+    scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
+        encoding="utf-8")
+    assert f'"$here/../{generate.base(name)}/planted"' in scaffold
+    assert not (generate.EVALS / name / "planted").exists()

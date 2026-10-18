@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: wheel-leg-derive-unstated
+description: >-
+  wheel-leg-derive, its bait unstated: the brief lists no A3, and implies the
+  assumption only through the spec's prose, by the contact checks the spec
+  runs with the leg straight under the hips. The same golden answer, window
+  and catch; it measures finding the assumption, not only rejecting it.
+tags: [derive, wheel_leg, unstated]
+context:
+  scaffold_script: scaffold.sh
