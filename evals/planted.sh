@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# planted.sh <mechanism> <planted> — lays down a red-team case's project: the
-# derivation under review, golden-correct but for its one planted trap.
+# planted.sh <mechanism> <planted> [<patch>] — lays down a red-team case's
+# project: the derivation under review, golden-correct but for its one planted
+# trap.
 #
 # A red-team case's scaffold.sh execs this with its golden mechanism's name and
-# its own planted/ directory. It runs as scaffold.sh does, unsandboxed, in the
+# its own planted/ directory; an unstated variant's passes its case's planted/
+# and its own implicit.patch. It runs as scaffold.sh does, unsandboxed, in the
 # run's empty workspace, and:
 #  1. runs scaffold.sh <mechanism>: the spec-stage project, synced and
 #     committed;
@@ -13,11 +15,19 @@
 #  3. copies <planted> over the workspace: the notes, model modules and
 #     report the derivation adds, laid out as they sit in the project. The
 #     description stays the golden project's, so it has one source;
-#  4. commits the derivation on top of the spec stage.
+#  4. applies <patch>, if given, with `git apply`: the same derivation, its
+#     bait used but never numbered as an assumption, so planted/ stays the
+#     derivation's one source;
+#  5. commits the derivation on top of the spec stage.
 set -euo pipefail
 
-mechanism="${1:?usage: planted.sh <mechanism> <planted>}"
-planted="$(cd "${2:?usage: planted.sh <mechanism> <planted>}" && pwd)"
+usage="usage: planted.sh <mechanism> <planted> [<patch>]"
+mechanism="${1:?$usage}"
+planted="$(cd "${2:?$usage}" && pwd)"
+patch="${3:-}"
+if [ -n "$patch" ]; then
+    patch="$(cd "$(dirname "$patch")" && pwd)/$(basename "$patch")"
+fi
 evals="$(cd "$(dirname "$0")" && pwd)"
 template="$(dirname "$evals")/skills/armature-derive/scripts/model_template"
 
@@ -25,6 +35,9 @@ bash "$evals/scaffold.sh" "$mechanism"
 cp "$template/layout.py" "$template/layout_checks.py" \
    "$template/report_truth.py" analysis/model/
 cp -R "$planted/." .
+if [ -n "$patch" ]; then
+    git apply "$patch"
+fi
 
 git add -A
 git -c user.name="Armature eval" -c user.email=eval@armature.invalid \

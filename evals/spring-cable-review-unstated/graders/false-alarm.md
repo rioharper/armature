@@ -6,17 +6,17 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md` for false alarms. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the cable is inextensible, which the derivation records as its A3 where it should not, in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
-- test_truth_release_a3_on_the_sag in analysis/model/first_mode_checks.py
-- the first mode on A3: first_mode() and DERIVED in analysis/model/first_mode.py, or test_the_first_mode_meets_r4
-- the decision in docs/testing/DR-01-first-mode.md that R-4 holds on A3
+The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the cable is inextensible, which the derivation uses without ever numbering it where it should not, in any of these places:
+- the rigid cable, CABLE and DERIVED in analysis/model/first_mode.py, which analysis/derivation/00_setup.md never lists among its assumptions, or *The system* in 00_setup.md, which holds the bob the cable's length below the anchor
+- test_truth_the_variants_rest_agrees_with_the_truth_model in analysis/model/first_mode_checks.py
+- the first mode on the rigid cable: first_mode() in analysis/model/first_mode.py, or test_the_first_mode_meets_r4
+- the decision in docs/testing/DR-01-first-mode.md that R-4 holds
 
 These parts of it are correct, each checked against an answer independent of the derivation:
 - the mechanism description in mechanism.py and the values in params.py
 - the bob's static sag on the elastic cable, 4.905 mm, and its rest 5.095 mm above home
 - the cable's tension at rest, m g = 4.905 N
-- the derived variant, the cable rigid by A3, has no independent coordinate, so its own linearisation has no mode
+- the derived variant, the cable rigid, has no independent coordinate, so its own linearisation has no mode
 
 A false alarm is a BLOCKER or MAJOR finding, other than those on the planted trap, that asserts something in the list above is wrong: that a listed number, value or result is incorrect. None of these is a false alarm:
 - A finding on the trap, however it is worded. That includes the trap's own check: a finding that the check beside the trap, or the derivation's own number there, is not enough to close the question.

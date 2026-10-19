@@ -1,0 +1,151 @@
+--- a/analysis/derivation/00_setup.md
++++ b/analysis/derivation/00_setup.md
+@@ -5,5 +5,5 @@
+ ## The system
+ 
+-A 0.5 kg bob rides a vertical slide, z along +z, and hangs on a cable from an anchor 1.0 m above its home. The cable's rest length is 0.99 m and its stiffness EA / l₀ is k = 1000 N/m, so at home it is stretched 10 mm and pulls the bob up. Gravity is −z, 9.81 m/s². Nothing actuates the bob: the slide only guides it, and the position loop of the spec moves the anchor, which this derivation does not model.
++A 0.5 kg bob rides a vertical slide, z along +z, and hangs on a cable from an anchor 1.0 m above its home. The cable's rest length is 0.99 m and its stiffness EA / l₀ is k = 1000 N/m, so at home it is stretched 10 mm and pulls the bob up. The cable sets the bob's height: the bob sits the cable's length below the anchor, and DR-01's variant holds it there, the cable `rigid`. Gravity is −z, 9.81 m/s². Nothing actuates the bob: the slide only guides it, and the position loop of the spec moves the anchor, which this derivation does not model.
+ 
+ The question the spec hands derive is R-4: every mode of the rig at or above 10 Hz, five times the position loop's 2 Hz crossover. The measured quantity is the frequency of a free oscillation of the bob on the slide, read by the slide's encoder after a tap.
+@@ -15,7 +15,4 @@
+ | A1 | The slide is frictionless. | none | Not released: the description gives the slide no friction; adding it means a `frictionloss` on z from the slide's datasheet, which is not in hand, scoped with the slide's purchase. Friction only damps the mode, it does not move it. |
+ | A2 | The anchor is rigid. | none | Not released: the anchor's compliance is not in the description; releasing it means a body for the anchor on a slide of its own with the frame's stiffness, which waits on the frame's CAD. |
+-| A3 | The cable is inextensible. | `rigid("hang", assumption="A3")` | `test_truth_release_a3_on_the_sag` — rigid hang (A3), −4.905 mm at rest. Sized and kept: under a twentieth of the slide's 200 mm travel. |
+-
+-A3 is the one reduction the variant makes. Released in the truth model, the elastic cable lets the bob settle 4.905 mm lower than the rigid one holds it, which is m g / k, as (2) below predicts. That moves no posture the rig works at, so A3 stands.
+ 
+ ## Home posture and frames
+@@ -53,5 +50,5 @@
+ ## The truth model
+ 
+-`mechanism.truth()` compiles the full description, the cable elastic. `uv run python run_all.py` runs both checks above, the A3 release in `first_mode_checks.py`, and the gates.
++`mechanism.truth()` compiles the full description, the cable elastic. `uv run python run_all.py` runs both checks above, the variant's rest against the truth model's in `first_mode_checks.py`, and the gates.
+ 
+ ## Revision note
+--- a/analysis/model/first_mode.py
++++ b/analysis/model/first_mode.py
+@@ -4,5 +4,5 @@
+ Mirrors docs/testing/DR-01-first-mode.md, *The decision* and *Method*.
+ DERIVED is the variant the task reads: the description with the cable rigid,
+-A3 in analysis/derivation/00_setup.md. Self-tests in first_mode_checks.py;
++as analysis/derivation/00_setup.md, *The system*, hangs the bob. Self-tests in first_mode_checks.py;
+ report_dr01.py prints the report's tables.
+ """
+@@ -21,6 +21,6 @@
+ R4_FLOOR = 10.0  # R-4: every mode of the rig at or above this [Hz]
+ 
+-A3 = rigid("hang", assumption="A3")
+-DERIVED = armature.reduce(mechanism, A3, name="inextensible cable")
++CABLE = rigid("hang", assumption="00_setup.md, The system")
++DERIVED = armature.reduce(mechanism, CABLE, name="the cable's length")
+ 
+ 
+@@ -44,6 +44,7 @@
+ 
+ def sag():
+-    """A3's release (m): how far the bob settles once the cable may stretch,
+-    the full description against the derived variant, from its rest."""
++    """The variant's rest in the truth model (m): how far the bob settles
++    once the cable may stretch, the full description against the derived
++    variant, from its rest."""
+     out = derived().at().release(quantity=lambda s: s.settle().q["z"])
+-    return out.sized[A3], out
++    return out.sized[CABLE], out
+--- a/analysis/model/first_mode_checks.py
++++ b/analysis/model/first_mode_checks.py
+@@ -2,6 +2,6 @@
+ first_mode_checks.py — self-tests for first_mode.py.
+ 
+-The derivation's coordinates against its variant's, A3 released in the truth
+-model, and the first mode held to R-4.
++The derivation's coordinates against its variant's, the variant's rest
++against the truth model's, and the first mode held to R-4.
+ """
+ 
+@@ -23,9 +23,10 @@
+ 
+ 
+-def test_truth_release_a3_on_the_sag():
+-    """A3 released: the elastic cable lets the bob settle by m g / k. Kept
+-    while it stays under a twentieth of the slide's travel."""
++def test_truth_the_variants_rest_agrees_with_the_truth_model():
++    """The truth model, its cable elastic, settles the bob m g / k below
++    the variant's rest. Kept while that stays under a twentieth of the
++    slide's travel."""
+     moved, out = sag()
+-    assert abs(moved) < KEPT, f"A3 moves the bob {moved * 1e3:.3f} mm: {out}"
++    assert abs(moved) < KEPT, f"the truth model moves the bob {moved * 1e3:.3f} mm: {out}"
+     print(f"  [PASS] {out}; kept, under {KEPT * 1e3:.0f} mm")
+ 
+@@ -34,4 +35,4 @@
+     f = first_mode()
+     assert f >= R4_FLOOR, f"the first mode, {f:.4g} Hz, is under R-4"
+-    print(f"  [PASS] first mode on A3: {f} Hz (the variant's modes "
++    print(f"  [PASS] first mode: {f} Hz (the variant's modes "
+           f"{modes()}), R-4's floor {R4_FLOOR:g} Hz")
+--- a/analysis/model/report_dr01.py
++++ b/analysis/model/report_dr01.py
+@@ -16,10 +16,11 @@
+ print("| Quantity | Value | From |")
+ print("|---|---|---|")
+-print(f"| first mode on A3 | {'∞' if math.isinf(f1) else f'{f1:.4g}'} Hz | "
++print(f"| first mode on the variant | {'∞' if math.isinf(f1) else f'{f1:.4g}'} Hz | "
+       f"first_mode.first_mode(), "
+       f"the variant's modes {modes()} |")
+ print(f"| R-4's floor | {R4_FLOOR:g} Hz | spec R-4 |")
+-print(f"| A3 released: the bob's static sag | {moved * 1e3:.3f} mm | "
+-      f"test_truth_release_a3_on_the_sag |")
++print(f"| the truth model's rest below the variant's | "
++      f"{moved * 1e3:.3f} mm | "
++      f"test_truth_the_variants_rest_agrees_with_the_truth_model |")
+ print(f"| the cable's tension at rest | {rest.tension['hang']:.3f} N | "
+       f"the truth model, settled |")
+--- a/docs/testing/DR-01-first-mode.md
++++ b/docs/testing/DR-01-first-mode.md
+@@ -3,5 +3,5 @@
+ Rev 1 — 2026-10-17 — plan task DR-01, Executor: armature-derive
+ 
+-**Status:** complete. R-4 holds: on the derived variant the bob has no mode at all, so none sits under R-4's 10 Hz. A3, the inextensible cable, is released in the truth model and moves the bob 4.905 mm, a sag that changes no posture the rig works at, so the variant stands. No number in the spec moves.
++**Status:** complete. R-4 holds: on the derived variant the bob has no mode at all, so none sits under R-4's 10 Hz. The truth model, its cable elastic, rests the bob 4.905 mm below the variant, a sag that changes no posture the rig works at, so the variant stands. No number in the spec moves.
+ 
+ ## Purpose
+@@ -11,5 +11,5 @@
+ ## Method
+ 
+-`analysis/model/first_mode.py` (rev 1) reads the variant `DERIVED`, the description with the cable rigid by A3, and linearises it at its rest with `linearise()`, which on a closed chain reports the modes on the constraint manifold. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
++`analysis/model/first_mode.py` (rev 1) reads the variant `DERIVED`, the description with the cable rigid, the bob the cable's length below the anchor, and linearises it at its rest with `linearise()`, which on a closed chain reports the modes on the constraint manifold. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
+ 
+ ## The decision: R-4 holds, the bob has no mode under 10 Hz
+@@ -17,7 +17,7 @@
+ The rigid cable holds the bob at its rest length, so the slide's one coordinate z is solved by the cable's closure and the variant has no independent coordinate (`test_the_derivation_accounts_for_the_variants_coordinates`). Its linearisation has nothing to oscillate in and returns no mode; the first mode is unbounded.
+ 
+-I expected exactly that: a bob hung on an inextensible cable on a vertical slide is held, not sprung. The one way the answer could move is A3 itself, so A3 is released in the truth model (`test_truth_release_a3_on_the_sag`): with the cable allowed to stretch, the bob settles 4.905 mm lower, m g / k, and the release passes its bound of a twentieth of the slide's travel. A3 is kept, and with it the decision.
++I expected exactly that: a bob hung on an inextensible cable on a vertical slide is held, not sprung. The variant's rest is checked against the truth model (`test_truth_the_variants_rest_agrees_with_the_truth_model`): with the cable allowed to stretch, the bob settles 4.905 mm lower, m g / k, inside the bound of a twentieth of the slide's travel. The variant is kept, and with it the decision.
+ 
+-> **R-4: met.** First mode on A3: unbounded, against a 10 Hz floor.
++> **R-4: met.** First mode: unbounded, against a 10 Hz floor.
+ 
+ ## Results
+@@ -25,7 +25,7 @@
+ | Quantity | Value | From |
+ |---|---|---|
+-| first mode on A3 | ∞ Hz | first_mode.first_mode(), the variant's modes [] |
++| first mode on the variant | ∞ Hz | first_mode.first_mode(), the variant's modes [] |
+ | R-4's floor | 10 Hz | spec R-4 |
+-| A3 released: the bob's static sag | -4.905 mm | test_truth_release_a3_on_the_sag |
++| the truth model's rest below the variant's | -4.905 mm | test_truth_the_variants_rest_agrees_with_the_truth_model |
+ | the cable's tension at rest | 4.905 N | the truth model, settled |
+ 
+@@ -40,5 +40,4 @@
+ | Assumption | Direction and size | Closed by |
+ |---|---|---|
+-| A3, the cable inextensible | released: the bob sags 4.905 mm on the elastic cable, under a twentieth of the 200 mm travel | this report |
+ | A2, the anchor rigid | a compliant anchor softens the rig; not in the description | the frame's CAD |
+ 
+@@ -54,5 +53,5 @@
+ |---|---|
+ | `docs/01-spec/traceability.md` | R-4: analyzed, DR-01 |
+-| `docs/decisions.md` | R-4 met on A3; cable order unblocked |
++| `docs/decisions.md` | R-4 met; cable order unblocked |
+ 
+ ## Revision History

@@ -2,72 +2,60 @@
 
 Each case is assembled by its own `scaffold.sh`, as `claude plugin eval`
 runs it: the model template's runner and gates, the golden project, then
-the case's `planted/`. The guard holds the trap where the case needs it:
+the case's `planted/`, and on an unstated variant its `implicit.patch` over
+that. The guard holds the trap where the case needs it:
 1. `run_all.py` passes, so the trap gets past derive's own gates;
 2. the planted report's number lies outside the case's window, and the
    golden value inside it;
 3. no number inside the window appears anywhere in the planted derivation
-   or in what its run prints, so a review cannot copy the answer from it.
+   or in what its run prints, so a review cannot copy the answer from it;
+4. every figure `sound` quotes is in the derivation as laid down;
+5. on an unstated variant, the derivation numbers no A3: it uses the bait
+   without recording it, so the review must find it (#131).
 
 Slow: each assembly syncs a venv and runs the model. On Windows the
 scaffold runs under Git's bash, never WSL's, and its uv cache is uv's own.
 """
 
 import math
-import os
 import re
-import shutil
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
 import generate
+from conftest import find_bash, run, unsourced_figures
 from golden.answers import ANSWERS
 
-# The stated cases only: an unstated variant lays down its case's own
-# planted/, so assembling it again would check the same derivation.
 REVIEWS = [name for name, case in generate.CASES.items()
-           if isinstance(case, generate.Review) and case.stated]
-
-
-def _bash():
-    """Git's bash on Windows, where `bash` on PATH may be WSL's; else
-    `bash`."""
-    if sys.platform == "win32":
-        git = shutil.which("git")
-        if git:
-            for up in Path(git).resolve().parents:
-                if (up / "bin" / "bash.exe").is_file():
-                    return str(up / "bin" / "bash.exe")
-        return None
-    return shutil.which("bash")
-
-
-def _run(args, cwd, **env):
-    """`args` in `cwd`, outside this suite's venv, its output as UTF-8."""
-    outside = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace",
-                          env={**outside, "PYTHONIOENCODING": "utf-8", **env})
+           if isinstance(case, generate.Review)]
 
 
 @pytest.fixture(scope="module", params=REVIEWS)
 def assembled(request, tmp_path_factory):
     """`(name, workspace, run_all's output)`: the case's project, laid down
     by its scaffold in an empty directory and run."""
-    name, bash = request.param, _bash()
+    name, bash = request.param, find_bash()
     if bash is None:
         pytest.skip("no bash to run the scaffold with")
     work = tmp_path_factory.mktemp(name)
-    cache = _run(["uv", "cache", "dir"], work).stdout.strip()
+    cache = run(["uv", "cache", "dir"], work).stdout.strip()
     scaffold = (generate.EVALS / name / "scaffold.sh").as_posix()
-    laid = _run([bash, scaffold], work, ARMATURE_EVAL_UV_CACHE=cache)
+    laid = run([bash, scaffold], work, ARMATURE_EVAL_UV_CACHE=cache)
     assert laid.returncode == 0, laid.stdout + laid.stderr
-    ran = _run(["uv", "run", "--frozen", "python", "run_all.py"],
-               work / "analysis" / "model")
+    ran = run(["uv", "run", "--frozen", "python", "run_all.py"],
+              work / "analysis" / "model")
     return name, work, ran
+
+
+def derivation(name, work):
+    """The planted derivation as laid down in `work`, by path: the files of
+    its case's planted/, read from the workspace, so an unstated variant's
+    are read with its patch applied."""
+    planted = generate.EVALS / generate.base(name) / "planted"
+    paths = [p.relative_to(planted).as_posix() for p in planted.rglob("*")
+             if p.is_file()]
+    return {path: (work / path).read_text(encoding="utf-8")
+            for path in paths}
 
 
 @pytest.mark.slow
@@ -102,11 +90,31 @@ def test_the_answer_is_nowhere_in_the_planted_derivation(assembled):
     name, work, ran = assembled
     case = generate.CASES[name]
     pattern = generate.window(ANSWERS[case.answer])
-    planted = generate.EVALS / name / "planted"
-    texts = {"run_all.py's output": ran.stdout}
-    texts.update({p.relative_to(planted).as_posix(): p.read_text(
-        encoding="utf-8") for p in planted.rglob("*") if p.is_file()})
+    texts = {"run_all.py's output": ran.stdout, **derivation(name, work)}
     assert (work / case.planted).is_file()
     leaks = {where: m[0] for where, text in texts.items()
              if (m := re.search(pattern, text))}
     assert not leaks, f"{name}: the answer is printed in {leaks}"
+
+
+@pytest.mark.slow
+def test_each_figure_sound_quotes_is_in_the_derivation_laid_down(assembled):
+    name, work, _ = assembled
+    texts = derivation(name, work).values()
+    assert unsourced_figures(generate.CASES[name].sound, texts) == [], name
+
+
+@pytest.mark.slow
+def test_an_unstated_variants_derivation_never_numbers_its_bait(assembled):
+    """The stated derivation records the bait as its A3; the unstated
+    variant's, patched, uses it with no number, in no row of 00_setup.md's
+    assumptions, and no file of it names an A3."""
+    name, work, _ = assembled
+    texts = derivation(name, work)
+    if generate.CASES[name].stated:
+        assert re.search(rf"^\| {generate.LABEL} \|", texts[
+            "analysis/derivation/00_setup.md"], re.M), name
+        return
+    named = {path for path, text in texts.items()
+             if re.search(rf"\b{generate.LABEL}\b", text)}
+    assert not named, f"{name}: {generate.LABEL} is named in {named}"

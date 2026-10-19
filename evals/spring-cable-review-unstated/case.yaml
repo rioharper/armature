@@ -5,6 +5,8 @@ description: >-
   the assumption only through the spec's prose, by the bob hanging the cable's
   length below the anchor. The same golden answer, window and catch; it
   measures finding the assumption, not only rejecting it.
+  It reviews its case's derivation with implicit.patch over it, the bait
+  used and never numbered as an assumption.
 tags: [red-team, spring_cable, unstated]
 context:
   scaffold_script: scaffold.sh

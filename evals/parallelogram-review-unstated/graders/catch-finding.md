@@ -6,11 +6,11 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the PSU is sized for the static current, with no regeneration path, which the derivation records as its A3, and its decision report, `docs/testing/DR-02-psu-sizing.md`, decides on it. Without the trap, the answer is 54.36 V, accepted from 53.27 V to 55.45 V. How it is found: V = √(V₀² + 2E/C) on the capacitance alone, the source a PSU that cannot sink: E the most the stop returns, ½J11(ω0² − ω²) less the copper loss R_φ ∫(i1² + i2²) dt, J11 = 2I + m1 r1² + m4 r4² + m2 a² + N1² J_m, J2's current holding φ against the coupling (m2 a r2 + m4 r4 c) cos(θ1 − φ); the bait is the PSU's own V₀, a bus that never rises.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the PSU is sized for the static current, with no regeneration path, which the derivation uses without ever numbering it, and its decision report, `docs/testing/DR-02-psu-sizing.md`, decides on it. Without the trap, the answer is 54.36 V, accepted from 53.27 V to 55.45 V. How it is found: V = √(V₀² + 2E/C) on the capacitance alone, the source a PSU that cannot sink: E the most the stop returns, ½J11(ω0² − ω²) less the copper loss R_φ ∫(i1² + i2²) dt, J11 = 2I + m1 r1² + m4 r4² + m2 a² + N1² J_m, J2's current holding φ against the coupling (m2 a r2 + m4 r4 c) cos(θ1 − φ); the bait is the PSU's own V₀, a bus that never rises.
 
 The trap sits in any of these places:
 - JOG_STOP and the DRIVE_MARGINS declared on it in analysis/model/bus.py
-- the Released? cell of A3 in analysis/derivation/00_setup.md
+- the balance in analysis/derivation/00_setup.md, which sizes the PSU for the static current alone, which analysis/derivation/00_setup.md never lists among its assumptions
 - the regeneration section of docs/testing/DR-02-psu-sizing.md
 - the decision in docs/testing/DR-02-psu-sizing.md that the PSU needs no regeneration path
 

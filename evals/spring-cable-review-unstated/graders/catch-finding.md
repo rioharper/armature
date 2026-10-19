@@ -6,13 +6,13 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the cable is inextensible, which the derivation records as its A3, and its decision report, `docs/testing/DR-01-first-mode.md`, decides on it. Without the trap, the answer is 7.118 Hz, accepted from 6.975 Hz to 7.26 Hz. How it is found: f = √(k/m) / 2π, k = EA / l0 the cable's stiffness; an inextensible cable has no stretch mode, its frequency unbounded.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the cable is inextensible, which the derivation uses without ever numbering it, and its decision report, `docs/testing/DR-01-first-mode.md`, decides on it. Without the trap, the answer is 7.118 Hz, accepted from 6.975 Hz to 7.26 Hz. How it is found: f = √(k/m) / 2π, k = EA / l0 the cable's stiffness; an inextensible cable has no stretch mode, its frequency unbounded.
 
 The trap sits in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
-- test_truth_release_a3_on_the_sag in analysis/model/first_mode_checks.py
-- the first mode on A3: first_mode() and DERIVED in analysis/model/first_mode.py, or test_the_first_mode_meets_r4
-- the decision in docs/testing/DR-01-first-mode.md that R-4 holds on A3
+- the rigid cable, CABLE and DERIVED in analysis/model/first_mode.py, which analysis/derivation/00_setup.md never lists among its assumptions, or *The system* in 00_setup.md, which holds the bob the cable's length below the anchor
+- test_truth_the_variants_rest_agrees_with_the_truth_model in analysis/model/first_mode_checks.py
+- the first mode on the rigid cable: first_mode() in analysis/model/first_mode.py, or test_the_first_mode_meets_r4
+- the decision in docs/testing/DR-01-first-mode.md that R-4 holds
 
 PASS only if one finding meets all three of these:
 1. It is rated BLOCKER or MAJOR.

@@ -74,6 +74,7 @@ Overhaul 05 changes how a project reaches the engine.
 24 of its runs (#124), so with every bait stated outright the suite could not
 show that the plugin is what catches the trap. Each case now has an
 **unstated variant**, `<case>-unstated`, whose brief only implies the bait,
-and the suite runs sixteen cases. The variants gate on the same 2/3 with-arm
+and the suite runs sixteen cases. A red-team variant's derivation uses the
+bait without numbering it, so the review must find it as well. The variants gate on the same 2/3 with-arm
 catch rate as the rest. A release now costs about $80 of plan usage and
 2.7 h of wall time.

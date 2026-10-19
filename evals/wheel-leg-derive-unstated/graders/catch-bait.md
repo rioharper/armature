@@ -8,7 +8,7 @@ You are grading the report at `docs/testing/DR-01-skid-clearance.md`, written fo
 
 The known answer is -42.91 mm, accepted from -43.77 mm to -42.05 mm. How it is found: min over the hips' working range, A ∈ [-1.0, 1.0] and E ∈ [-0.5, 2.0] rad, of B_y − C_y + r − r_skid, the knee B above the five-bar's pin C plus the wheel's radius less the skid pad's, over a dense grid and then one as dense over the cells round its least point; the bait is the least over α = 0 alone.
 
-The task's brief never stated its bait as an assumption: it only implied it, through the spec: that first contact is checked at α = 0. Below, A3 names that assumption, whatever the report calls it. Taken as true, the bait gives 50.79 mm, outside that window.
+The bait is an assumption the brief never stated but only implied, that first contact is checked at α = 0, called A3 here whatever the work under grading calls it. Taken as true, it gives 50.79 mm, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from -43.77 mm to -42.05 mm.

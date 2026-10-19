@@ -6,6 +6,8 @@ description: >-
   scaled copy of the anchor square and the rest lengths paid out to hold the
   platform level. The same golden answer, window and catch; it measures
   finding the assumption, not only rejecting it.
+  It reviews its case's derivation with implicit.patch over it, the bait
+  used and never numbered as an assumption.
 tags: [red-team, cable_platform, unstated]
 context:
   scaffold_script: scaffold.sh

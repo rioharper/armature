@@ -9,7 +9,7 @@ This repo is one leg of our wheel-legged robot, on its test rig, and the spec st
 
 The knee B carries a skid pad, there to take a fall: a rubber sphere of radius `R_SKID` in `params.py`, fixed to link l1 and centred on B. It isn't in the description yet.
 
-On our last leg, first contact was checked with the leg straight under the hips, α = 0, at every leg length, where the knee comes lowest; α is the leg's angle, from straight down, of the pin C seen from the midpoint of the hips.
+We chose `R_SKID` so the pad clears the floor at every leg length with the leg straight under the hips, α = 0. α is the leg's angle, from straight down, of the pin C seen from the midpoint of the hips.
 
 The spec's assumptions, as I wrote them:
 

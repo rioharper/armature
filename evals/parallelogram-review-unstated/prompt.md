@@ -5,7 +5,7 @@ timeout_seconds: 1800
 allowed_tools: [Read, Glob, Grep, Skill, Agent, TodoWrite, Bash, Write, Edit]
 ---
 
-This repo is our camera arm, a balanced parallelogram: J1 swings the upper arm, and J2 sets the forearm's direction through a crank and a coupler. Each joint has a geared motor and its own driver, and both drivers share one DC bus fed by a 24 V PSU. The arm is balanced, so it draws next to nothing at rest, and the PSU behind its diode is sized for that: the bus has no brake resistor and no capacitance beyond the drivers' own. The mechanism description, its parameters, the drive and the missions are in `analysis/model/` (`mechanism.py`, `params.py`, `drive.py`, `missions.py`), and `uv run python run_all.py` there runs every self-test. The model's environment is already synced, and there is no network in this session.
+This repo is our camera arm, a balanced parallelogram: J1 swings the upper arm, and J2 sets the forearm's direction through a crank and a coupler. Each joint has a geared motor and its own driver, and both drivers share one DC bus fed by a 24 V PSU. We picked the PSU from the current the arm draws holding a posture. The mechanism description, its parameters, the drive and the missions are in `analysis/model/` (`mechanism.py`, `params.py`, `drive.py`, `missions.py`), and `uv run python run_all.py` there runs every self-test. The model's environment is already synced, and there is no network in this session.
 
 The spec's assumptions, as I wrote them:
 
