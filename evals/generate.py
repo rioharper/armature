@@ -434,8 +434,11 @@ CASES.update({
 # the bait as a numbered spec assumption: the spec's prose only implies it, so
 # the variant measures whether the agent finds the assumption, not only
 # whether it rejects one it was shown. The variant's answer, report and trap
-# are its case's; only the brief and `bait`, the assumption the prose
-# implies, differ. A red-team variant reviews its case's own planted/.
+# are its case's; the brief and `bait`, the assumption the prose implies,
+# differ. A red-team variant reviews its case's planted/ with its own
+# implicit.patch over it, the same derivation using the bait without ever
+# numbering it, so the review must find it too: its `claim`, `where` and
+# `sound` are worded on that derivation (`IMPLICIT`).
 UNSTATED_SUFFIX = "-unstated"
 IMPLIED = {
     "spring_cable": "that the cable is inextensible",
@@ -444,9 +447,51 @@ IMPLIED = {
     "parallelogram": "that the PSU is sized for the static current, with no "
                      "regeneration path",
 }
+UNNUMBERED = ("which analysis/derivation/00_setup.md never lists among its "
+              "assumptions")
+IMPLICIT = {
+    "spring-cable-review": dict(
+        claim=r"first mode on the variant \| (∞) Hz",
+        where=(f"the rigid cable, CABLE and DERIVED in "
+               f"analysis/model/first_mode.py, {UNNUMBERED}, or *The system* "
+               f"in 00_setup.md, which holds the bob the cable's length below "
+               f"the anchor",
+               "test_truth_the_variants_rest_agrees_with_the_truth_model in "
+               "analysis/model/first_mode_checks.py",
+               "the first mode on the rigid cable: first_mode() in "
+               "analysis/model/first_mode.py, or test_the_first_mode_meets_r4",
+               "the decision in docs/testing/DR-01-first-mode.md that R-4 "
+               "holds"),
+        sound=CASES["spring-cable-review"].sound[:3] + (
+            "the derived variant, the cable rigid, has no independent "
+            "coordinate, so its own linearisation has no mode",)),
+    "cable-platform-review": dict(
+        claim=r"deck tilt at the edge midpoint, on the variant \| ([\d.]+)°",
+        where=(f"the platform's turns locked level, LEVEL and DERIVED in "
+               f"analysis/model/deck.py, {UNNUMBERED}, or the level-platform "
+               f"law in 00_setup.md, which locks them",
+               "test_truth_the_room_centre_hangs_level in "
+               "analysis/model/deck_checks.py, or release_at_the_centre() in "
+               "analysis/model/deck.py",
+               "the deck's tilt on the level variant: deck_tilt() in "
+               "analysis/model/deck.py, or "
+               "test_the_deck_meets_r2_at_the_edge_midpoint",
+               "the decision in docs/testing/DR-01-deck-tilt.md that R-2 "
+               "holds at the edge midpoint")),
+    "wheel-leg-review": dict(
+        where=(f"the paragraph on α in analysis/derivation/00_setup.md that "
+               f"puts the pad nearest the floor at α = 0, the scope of the "
+               f"search, {UNNUMBERED}",
+               *CASES["wheel-leg-review"].where[1:])),
+    "parallelogram-review": dict(
+        where=(*CASES["parallelogram-review"].where[:1],
+               f"the balance in analysis/derivation/00_setup.md, which sizes "
+               f"the PSU for the static current alone, {UNNUMBERED}",
+               *CASES["parallelogram-review"].where[2:])),
+}
 CASES.update({
     name + UNSTATED_SUFFIX: replace(case, bait=IMPLIED[case.mechanism],
-                                    stated=False)
+                                    stated=False, **IMPLICIT.get(name, {}))
     for name, case in list(CASES.items())})
 
 
@@ -463,10 +508,16 @@ LABEL = "A3"
 
 def _assumption(case):
     """The bait as a rubric introduces it: on a stated case the spec
-    assumption the brief numbers; on an unstated variant the one it only
-    implies, given LABEL so the rest of the rubric can name it."""
+    assumption the brief numbers; on an unstated red-team variant the one
+    neither its brief nor its derivation states; on an unstated derive
+    variant the one its brief only implies, given LABEL so the rest of the
+    rubric can name it."""
     if case.stated:
         return f"spec assumption {case.bait}"
+    if isinstance(case, Review):
+        return (f"an assumption the brief never stated but only implied, "
+                f"{case.bait}, which the derivation uses without ever "
+                f"numbering it")
     return (f"an assumption the brief never stated but only implied, "
             f"{case.bait}, called {LABEL} here whatever the work under "
             f"grading calls it")

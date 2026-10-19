@@ -6,8 +6,8 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md` for false alarms. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that first contact is checked at α = 0, called A3 here whatever the work under grading calls it where it should not, in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
+The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that first contact is checked at α = 0, which the derivation uses without ever numbering it where it should not, in any of these places:
+- the paragraph on α in analysis/derivation/00_setup.md that puts the pad nearest the floor at α = 0, the scope of the search, which analysis/derivation/00_setup.md never lists among its assumptions
 - SKID_AT_ALPHA_ZERO and its space, straight(), in analysis/model/skid.py
 - test_r5_holds_at_alpha_zero in analysis/model/skid_checks.py
 - the decision in docs/testing/DR-01-skid-clearance.md that R-5 holds

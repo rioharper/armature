@@ -3,12 +3,13 @@
 import json
 import math
 import re
-from dataclasses import replace
-from decimal import ROUND_HALF_UP, Decimal
+from dataclasses import fields, replace
+from decimal import Decimal
 
 import pytest
 
 import generate
+from conftest import unsourced_figures
 from golden.answers import (ANSWERS, CABLE_FREQUENCY, PLATFORM_TILT,
                             SKID_CLEARANCE, Answer)
 
@@ -139,13 +140,10 @@ def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(
     case whose scaffold lays it down and then its own planted derivation."""
     names = _scaffolded(generate.Review,
                         rf'planted\.sh" {mechanism} '
-                        r'"\$here/(?:\.\./[\w-]+-review/)?planted"\s*$')
+                        r'"\$here/(?:\.\./[\w-]+-review/)?planted"'
+                        r'(?: "\$here/implicit\.patch")?\s*$')
     stated = _a_case_and_its_unstated_variant(mechanism, names)
     assert (generate.EVALS / stated / "planted").is_dir()
-
-
-FIGURE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?) ?(?:kg m²|mm|Hz|J|N|V|m)\b")
-NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")
 
 
 @pytest.mark.parametrize("name", _family(generate.Review))
@@ -153,19 +151,12 @@ def test_each_figure_a_red_team_case_calls_sound_is_in_its_planted_files(
         name):
     """`sound` copies figures by hand from the planted derivation; each
     must be some number in the planted files rounded to its places, so a
-    planted figure that moves fails here until `sound` follows it."""
+    planted figure that moves fails here until `sound` follows it. An
+    unstated variant's patched derivation is held to it in test_planted."""
     planted = generate.EVALS / generate.base(name) / "planted"
-    numbers = [Decimal(n) for p in planted.rglob("*") if p.is_file()
-               for n in NUMBER.findall(p.read_text(encoding="utf-8"))]
-    figures = [Decimal(f) for sound in generate.CASES[name].sound
-               for f in FIGURE.findall(sound)]
-    assert figures, name
-    for figure in figures:
-        places = Decimal(1).scaleb(figure.as_tuple().exponent)
-        assert any(n.quantize(places, ROUND_HALF_UP) == figure
-                   for n in numbers
-                   if n.as_tuple().exponent <= figure.as_tuple().exponent), (
-            f"{figure} is in no planted file of {name}")
+    texts = [p.read_text(encoding="utf-8") for p in planted.rglob("*")
+             if p.is_file()]
+    assert unsourced_figures(generate.CASES[name].sound, texts) == [], name
 
 
 @pytest.mark.parametrize("name", _family(generate.Review))
@@ -238,13 +229,22 @@ def test_every_case_has_an_unstated_variant():
                                       for n in stated)
 
 
+REWORDED = {"bait", "stated", "claim", "where", "sound"}
+
+
 @pytest.mark.parametrize("name", UNSTATED)
 def test_an_unstated_variant_differs_from_its_case_only_in_its_bait(name):
     """The same golden answer, report and trap: only the brief's bait, and
-    the bait's wording in the rubric, change."""
+    the bait's wording in the rubric, change. A red-team variant's
+    derivation is reworded too, so the claim its report makes, where its
+    trap sits and what it gets right may be worded on it."""
     variant, case = generate.CASES[name], generate.CASES[generate.base(name)]
     assert case.stated and variant.bait != case.bait
-    assert replace(variant, bait=case.bait, stated=True) == case
+    kept = {f.name for f in fields(case)} - REWORDED
+    assert {f: getattr(variant, f) for f in kept} == {
+        f: getattr(case, f) for f in kept}
+    if isinstance(case, generate.Derive):
+        assert replace(variant, bait=case.bait, stated=True) == case
 
 
 @pytest.mark.parametrize("name", UNSTATED)
@@ -274,10 +274,26 @@ def test_an_unstated_variants_rubric_says_the_bait_was_only_implied(name):
     generate.CASES[n], generate.Review)])
 def test_an_unstated_red_team_variant_reviews_its_cases_planted_derivation(
         name):
+    """Its derivation is its case's planted/, the one source, with its own
+    implicit.patch over it; test_planted holds what the patch leaves."""
     scaffold = (generate.EVALS / name / "scaffold.sh").read_text(
         encoding="utf-8")
-    assert f'"$here/../{generate.base(name)}/planted"' in scaffold
+    assert (f'"$here/../{generate.base(name)}/planted" '
+            f'"$here/implicit.patch"') in scaffold
     assert not (generate.EVALS / name / "planted").exists()
+    assert (generate.EVALS / name / "implicit.patch").is_file()
+
+
+@pytest.mark.parametrize("name", [n for n in UNSTATED if isinstance(
+    generate.CASES[n], generate.Review)])
+def test_an_unstated_red_team_rubric_says_the_derivation_never_numbers_it(
+        name):
+    """#131: the derivation an unstated variant reviews uses the bait
+    without numbering it, so its rubrics never send the judge to an A3."""
+    for rubric in generate.graders(name).values():
+        assert generate.LABEL not in rubric
+    assert "without ever numbering it" in generate.graders(name)[
+        "catch-finding.md"]
 
 
 def peeks(grader, tool_input):

@@ -8,9 +8,11 @@ answers (`engine/tests/golden/`) by path.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import sys
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 EVALS = Path(__file__).resolve().parents[1]
@@ -33,6 +35,24 @@ def find_bash():
                     return str(up / "bin" / "bash.exe")
         return None
     return shutil.which("bash")
+
+
+FIGURE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?) ?(?:kg m²|mm|Hz|J|N|V|m)\b")
+NUMBER = re.compile(r"(?<![\w.])\d+(?:\.\d+)?")
+
+
+def unsourced_figures(sound, texts):
+    """The figures, a number with its unit, in a red-team case's `sound`
+    that no number in `texts` rounds to at the figure's places; fails if
+    `sound` quotes none, since then there is nothing to hold."""
+    numbers = [Decimal(n) for text in texts for n in NUMBER.findall(text)]
+    figures = [Decimal(f) for s in sound for f in FIGURE.findall(s)]
+    assert figures, sound
+    return [figure for figure in figures if not any(
+        n.quantize(Decimal(1).scaleb(figure.as_tuple().exponent),
+                   ROUND_HALF_UP) == figure
+        for n in numbers
+        if n.as_tuple().exponent <= figure.as_tuple().exponent)]
 
 
 def run(args, cwd, **env):

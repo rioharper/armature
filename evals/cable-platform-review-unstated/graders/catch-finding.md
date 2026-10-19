@@ -6,13 +6,13 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the platform stays level, called A3 here whatever the work under grading calls it, and its decision report, `docs/testing/DR-01-deck-tilt.md`, decides on it. Without the trap, the answer is 20.76 °, accepted from 20.35 ° to 21.18 °. How it is found: the angle between the platform's axis and the vertical, acos(R_zz), at the rest where Σ T_i u_i = m g ẑ and Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ) = 0, each T_i = EA/l0_i · (|span_i| − l0_i) while taut, hung at (0.5, 2.0, 1.2) m on the level-platform law's rest lengths.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that the platform stays level, which the derivation uses without ever numbering it, and its decision report, `docs/testing/DR-01-deck-tilt.md`, decides on it. Without the trap, the answer is 20.76 °, accepted from 20.35 ° to 21.18 °. How it is found: the angle between the platform's axis and the vertical, acos(R_zz), at the rest where Σ T_i u_i = m g ẑ and Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ) = 0, each T_i = EA/l0_i · (|span_i| − l0_i) while taut, hung at (0.5, 2.0, 1.2) m on the level-platform law's rest lengths.
 
 The trap sits in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
-- test_truth_release_a3_at_the_room_centre in analysis/model/deck_checks.py, or release_at_the_centre() in analysis/model/deck.py
-- the deck's tilt on A3: deck_tilt() and DERIVED in analysis/model/deck.py, or test_the_deck_meets_r2_at_the_edge_midpoint
-- the decision in docs/testing/DR-01-deck-tilt.md that R-2 holds at the edge midpoint on A3
+- the platform's turns locked level, LEVEL and DERIVED in analysis/model/deck.py, which analysis/derivation/00_setup.md never lists among its assumptions, or the level-platform law in 00_setup.md, which locks them
+- test_truth_the_room_centre_hangs_level in analysis/model/deck_checks.py, or release_at_the_centre() in analysis/model/deck.py
+- the deck's tilt on the level variant: deck_tilt() in analysis/model/deck.py, or test_the_deck_meets_r2_at_the_edge_midpoint
+- the decision in docs/testing/DR-01-deck-tilt.md that R-2 holds at the edge midpoint
 
 PASS only if one finding meets all three of these:
 1. It is rated BLOCKER or MAJOR.

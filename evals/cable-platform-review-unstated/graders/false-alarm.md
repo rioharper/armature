@@ -6,11 +6,11 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md` for false alarms. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION.
 
-The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the platform stays level, called A3 here whatever the work under grading calls it where it should not, in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
-- test_truth_release_a3_at_the_room_centre in analysis/model/deck_checks.py, or release_at_the_centre() in analysis/model/deck.py
-- the deck's tilt on A3: deck_tilt() and DERIVED in analysis/model/deck.py, or test_the_deck_meets_r2_at_the_edge_midpoint
-- the decision in docs/testing/DR-01-deck-tilt.md that R-2 holds at the edge midpoint on A3
+The derivation is correct but for one planted trap: it rests on an assumption the brief never stated but only implied, that the platform stays level, which the derivation uses without ever numbering it where it should not, in any of these places:
+- the platform's turns locked level, LEVEL and DERIVED in analysis/model/deck.py, which analysis/derivation/00_setup.md never lists among its assumptions, or the level-platform law in 00_setup.md, which locks them
+- test_truth_the_room_centre_hangs_level in analysis/model/deck_checks.py, or release_at_the_centre() in analysis/model/deck.py
+- the deck's tilt on the level variant: deck_tilt() in analysis/model/deck.py, or test_the_deck_meets_r2_at_the_edge_midpoint
+- the decision in docs/testing/DR-01-deck-tilt.md that R-2 holds at the edge midpoint
 
 These parts of it are correct, each checked against an answer independent of the derivation:
 - the mechanism description in mechanism.py and the values in params.py

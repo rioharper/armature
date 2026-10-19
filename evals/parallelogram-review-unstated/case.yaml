@@ -6,6 +6,8 @@ description: >-
   the current the arm draws holding a posture. The same golden answer,
   window and catch; it measures finding the assumption, not only rejecting
   it.
+  It reviews its case's derivation with implicit.patch over it, the bait
+  used and never numbered as an assumption.
 tags: [red-team, parallelogram, unstated]
 context:
   scaffold_script: scaffold.sh

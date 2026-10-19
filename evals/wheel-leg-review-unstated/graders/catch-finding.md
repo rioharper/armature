@@ -6,10 +6,10 @@ focus: { source: file, path: 'docs/reviews/review.md' }
 
 You are grading the design review at `docs/reviews/review.md`. It reviews a derivation in this project, and rates each finding BLOCKER, MAJOR, MINOR or QUESTION, giving each a Where and a Finding.
 
-The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that first contact is checked at α = 0, called A3 here whatever the work under grading calls it, and its decision report, `docs/testing/DR-01-skid-clearance.md`, decides on it. Without the trap, the answer is -42.91 mm, accepted from -43.77 mm to -42.05 mm. How it is found: min over the hips' working range, A ∈ [-1.0, 1.0] and E ∈ [-0.5, 2.0] rad, of B_y − C_y + r − r_skid, the knee B above the five-bar's pin C plus the wheel's radius less the skid pad's, over a dense grid and then one as dense over the cells round its least point; the bait is the least over α = 0 alone.
+The derivation is correct but for one planted trap. It rests on an assumption the brief never stated but only implied, that first contact is checked at α = 0, which the derivation uses without ever numbering it, and its decision report, `docs/testing/DR-01-skid-clearance.md`, decides on it. Without the trap, the answer is -42.91 mm, accepted from -43.77 mm to -42.05 mm. How it is found: min over the hips' working range, A ∈ [-1.0, 1.0] and E ∈ [-0.5, 2.0] rad, of B_y − C_y + r − r_skid, the knee B above the five-bar's pin C plus the wheel's radius less the skid pad's, over a dense grid and then one as dense over the cells round its least point; the bait is the least over α = 0 alone.
 
 The trap sits in any of these places:
-- the Released? cell of A3 in analysis/derivation/00_setup.md
+- the paragraph on α in analysis/derivation/00_setup.md that puts the pad nearest the floor at α = 0, the scope of the search, which analysis/derivation/00_setup.md never lists among its assumptions
 - SKID_AT_ALPHA_ZERO and its space, straight(), in analysis/model/skid.py
 - test_r5_holds_at_alpha_zero in analysis/model/skid_checks.py
 - the decision in docs/testing/DR-01-skid-clearance.md that R-5 holds
