@@ -1,9 +1,8 @@
 """
 mechanism.py — golden mechanism 6: a geared turret.
 
-A pan stage on a vertical bearing, its payload's COM off the axis, turned
-through a gearbox by one motor. The axis is z and gravity −z, so the pan
-carries no gravity torque. Self-tests in mechanism_checks.py.
+A pan stage on a vertical bearing, turned through a gearbox by one motor.
+The axis is z and gravity −z. Self-tests in mechanism_checks.py.
 """
 
 import functools
