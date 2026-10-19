@@ -15,7 +15,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 NAMES = ("arm_2r", "cable_platform", "wheel_leg", "parallelogram",
-         "spring_cable")
+         "spring_cable", "turret")
 
 
 def _module(path, name):
@@ -54,5 +54,5 @@ def load(name):
     return mechanism
 
 
-arm_2r, cable_platform, wheel_leg, parallelogram, spring_cable = map(load,
-                                                                    NAMES)
+(arm_2r, cable_platform, wheel_leg, parallelogram, spring_cable,
+ turret) = map(load, NAMES)

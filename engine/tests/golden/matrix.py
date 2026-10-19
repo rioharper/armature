@@ -62,7 +62,7 @@ def _in(module, *names):
 
 
 MECHANISMS = ("arm_2r", "cable_platform", "wheel_leg", "parallelogram",
-              "spring_cable", "five_bar")
+              "spring_cable", "turret", "five_bar")
 """The golden projects in `golden/`, and the bare five-bar of
 `test_fixture_five_bar.py`: not a golden project, but a row since #105, as
 the loop the wheel leg stands on, with its own minimal-coordinate model."""
@@ -403,6 +403,61 @@ SPRING_CABLE = {
     "clearance": _NO_CONTACT,
 }
 
+# --- the geared turret -----------------------------------------------------------
+_TURRET = "test_fixture_turret"
+_ONE_HINGE = ("on one hinge off the world, as the 2R arm's shoulder is, "
+              "nothing in it depends on the payload's offset")
+
+TURRET = {
+    "at": Known("C", _in(_TURRET, "test_the_muzzles_pose_and_jacobian_are_"
+                                  "the_closed_forms")),
+    "inverse": Known("C", _in(_TURRET, "test_the_pans_torque_is_its_inertia_"
+                                       "and_its_rotors"),
+                     note="(J_load/N + N·J_m)·q̈ at the motor; the vertical "
+                          "axis carries no gravity torque"),
+    "settle": Known("C", _in(_TURRET, "test_released_with_the_motor_off_it_"
+                                      "stays")),
+    "wrench": Known("C", _in(_TURRET, "test_the_bearings_wrench_is_the_"
+                                      "closed_form"),
+                    note="the weight and its overturning moment m·g·d at "
+                         "rest, the COM's acceleration moving"),
+    "linearise": Known("C", _in(_TURRET, "test_the_pans_mass_is_the_load_and_"
+                                         "the_reflected_rotor")),
+    "release": Covered(("arm_2r", "release"),
+                       "a lock or a reduction " + _ONE_HINGE),
+    "symbolic": Covered(("arm_2r", "symbolic"), "the symbolic view " +
+                        _ONE_HINGE),
+    "coarse": _coarse("hinge"),
+    "sample": Covered(("arm_2r", "sample"),
+                      "on one hinge the answer is the request, as on the 2R "
+                      "arm's open chain"),
+    "search": Covered(("arm_2r", "search"),
+                      "a margin over Coordinates reads states, whatever the "
+                      "chain; the slew's own answer is the trace's"),
+    "trace": Known("C", _in(
+        _TURRET, "test_the_slews_peak_torque_is_the_answer",
+        "test_the_rotors_share_is_what_the_trap_leaves_out",
+        "test_the_motor_sized_on_the_load_alone_misses_the_slew",
+        "test_the_load_only_trap_holds_the_slews_torque"),
+        note="the last is a strict xfail: the trap's own check, which must "
+             "fail"),
+    "event": Covered(("arm_2r", "event"),
+                     "an e-stop " + _ONE_HINGE),
+    "charge": Covered(("parallelogram", "charge"),
+                      "the bus reads only the trace's bus powers, and the "
+                      "turret has no drive of its own"),
+    "margins": Covered(("parallelogram", "margins"),
+                       "a margin searches what trace and charge give, and "
+                       "the trace's torque is checked here"),
+    "capacitance_needed": Covered(("parallelogram", "capacitance_needed"),
+                                  "it bisects the bus's peak V over a "
+                                  "trace, whatever the trace's mechanism"),
+    "frames": Covered(("arm_2r", "frames"),
+                      "the frames table and the renders read bodies, "
+                      "joints and sites at home, whatever the chain"),
+    "clearance": _NO_CONTACT,
+}
+
 # --- the bare five-bar -----------------------------------------------------------
 _FIVE_BAR = "test_fixture_five_bar"
 
@@ -463,7 +518,8 @@ FIVE_BAR = {
 
 MATRIX = {"arm_2r": ARM_2R, "cable_platform": CABLE_PLATFORM,
           "wheel_leg": WHEEL_LEG, "parallelogram": PARALLELOGRAM,
-          "spring_cable": SPRING_CABLE, "five_bar": FIVE_BAR}
+          "spring_cable": SPRING_CABLE, "turret": TURRET,
+          "five_bar": FIVE_BAR}
 
 TRAPS = (
     Trap("arm_2r", "release", "a locked elbow",
@@ -494,6 +550,11 @@ TRAPS = (
          "the cable is inextensible (the rigid reduction)",
          _in("test_rigid", "test_rigid_cable_releases_with_the_sag_the_"
                            "elastic_one_shows")),
+    Trap("turret", "trace",
+         "the motor sized on the load's inertia alone, its rotor's N²J_m "
+         "left out",
+         _in(_TURRET, "test_the_motor_sized_on_the_load_alone_misses_the_slew",
+             "test_the_load_only_trap_holds_the_slews_torque")),
     Trap("five_bar", "inverse",
          "mj_inverse, which answers for the solver's soft constraint",
          _in(_FIVE_BAR,
