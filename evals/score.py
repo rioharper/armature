@@ -10,15 +10,23 @@ shows wrong: it is counted beside the catch, and never gates. Every other
 grader is a diagnostic, counted and never part of the catch. Exits 1 unless
 the result is whole and every case is caught in at least 2/3 of its runs
 (evals/README.md).
+
+A hold-out case, one under evals/holdout/, is reported in a section of its
+own beside the gate, with its baseline and Δ, and never moves the exit code
+either way (#132).
 """
 
 import json
 import sys
 from dataclasses import dataclass, field
 from fractions import Fraction
+from pathlib import Path
 
 GATE = Fraction(2, 3)
 ALARM = "false-alarm"
+# The hold-out cases, each named for its directory under evals/holdout/.
+HOLDOUT = {p.parent.name for p in
+           (Path(__file__).resolve().parent / "holdout").glob("*/case.yaml")}
 
 
 @dataclass
@@ -96,18 +104,28 @@ def score(doc):
     return rows
 
 
+def _print(r, verdict):
+    base = (f"baseline {r.base_caught}/{r.base_runs}  Δ {r.delta:+.2f}"
+            if r.delta is not None else "no baseline")
+    alarms = ("" if r.false_alarms is None
+              else f"  false alarms {r.false_alarms}/{r.runs}")
+    print(f"{verdict}  {r.case}: caught "
+          f"{r.caught}/{r.runs}  {base}  peeked {r.peeked}{alarms}")
+    print("      " + ", ".join(f"{n} {k}/{r.runs}"
+                               for n, k in r.diagnostics.items()))
+
+
 def main(argv):
     doc = json.loads(open(argv[0], encoding="utf-8").read())
-    rows = score(doc)
+    rows, held = [], []
+    for r in score(doc):
+        (held if r.case in HOLDOUT else rows).append(r)
     for r in rows:
-        base = (f"baseline {r.base_caught}/{r.base_runs}  Δ {r.delta:+.2f}"
-                if r.delta is not None else "no baseline")
-        alarms = ("" if r.false_alarms is None
-                  else f"  false alarms {r.false_alarms}/{r.runs}")
-        print(f"{'PASS' if r.passes else 'FAIL'}  {r.case}: caught "
-              f"{r.caught}/{r.runs}  {base}  peeked {r.peeked}{alarms}")
-        print("      " + ", ".join(f"{n} {k}/{r.runs}"
-                                   for n, k in r.diagnostics.items()))
+        _print(r, "PASS" if r.passes else "FAIL")
+    if held:
+        print("hold-out, reported beside the gate and never part of it:")
+    for r in held:
+        _print(r, "    ")
     whole = not doc.get("partial")
     if not whole:
         print(f"partial result ({doc.get('partialReason')}): not a gate run")

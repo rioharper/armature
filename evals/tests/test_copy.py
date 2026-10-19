@@ -63,20 +63,39 @@ def test_the_copy_holds_every_golden_project_under_evals(plugin_copy):
             assert copied.read_bytes() == source.read_bytes(), copied
 
 
+def test_the_copy_holds_the_hold_out(plugin_copy):
+    """The hold-out's case, its scaffold and graders among it, goes with
+    the rest of evals/, which the harness masks from the agent (#132)."""
+    held = generate.EVALS / "holdout"
+    files = [p for p in held.rglob("*") if p.is_file()]
+    assert generate.HOLDOUT and files
+    for source in files:
+        copied = plugin_copy / "evals" / source.relative_to(generate.EVALS)
+        assert copied.read_bytes() == source.read_bytes(), copied
+
+
 @pytest.mark.slow
-def test_a_scaffold_in_the_copy_lays_down_the_golden_project(plugin_copy,
-                                                             tmp_path):
+@pytest.mark.parametrize("case, mechanism", [
+    ("wheel-leg-derive", "wheel_leg"),
+    *((f"holdout/{name}", case.mechanism)
+      for name, case in generate.HOLDOUT.items())])
+def test_a_scaffold_in_the_copy_lays_down_the_golden_project(
+        plugin_copy, tmp_path, case, mechanism):
     """The scaffold reads the golden project from the copy, and points the
-    project's engine at the copy's engine, which holds no tests."""
+    project's engine at the copy's engine, which holds no tests; the
+    project's `run_all.py` then passes on it. The hold-out's scaffold is
+    checked here too, since no tuned check reaches it."""
     cache = run(["uv", "cache", "dir"], tmp_path).stdout.strip()
-    scaffold = (plugin_copy / "evals" / "wheel-leg-derive"
-                / "scaffold.sh").as_posix()
+    scaffold = (plugin_copy / "evals" / case / "scaffold.sh").as_posix()
     laid = run([find_bash(), scaffold], tmp_path,
                ARMATURE_EVAL_UV_CACHE=cache)
     assert laid.returncode == 0, laid.stdout + laid.stderr
     model = tmp_path / "analysis" / "model"
-    for source in (GOLDEN / "wheel_leg").glob("*.py"):
+    for source in (GOLDEN / mechanism).glob("*.py"):
         assert (model / source.name).read_bytes() == source.read_bytes()
     engine = (plugin_copy / "engine").resolve().as_posix()
     pyproject = (model / "pyproject.toml").read_text(encoding="utf-8")
     assert f'path = "{engine}"' in pyproject.replace("\\", "/")
+    checked = run(["uv", "run", "--offline", "python", "run_all.py"], model,
+                  UV_CACHE_DIR=cache)
+    assert checked.returncode == 0, checked.stdout + checked.stderr

@@ -12,9 +12,10 @@ golden project's parameters cannot leave a stale window:
   MAJOR finding naming the planted location with a recomputed number, and
   the diagnostic `false-alarm`.
 Every case's diagnostic graders are written here too, so all cases carry the
-same ones. The output is checked in, because `claude plugin eval` reads the
-graders' frontmatter statically, and `evals/tests/test_generate.py`
-regenerates it and fails on any difference.
+same ones, the hold-out under evals/holdout/ among them (`HOLDOUT`). The
+output is checked in, because `claude plugin eval` reads the graders'
+frontmatter statically, and `evals/tests/test_generate.py` regenerates it
+and fails on any difference.
 """
 
 import math
@@ -74,8 +75,10 @@ def _escape(text):
     return "".join("\\" + c if c in r"\^$.|?*+()[]{}/" else c for c in text)
 
 
-# A unit a report may spell out instead of its symbol, longest first.
-SPELLED = {"°": ("degrees", "degree", "deg")}
+# A unit a report may spell out instead of its symbol, or write another way,
+# longest first.
+SPELLED = {"°": ("degrees", "degree", "deg"),
+           "N m": ("N·m", "N⋅m", "N-m", "Nm")}
 
 
 def _unit(unit):
@@ -261,7 +264,7 @@ formatting decide the verdict.
 
 def graders(name):
     """The graders `name`'s case is generated with, by file name."""
-    case = CASES[name]
+    case = HOLDOUT[name] if name in HOLDOUT else CASES[name]
     if isinstance(case, Review):
         return _review_graders(case)
     answer = ANSWERS[case.answer]
@@ -501,6 +504,38 @@ def base(name):
     return name.removesuffix(UNSTATED_SUFFIX)
 
 
+# --- the hold-out ------------------------------------------------------------
+
+# The cases under evals/holdout/, nobody tunes against (#132): each brief and
+# its graders are written once, and evals/tests/test_holdout.py freezes them
+# by hash. Each is generated as any case is, and kept out of CASES, so no
+# check the tuned cases share reaches it, and its golden mechanism has no
+# tuned case. score.py reports it beside the gate, never in it.
+HOLDOUT = {
+    "turret-derive": Derive(
+        mechanism="turret",
+        stated=False,
+        answer="SLEW_TORQUE",
+        report="docs/testing/DR-01-slew-torque.md",
+        bait="that the motor has only the turret to swing, its inertia "
+             "geared down by the ratio",
+        sized="it counts the motor's own rotor: it says the motor "
+              "accelerates its rotor as well as the turret, adds the rotor's "
+              "inertia to the turret's, N² J_m at the pan or J_m at the "
+              "motor, and it decides R-3 on the peak torque that gives "
+              "rather than on the turret's inertia alone",
+        carried="It decides R-3 on A3: it sizes the motor on the turret's "
+                "inertia alone, J_load a / N, the rotor left out, or it "
+                "takes R-3 as met on that torque"),
+}
+
+
+def directory(name):
+    """Where case `name` lives: evals/holdout/<name>/ for a hold-out,
+    evals/<name>/ for any other."""
+    return EVALS / "holdout" / name if name in HOLDOUT else EVALS / name
+
+
 # The number a stated brief gives its bait, which a rubric's own wording of
 # the bait (`sized`, `carried`) uses.
 LABEL = "A3"
@@ -639,25 +674,26 @@ def stale():
     """Every grader file that differs from what `graders` writes, is missing,
     or was generated and is no longer written, as a path under evals/."""
     out = []
-    for name in CASES:
-        directory = EVALS / name / "graders"
-        want, have = graders(name), _generated(directory)
-        out += [f"{name}/graders/{f}" for f in sorted(set(want) | set(have))
+    for name in [*CASES, *HOLDOUT]:
+        found = directory(name) / "graders"
+        want, have = graders(name), _generated(found)
+        place = found.relative_to(EVALS).as_posix()
+        out += [f"{place}/{f}" for f in sorted(set(want) | set(have))
                 if want.get(f) != have.get(f)]
     return out
 
 
 def write():
     """Writes every case's graders and removes those no longer generated."""
-    for name in CASES:
-        directory = EVALS / name / "graders"
-        directory.mkdir(parents=True, exist_ok=True)
+    for name in [*CASES, *HOLDOUT]:
+        found = directory(name) / "graders"
+        found.mkdir(parents=True, exist_ok=True)
         want = graders(name)
-        for f in _generated(directory):
+        for f in _generated(found):
             if f not in want:
-                (directory / f).unlink()
+                (found / f).unlink()
         for f, text in want.items():
-            (directory / f).write_text(text, encoding="utf-8", newline="\n")
+            (found / f).write_text(text, encoding="utf-8", newline="\n")
 
 
 def main(argv):
@@ -666,7 +702,8 @@ def main(argv):
             print(f"stale: evals/{path}")
         return 1 if stale() else 0
     write()
-    print(f"wrote the graders of {len(CASES)} case(s)")
+    print(f"wrote the graders of {len(CASES)} case(s) and "
+          f"{len(HOLDOUT)} hold-out(s)")
     return 0
 
 
