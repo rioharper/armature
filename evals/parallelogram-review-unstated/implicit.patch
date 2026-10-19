@@ -1,0 +1,40 @@
+--- a/analysis/derivation/00_setup.md
++++ b/analysis/derivation/00_setup.md
+@@ -15,5 +15,4 @@
+ | A1 | The arm is balanced: no gravity torque at any posture. | none: a claim about `params.py`'s counterweights | Not a reduction. Checked in the truth model by `test_truth_the_balanced_arm_needs_no_holding_torque`: the largest holding torque is 8.6e-15 N m over n = 24 postures, seed 20260915. |
+ | A2 | The gearboxes and drivers are lossless. | none | Not released: neither efficiency is published for these parts, so both are 1.0 in `params.DRIVE`. Lossless returns the most energy to the bus, so A2 errs high on regeneration. |
+-| A3 | The PSU is sized for the static current, with no regeneration path. | none: a sizing claim | Not a reduction. DR-02 checks it on the e-stop at jog speed: the bus peaks at 28.99 V, under the 44 V trip. |
+ 
+ ## Home posture and frames
+@@ -31,5 +30,5 @@
+ $$B_1 = m_1 r_1 + m_4 r_4 + m_2 a = 0, \qquad B_2 = m_3 r_3 + m_4 c + m_2 r_2 = 0. \tag{1}$$
+ 
+-Solving (1) for r1 and r3 leaves no gravity torque anywhere, which I expected to hold to rounding, and the truth check confirms it: 8.6e-15 N m at worst. The static current is therefore zero, which is what A3 sizes the PSU against.
++Solving (1) for r1 and r3 leaves no gravity torque anywhere, which I expected to hold to rounding, and the truth check confirms it: 8.6e-15 N m at worst. The static current is therefore zero, which is the current the PSU is sized for.
+ 
+ ## Revision note
+--- a/analysis/model/mechanism_checks.py
++++ b/analysis/model/mechanism_checks.py
+@@ -25,5 +25,5 @@
+ def test_truth_the_balanced_arm_needs_no_holding_torque():
+     """00_setup.md (1): B1 = B2 = 0 leaves no gravity torque anywhere, so
+-    the static current A3 sizes the PSU for is zero."""
++    the static current the PSU is sized for is zero."""
+     m, worst = truth(), 0.0
+     for s in armature.sample(m, N, DEFAULT_SEED):
+--- a/docs/testing/DR-02-psu-sizing.md
++++ b/docs/testing/DR-02-psu-sizing.md
+@@ -7,5 +7,5 @@
+ ## Purpose
+ 
+-The plan hands derive one decision: is the PSU that A3 sizes for the static current enough, with no regeneration path, or does the bus need a brake resistor or more capacitance? R-7 bounds the bus voltage at the drivers' terminals by their 44 V overvoltage trip (00_setup.md, *The system*).
++The plan hands derive one decision: is the PSU, sized for the static current, enough with no regeneration path, or does the bus need a brake resistor or more capacitance? R-7 bounds the bus voltage at the drivers' terminals by their 44 V overvoltage trip (00_setup.md, *The system*).
+ 
+ ## Method
+@@ -68,5 +68,5 @@
+ | Routed by | Item | Closed |
+ |---|---|---|
+-| plan, DR-02 | does A3's PSU need a regeneration path? | no, above |
++| plan, DR-02 | does the PSU need a regeneration path? | no, above |
+ 
+ ## Feeds

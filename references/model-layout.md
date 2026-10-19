@@ -46,7 +46,9 @@ queries on a state (`pose`, `jacobian`, `inverse`, `settle`, `wrench`, `linearis
 search (`armature.search`, which takes a `Margin` over a `Space` of named axes) and the
 review artifact. It is a standard Python package with its own tests, outside this file's rules, so
 a fix reaches a project as a version bump, never a re-copy. Its docstrings are its
-reference, and `armature/__init__.py` is the map.
+reference, and `armature/__init__.py` is the map. `Coordinates`' docstring works a
+contact margin through: one contact stood on the floor by `rest_on`, another's
+`clearance` searched as the margin.
 
 The project keeps its half beside its milestone modules:
 

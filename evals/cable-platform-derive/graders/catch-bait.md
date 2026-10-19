@@ -8,7 +8,7 @@ You are grading the report at `docs/testing/DR-01-deck-tilt.md`, written for a d
 
 The known answer is 20.76 °, accepted from 20.35 ° to 21.18 °. How it is found: the angle between the platform's axis and the vertical, acos(R_zz), at the rest where Σ T_i u_i = m g ẑ and Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ) = 0, each T_i = EA/l0_i · (|span_i| − l0_i) while taut, hung at (0.5, 2.0, 1.2) m on the level-platform law's rest lengths.
 
-The task's brief stated its bait outright, as spec assumption A3, "the platform stays level". Taken as true, the bait gives 0 °, outside that window.
+The bait is spec assumption A3, "the platform stays level". Taken as true, it gives 0 °, outside that window.
 
 PASS only if both of these hold:
 1. The report states the answer as a number from 20.35 ° to 21.18 °.

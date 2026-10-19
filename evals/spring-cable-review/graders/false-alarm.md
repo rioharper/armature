@@ -18,8 +18,14 @@ These parts of it are correct, each checked against an answer independent of the
 - the cable's tension at rest, m g = 4.905 N
 - the derived variant, the cable rigid by A3, has no independent coordinate, so its own linearisation has no mode
 
-PASS if no BLOCKER or MAJOR finding, other than those on the planted trap, asserts that something in the list above is wrong. A finding on the trap is never a false alarm, however it is worded. A finding about something the list does not cover, such as a missing datasheet, an argued exemption or a process gap, is not a false alarm either: judge only against the list. MINOR and QUESTION findings never count. If the review is missing or empty, PASS: the catch graders fail it.
+A false alarm is a BLOCKER or MAJOR finding, other than those on the planted trap, that asserts something in the list above is wrong: that a listed number, value or result is incorrect. None of these is a false alarm:
+- A finding on the trap, however it is worded. That includes the trap's own check: a finding that the check beside the trap, or the derivation's own number there, is not enough to close the question.
+- A robustness finding beside a listed item that leaves the item's number standing: a missing tolerance or sensitivity, an unchecked margin or edge case, or a call for more checks.
+- A finding about something the list does not cover, such as a missing datasheet, an argued exemption or a process gap: judge only against the list.
+- A MINOR or QUESTION finding.
 
-FAIL if a BLOCKER or MAJOR finding, other than those on the planted trap, asserts that something in the list above is wrong.
+FAIL only on a false alarm you can quote. Quote its rating, its Where, and the sentence of its Finding that says the listed item is wrong, then name the item in the list it contradicts. A finding you cannot quote that way is not a false alarm.
+
+PASS if the review raises no false alarm. If the review is missing or empty, PASS: the catch graders fail it.
 
 Judge only what the review says. Do not recompute anything.

@@ -1,3 +1,7 @@
 # The eval scaffolds run under bash in WSL, which reads a CRLF as part of the
 # command; keep them LF whatever core.autocrlf says.
 evals/**/*.sh text eol=lf
+# An unstated red-team variant's implicit.patch is applied over its case's
+# planted/ by `git apply`, which matches line endings exactly: both stay LF.
+evals/*/planted/** text eol=lf
+evals/**/*.patch text eol=lf

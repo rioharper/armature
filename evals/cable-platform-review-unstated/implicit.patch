@@ -1,0 +1,166 @@
+--- a/analysis/derivation/00_setup.md
++++ b/analysis/derivation/00_setup.md
+@@ -15,7 +15,4 @@
+ | A1 | Each cable is a straight elastic tie that cannot push: no sag, no mass. | none | Not released: the description models each cable as exactly this; sag would need the cable's mass per metre, not in hand until the cable is chosen. At 2 kg on four cables the catenary sag is a few millimetres. |
+ | A2 | The frame and its anchors are rigid. | none | Not released: the frame's stiffness waits on its CAD; releasing it means bodies for the anchors on springs of the frame's stiffness. |
+-| A3 | The platform stays level: the cables only translate it. | `lock("hang:rx"/"hang:ry"/"hang:rz", 0.0, assumption="A3")` | `test_truth_release_a3_at_the_room_centre`: the full description, free to turn, hung at the room centre on the law's rest lengths there, turns the deck by under 1e-13°. Sized and kept: under a tenth of R-2's 2°. |
+-
+-A3 is the one reduction the variant makes. The attachment square is a scaled copy of the anchor square, so with four cables pulling toward four anchors placed the same way the platform has no preferred turn, and the release confirms it: freed of the locks, the platform hangs exactly as level as the variant holds it. A3 stands.
+ 
+ ## Home posture and frames
+@@ -40,5 +37,5 @@
+ ## The level-platform law at the room centre
+ 
+-The tension law balances the platform's weight on the cables' force rows, with the platform level. At the room centre the rig is symmetric, so the four cables share the weight equally: cable i, of length L from its corner to its anchor and rising h, pulls along its own direction with a vertical share h/L, so
++The tension law balances the platform's weight on the cables' force rows, with the platform level. The attachment square is a scaled copy of the anchor square, so with four cables pulling toward four anchors placed the same way the platform has no preferred turn: the cables only translate it, and DR-01's variant carries it on its three slides, its turns locked at 0. At the room centre the rig is symmetric, so the four cables share the weight equally: cable i, of length L from its corner to its anchor and rising h, pulls along its own direction with a vertical share h/L, so
+ 
+ $$4\,T\,\frac{h}{L} = m g, \qquad T = \frac{m g L}{4h}, \tag{1}$$
+@@ -52,5 +49,5 @@
+ ## The truth model
+ 
+-`mechanism.truth()` compiles the full description, the platform free to turn. `uv run python run_all.py` runs the check above, the A3 release in `deck_checks.py`, and the gates.
++`mechanism.truth()` compiles the full description, the platform free to turn. `uv run python run_all.py` runs the check above, the room centre hung in the truth model in `deck_checks.py`, and the gates.
+ 
+ ## Revision note
+--- a/analysis/model/deck.py
++++ b/analysis/model/deck.py
+@@ -4,5 +4,6 @@
+ Mirrors docs/testing/DR-01-deck-tilt.md, *The decision* and *Method*.
+ DERIVED is the variant the task reads: the description with the platform's
+-three turns locked level, A3 in analysis/derivation/00_setup.md. Self-tests
++three turns locked level, as analysis/derivation/00_setup.md's tension law
++carries it. Self-tests
+ in deck_checks.py; report_dr01.py prints the report's tables.
+ """
+@@ -24,7 +25,8 @@
+ SLIDES = ("hang:x", "hang:y", "hang:z")
+ 
+-A3 = tuple(lock(f"hang:{turn}", 0.0, assumption="A3")
+-           for turn in ("rx", "ry", "rz"))
+-DERIVED = armature.reduce(mechanism, *A3, name="level platform")
++LEVEL = tuple(lock(f"hang:{turn}", 0.0,
++                   assumption="00_setup.md, the tension law")
++              for turn in ("rx", "ry", "rz"))
++DERIVED = armature.reduce(mechanism, *LEVEL, name="level platform")
+ 
+ 
+@@ -73,6 +75,6 @@
+ @functools.cache
+ def release_at_the_centre():
+-    """A3 released at the room centre: the full description against the
+-    variant, hung there on the law's own rest lengths. Returns the largest
++    """The room centre in the truth model: the full description against
++    the variant, hung there on the law's own rest lengths. Returns the largest
+     turn the release finds (deg) and the release."""
+     params, _ = centre_law()
+--- a/analysis/model/deck_checks.py
++++ b/analysis/model/deck_checks.py
+@@ -2,6 +2,6 @@
+ deck_checks.py — self-tests for deck.py.
+ 
+-The derivation's coordinates against its variant's, A3 released in the truth
+-model, the level platform held at the edge midpoint, and the deck's tilt
++The derivation's coordinates against its variant's, the room centre hung in
++the truth model, the level platform held at the edge midpoint, and the deck's tilt
+ held to R-2.
+ """
+@@ -12,6 +12,6 @@
+                   release_at_the_centre)
+ 
+-# A3 is kept while the release turns the deck by under a tenth of R-2's
+-# range: the gimbal's correction is then all R-2's [deg].
++# The variant is kept while the truth model turns the deck by under a tenth
++# of R-2's range: the gimbal's correction is then all R-2's [deg].
+ KEPT = R2_LIMIT / 10
+ 
+@@ -21,14 +21,14 @@
+     armature.account(derived(), list(SLIDES))
+     print(f"  [PASS] coordinates {list(derived().independent)}; the turns "
+-          f"locked by A3")
++          f"locked level")
+ 
+ 
+-def test_truth_release_a3_at_the_room_centre():
+-    """A3 released: the full description, free to turn, hung at the room
+-    centre on the law's rest lengths there, against the level variant. Kept
+-    while it turns the deck by under a tenth of R-2's range."""
++def test_truth_the_room_centre_hangs_level():
++    """The full description, free to turn, hung at the room centre on the
++    law's rest lengths there, against the level variant. Kept while it
++    turns the deck by under a tenth of R-2's range."""
+     turned, out = release_at_the_centre()
+     assert out.settled.stable, out
+-    assert turned < KEPT, f"A3 turns the deck {turned:.4f} deg: {out}"
++    assert turned < KEPT, f"the truth model turns the deck {turned:.4f} deg: {out}"
+     print(f"  [PASS] {out}; largest turn {turned:.2e} deg, kept, under "
+           f"{KEPT:g} deg")
+@@ -50,4 +50,4 @@
+     t = deck_tilt()
+     assert t <= R2_LIMIT, f"the deck tilts {t:.4g} deg, over R-2"
+-    print(f"  [PASS] deck tilt at the edge midpoint on A3: {t:.3f} deg, "
++    print(f"  [PASS] deck tilt at the edge midpoint: {t:.3f} deg, "
+           f"R-2's limit {R2_LIMIT:g} deg")
+--- a/analysis/model/report_dr01.py
++++ b/analysis/model/report_dr01.py
+@@ -14,9 +14,9 @@
+ print("| Quantity | Value | From |")
+ print("|---|---|---|")
+-print(f"| deck tilt at the edge midpoint, on A3 | {deck_tilt():.3f}° | "
++print(f"| deck tilt at the edge midpoint, on the variant | {deck_tilt():.3f}° | "
+       f"deck.deck_tilt() |")
+ print(f"| R-2's limit | {R2_LIMIT:g}° | spec R-2 |")
+-print(f"| A3 released at the room centre: largest turn | {turned:.1e}° | "
+-      f"test_truth_release_a3_at_the_room_centre |")
++print(f"| the truth model at the room centre: largest turn | "
++      f"{turned:.1e}° | test_truth_the_room_centre_hangs_level |")
+ print(f"| the law's tension at the room centre, each cable | "
+       f"{centre[0]:.3f} N | deck.centre_law(), (1) |")
+--- a/docs/testing/DR-01-deck-tilt.md
++++ b/docs/testing/DR-01-deck-tilt.md
+@@ -3,5 +3,5 @@
+ Rev 1 — 2026-10-17 — plan task DR-01, Executor: armature-derive
+ 
+-**Status:** complete. R-2 holds at the edge midpoint: on the rest lengths in `params.py` the cables carry the platform there level, so the deck's tilt is 0.000°, inside the gimbal's 2°. A3, the level platform, is released in the truth model and turns the deck by under 1e-13°, so the variant stands. No number in the spec moves.
++**Status:** complete. R-2 holds at the edge midpoint: on the rest lengths in `params.py` the cables carry the platform there level, so the deck's tilt is 0.000°, inside the gimbal's 2°. Hung at the room centre in the truth model, free to turn, the platform turns by under 1e-13°, so the variant stands. No number in the spec moves.
+ 
+ ## Purpose
+@@ -11,5 +11,5 @@
+ ## Method
+ 
+-`analysis/model/deck.py` (rev 1) reads the variant `DERIVED`, the description with the platform's three turns locked level by A3, compiles it on `params.py`'s rest lengths, and settles it from `POSE`; the deck's tilt is read off the settled platform's `centre` site. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
++`analysis/model/deck.py` (rev 1) reads the variant `DERIVED`, the description with the platform's three turns locked level, compiles it on `params.py`'s rest lengths, and settles it from `POSE`; the deck's tilt is read off the settled platform's `centre` site. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
+ 
+ ## The decision: R-2 holds, the deck stays level
+@@ -17,7 +17,7 @@
+ The tension law sets each cable's rest length so the four tensions carry the platform's weight with the platform level at `POSE`. Settled from there, the level platform stays: it moves by under 1e-6 m, every cable taut, c1 and c4 carrying 16.78 N and the far pair 3.71 N (`test_the_level_platform_holds_the_edge_midpoint`). Its tilt is the locks', 0.000°.
+ 
+-I expected exactly that: the attachment square is a scaled copy of the anchor square, so the cables only translate the platform. The one way the answer could move is A3 itself, so A3 is released in the truth model (`test_truth_release_a3_at_the_room_centre`): hung at the room centre on the law's own rest lengths, free to turn, the platform turns by under 1e-13° and settles as level as the variant holds it, well under the bound of a tenth of R-2's range. A3 is kept, and with it the decision.
++I expected exactly that: the attachment square is a scaled copy of the anchor square, so the cables only translate the platform. The truth model confirms it (`test_truth_the_room_centre_hangs_level`): hung at the room centre on the law's own rest lengths, free to turn, the platform turns by under 1e-13° and settles as level as the variant holds it, well under the bound of a tenth of R-2's range. The variant is kept, and with it the decision.
+ 
+-> **R-2: met.** Deck tilt at the edge midpoint on A3: 0.000°, against a 2° limit.
++> **R-2: met.** Deck tilt at the edge midpoint: 0.000°, against a 2° limit.
+ 
+ ## Results
+@@ -25,7 +25,7 @@
+ | Quantity | Value | From |
+ |---|---|---|
+-| deck tilt at the edge midpoint, on A3 | 0.000° | deck.deck_tilt() |
++| deck tilt at the edge midpoint, on the variant | 0.000° | deck.deck_tilt() |
+ | R-2's limit | 2° | spec R-2 |
+-| A3 released at the room centre: largest turn | 7.0e-14° | test_truth_release_a3_at_the_room_centre |
++| the truth model at the room centre: largest turn | 7.0e-14° | test_truth_the_room_centre_hangs_level |
+ | the law's tension at the room centre, each cable | 12.161 N | deck.centre_law(), (1) |
+ | tensions at the edge midpoint, c1 to c4 | 16.78, 3.71, 3.71, 16.78 N | deck.at_the_edge() |
+@@ -41,5 +41,4 @@
+ | Assumption | Direction and size | Closed by |
+ |---|---|---|
+-| A3, the platform level | released at the room centre: under 1e-13° | this report |
+ | A1, straight massless cables | sag of a few millimetres at 2 kg; moves no tension appreciably | the cable's choice |
+ | A2, a rigid frame | a compliant frame lowers the platform; not in the description | the frame's CAD |
+@@ -56,5 +55,5 @@
+ |---|---|
+ | `docs/01-spec/traceability.md` | R-2: analyzed, DR-01 |
+-| `docs/decisions.md` | R-2 met on A3; gimbal order unblocked |
++| `docs/decisions.md` | R-2 met; gimbal order unblocked |
+ 
+ ## Revision History

@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: wheel-leg-review-unstated
+description: >-
+  wheel-leg-review, its bait unstated: the brief lists no A3, and implies the
+  assumption only through the spec's prose, by `R_SKID` chosen to clear the
+  floor with the leg straight under the hips. The same golden answer, window
+  and catch; it measures finding the assumption, not only rejecting it.
+  It reviews its case's derivation with implicit.patch over it, the bait
+  used and never numbered as an assumption.
+tags: [red-team, wheel_leg, unstated]
+context:
+  scaffold_script: scaffold.sh

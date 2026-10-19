@@ -1,0 +1,62 @@
+--- a/analysis/derivation/00_setup.md
++++ b/analysis/derivation/00_setup.md
+@@ -15,7 +15,6 @@
+ | A1 | The floor is level and rigid, and the tyre is rigid: the hub stands one wheel radius above the floor. | none | Not released: the description gives the tyre and floor no compliance; the tyre's radial stiffness is not in hand, and a soft tyre would only lower the hub by its static deflection, a millimetre or so. |
+ | A2 | The carriage carries no weight but its own rail cart. | none | Not released: the description has the rail cart alone on the carriage, and the wheel carries the rest; `test_truth_the_tyre_carries_the_weight` confirms it at 49.05 N. |
+-| A3 | First contact is checked at α = 0, the leg straight under the hips. | none: a scope for the search | Not a reduction. DR-01 searches the clearance over every posture at α = 0 inside `WORKSPACE`, 81 of them from the shortest leg to the longest (`skid.straight()`, `SKID_AT_ALPHA_ZERO`): the least is 50.79 mm, clear. |
+ 
+-α is the leg's angle, from straight down, of the pin C seen from the midpoint of the hips. The leg is shortest and longest at α = 0, and the knee comes lowest relative to the wheel where the leg is shortest, so that is where the pad comes nearest the floor; A3 is the spec's own scope for that.
++α is the leg's angle, from straight down, of the pin C seen from the midpoint of the hips. The leg is shortest and longest at α = 0, and the knee comes lowest relative to the wheel where the leg is shortest, so that is where the pad comes nearest the floor. DR-01 searches the clearance over every posture at α = 0 inside `WORKSPACE`, 81 of them from the shortest leg to the longest (`skid.straight()`, `SKID_AT_ALPHA_ZERO`): the least is 50.79 mm, clear.
+ 
+ ## Home posture and frames
+--- a/analysis/model/skid.py
++++ b/analysis/model/skid.py
+@@ -5,6 +5,6 @@
+ SKIDDED is the description with the knee's skid pad added: a sphere of
+ radius R_SKID round B on l1, against the floor. SKID_AT_ALPHA_ZERO is the
+-clearance margin over the postures A3 names, the leg straight under the
+-hips, which run_all.py searches. Self-tests in skid_checks.py;
++clearance margin over the postures where the pad comes nearest the
++floor, the leg straight under the hips, which run_all.py searches. Self-tests in skid_checks.py;
+ report_dr01.py prints the report's tables.
+ """
+@@ -64,5 +64,5 @@
+ @functools.cache
+ def straight():
+-    """A3's postures: hip pairs inside WORKSPACE with α = 0, from the
++    """The straight postures: hip pairs inside WORKSPACE with α = 0, from the
+     shortest leg to the longest. For each A, the E that puts the pin under
+     the hips' midpoint, walked out from home so each root seeds the next."""
+--- a/analysis/model/skid_checks.py
++++ b/analysis/model/skid_checks.py
+@@ -2,6 +2,6 @@
+ skid_checks.py — self-tests for skid.py.
+ 
+-The pad's clearance at home against the closed form, A3's postures held to
+-α = 0 over the leg's lengths, and R-5 on them. The margin itself is
++The pad's clearance at home against the closed form, the straight postures
++held to α = 0 over the leg's lengths, and R-5 on them. The margin itself is
+ run_all.py's.
+ """
+@@ -27,5 +27,5 @@
+ 
+ def test_the_straight_postures_stand_the_leg_under_the_hips():
+-    """A3's postures: α = 0 at each, from the shortest leg to the
++    """The straight postures: α = 0 at each, from the shortest leg to the
+     longest, and the clearance there agrees with the closed form."""
+     hips = straight()
+--- a/docs/testing/DR-01-skid-clearance.md
++++ b/docs/testing/DR-01-skid-clearance.md
+@@ -11,5 +11,5 @@
+ ## Method
+ 
+-`analysis/model/skid.py` (rev 1) adds the skid pad to the description as a contact, a sphere of radius `R_SKID` round the knee B on l1 against the floor, and stands the leg on its tyre at each posture by lowering the torso by the tyre's gap. By A3 the first contact is checked at α = 0: `skid.straight()` walks hip A out from home to each end of its range in 40 steps, solving at each for the E that puts the pin C straight under the hips, and keeps the 81 postures inside `WORKSPACE`. `SKID_AT_ALPHA_ZERO` is the clearance margin over them, which `run_all.py` searches; its truth is (1) of 00_setup.md at the worst posture, and it agrees to 1e-3 mm. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
++`analysis/model/skid.py` (rev 1) adds the skid pad to the description as a contact, a sphere of radius `R_SKID` round the knee B on l1 against the floor, and stands the leg on its tyre at each posture by lowering the torso by the tyre's gap. The pad comes nearest the floor with the leg straight under the hips (00_setup.md), so the first contact is checked at α = 0: `skid.straight()` walks hip A out from home to each end of its range in 40 steps, solving at each for the E that puts the pin C straight under the hips, and keeps the 81 postures inside `WORKSPACE`. `SKID_AT_ALPHA_ZERO` is the clearance margin over them, which `run_all.py` searches; its truth is (1) of 00_setup.md at the worst posture, and it agrees to 1e-3 mm. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
+ 
+ ## The decision: R-5 holds
+@@ -38,5 +38,4 @@
+ | Assumption | Direction and size | Closed by |
+ |---|---|---|
+-| A3, first contact at α = 0 | the scope of the search: 81 postures, every leg length in `WORKSPACE` | this report |
+ | A1, a rigid tyre | a soft tyre lowers the hub, and with it the pad, by its deflection, about a millimetre | the tyre's datasheet |
+ 
