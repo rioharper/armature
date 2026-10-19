@@ -5,3 +5,6 @@ evals/**/*.sh text eol=lf
 # planted/ by `git apply`, which matches line endings exactly: both stay LF.
 evals/*/planted/** text eol=lf
 evals/**/*.patch text eol=lf
+# The hold-out is frozen by a hash over its text (evals/tests/test_holdout.py),
+# which reads it with LF line endings; keep it LF on disk too.
+evals/holdout/** text eol=lf

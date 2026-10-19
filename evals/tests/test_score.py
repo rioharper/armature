@@ -107,3 +107,38 @@ def test_a_partial_result_fails_however_well_it_caught(tmp_path, capsys):
 def test_a_result_with_no_runs_fails(tmp_path, capsys):
     code, _ = _main(tmp_path, doc(("a", {"with": []})), capsys)
     assert code == 1
+
+
+HELD = "turret-derive"
+
+
+def test_the_hold_out_is_the_cases_under_evals_holdout():
+    """A case is held out by living under evals/holdout/ (#132)."""
+    assert score.HOLDOUT == {HELD}
+
+
+def test_a_hold_out_is_reported_apart_with_its_baseline_and_delta(
+        tmp_path, capsys):
+    code, out = _main(tmp_path, doc(
+        ("a", {"with": [CAUGHT] * 3}),
+        (HELD, {"with": [CAUGHT, MISSED, MISSED],
+                "without": [MISSED] * 3})), capsys)
+    gate, held = out.split("hold-out")
+    assert HELD not in gate and HELD in held
+    assert "caught 1/3" in held and "baseline 0/3" in held
+    assert "Δ +0.33" in held
+    assert code == 0
+
+
+def test_a_missed_hold_out_never_fails_the_suite(tmp_path, capsys):
+    code, _ = _main(tmp_path, doc(("a", {"with": [CAUGHT] * 3}),
+                                  (HELD, {"with": [MISSED] * 3})), capsys)
+    assert code == 0
+
+
+def test_a_caught_hold_out_never_passes_the_suite(tmp_path, capsys):
+    code, _ = _main(tmp_path, doc(("a", {"with": [MISSED] * 3}),
+                                  (HELD, {"with": [CAUGHT] * 3})), capsys)
+    assert code == 1
+    code, _ = _main(tmp_path, doc((HELD, {"with": [CAUGHT] * 3})), capsys)
+    assert code == 1

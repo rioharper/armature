@@ -78,3 +78,13 @@ and the suite runs sixteen cases. A red-team variant's derivation uses the
 bait without numbering it, so the review must find it as well. The variants gate on the same 2/3 with-arm
 catch rate as the rest. A release now costs about $80 of plan usage and
 2.7 h of wall time.
+
+**Amended 2026-10-18 (#132):** every case above is tuned against, so a rise
+in the catch rate may be fitting. There are now six golden mechanisms: the
+sixth, a geared turret, has one **hold-out** case, `evals/holdout/turret-derive/`,
+whose brief only implies its bait and whose trap, a motor sized without its
+rotor's reflected N² J_m, is of a class no tuned case uses. It runs in every
+release run and is reported beside the gate, never in it. Its brief,
+graders, scaffold, golden project and answer are written once and frozen by a
+pinned hash, and nothing the agent reads points at it. Rejected: gating on
+it, since a gate is what gets tuned against.

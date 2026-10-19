@@ -1,0 +1,11 @@
+schema_version: "1.1"
+name: turret-derive
+description: >-
+  The hold-out (#132): derive, on the geared turret. Nobody tunes against
+  it, and it never gates. The brief only implies that the motor has the
+  turret alone to swing, which leaves its rotor out; the decision is the
+  pan motor for the slew. Caught when the report gives the slew's peak motor
+  torque (J_load/N + N J_m) a inside the window and counts the rotor.
+tags: [derive, turret, holdout]
+context:
+  scaffold_script: scaffold.sh

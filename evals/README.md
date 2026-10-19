@@ -4,7 +4,7 @@ Tier 2 of [ADR 0008](../docs/adr/0008-the-agent-is-measured-on-golden-mechanisms
 
 ## The gate
 
-The suite gates every version bump. A partial run, or any case caught in fewer than 2/3 of its runs, blocks the bump.
+The suite gates every version bump. A partial run, or any case caught in fewer than 2/3 of its runs, blocks the bump. The hold-out is the one case that never gates (below).
 
 A run is caught only when every `catch-*` grader passed and no `peeked-*` grader did:
 - **A derive case** has two catch graders. `catch-window` is a regex that finds a number inside the answer's **window**, with its unit, in the report the brief fixes. `catch-bait` is an llm rubric that passes only when the bait is visibly rejected or sized. The right number with the bait carried into the decision is not caught.
@@ -14,7 +14,17 @@ A run is caught only when every `catch-*` grader passed and no `peeked-*` grader
 - **An unstated variant**, `<case>-unstated`, is its case with the bait taken out of the brief's numbered assumptions: no A3, the assumption implied only by the spec's prose. It has its case's answer, window, trap and graders, with only the bait's wording changed, so it measures finding the assumption and not only rejecting it. A red-team variant reviews its case's derivation reworded the same way: the bait used, never numbered as an assumption. It gates like every other case. #124's baseline caught all 24 of its runs with the bait stated, so the stated cases alone cannot show the plugin is what catches the trap; the variant's Δ is the one to read.
 - **Every other grader is a diagnostic,** reported and never part of the catch: `skill-derive`, `red-team-dispatched` and `ran-the-model`.
 
-The **catch rate** is the share of with-arm runs caught. `score.py` computes it, with the baseline's catch rate, Δ, the `peeked` count and the diagnostics. It exits 1 unless the result is whole and every case is at 2/3 or above. The built-in score is never the gate, because it averages graders and so credits half a catch. That is why `claude plugin eval` runs with `--threshold 0`: its exit code then flags only errors and partial runs.
+The **catch rate** is the share of with-arm runs caught. `score.py` computes it, with the baseline's catch rate, Δ, the `peeked` count and the diagnostics. It exits 1 unless the result is whole and every case but the hold-out is at 2/3 or above. The built-in score is never the gate, because it averages graders and so credits half a catch. That is why `claude plugin eval` runs with `--threshold 0`: its exit code then flags only errors and partial runs.
+
+## The hold-out
+
+Every case above is one we tune briefs, rubrics and skills against, so a rise in its catch rate may be fitting rather than improvement. The **hold-out**, `evals/holdout/turret-derive/`, is a derive case nobody tunes against (#132). Its golden mechanism, the geared turret, has no other case, and its trap is of a class no tuned case uses. Its brief only implies the bait, as an unstated variant's does.
+
+- **It runs in every release run and never gates.** `claude plugin eval` finds every `case.yaml` under `evals/`, so the release run's command is unchanged. `score.py` reports the hold-out in its own section beside the gate, with its catch rate, baseline, Δ, `peeked` count and diagnostics, and its exit code is the same with the hold-out caught, missed or absent. A case is held out by living under `evals/holdout/`.
+- **It is frozen.** Its brief, `case.yaml`, scaffold and graders, its golden project and its `Answer` are written once. `evals/tests/test_holdout.py` pins a SHA-256 over them, line endings read as LF, and fails on any edit. A deliberate edit bumps the pin, with a CHANGELOG entry saying why, and is never a response to the hold-out's results.
+- **Don't open it while tuning.** Read its results as they come and change nothing because of them. Never run it on demand while editing `armature-derive`, the red-team agent or `review-checklist.md`, and keep any path to it, and the turret, out of everything the agent reads.
+
+Its graders are generated like every case's (`HOLDOUT` in `generate.py`), and its `peeked-*` are every case's, so a run that reads `evals/` or `golden` is voided.
 
 ## Where it runs
 
@@ -35,7 +45,7 @@ It writes a `git archive` of HEAD into an empty directory, so commit first. It l
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $80 of plan usage and takes about 160 min, twice #124's $39 and 79 min now that every case has its unstated variant:
+**The release run,** before every version bump. It costs about $85 of plan usage and takes about 170 min, over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them:
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
@@ -90,6 +100,8 @@ evals/
     graders/              generated: never edit them by hand
   <case>-unstated/        its unstated variant: the same files, but no planted/
     implicit.patch        a red-team variant's: its case's planted/ with the bait never numbered
+  holdout/
+    turret-derive/        the hold-out: a derive case's files, frozen; don't open it while tuning
 ```
 
 **The scaffold** runs unsandboxed, as you, in the run's empty workspace. It has no `CLAUDE_PLUGIN_ROOT`, so it reaches the plugin from its own path. It copies the model template's runner into `analysis/model/`, then the golden project over it: `evals/golden/<mechanism>/` in `copy.sh`'s copy, `engine/tests/golden/<mechanism>/` in a checkout. It points `pyproject.toml` at this plugin's `engine/` by absolute path, runs `uv sync` against the persistent cache `/var/tmp/armature-eval-uv`, and commits. The agent's sandboxed `uv run` then needs no network grant.

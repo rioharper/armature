@@ -11,7 +11,7 @@ import pytest
 import generate
 from conftest import unsourced_figures
 from golden.answers import (ANSWERS, CABLE_FREQUENCY, PLATFORM_TILT,
-                            SKID_CLEARANCE, Answer)
+                            SKID_CLEARANCE, SLEW_TORQUE, Answer)
 
 
 def found(answer, text):
@@ -57,11 +57,12 @@ def test_the_checked_in_graders_are_what_generate_writes():
 
 
 GOLDEN = generate.EVALS.parent / "engine" / "tests" / "golden"
-UNCASED = {"arm_2r", "turret"}
-"""The golden mechanisms with no case here: the 2R arm, which the derive
-template is, and the turret, measured apart from the tuned cases (#132)."""
+HELD_OUT = {c.mechanism for c in generate.HOLDOUT.values()}
+"""The golden mechanisms of the cases under evals/holdout/, which have no
+tuned case (#132); test_holdout holds them."""
 MECHANISMS = sorted(p.parent.name for p in GOLDEN.glob("*/mechanism.py")
-                    if p.parent.name not in UNCASED)
+                    if p.parent.name != "arm_2r"
+                    and p.parent.name not in HELD_OUT)
 
 
 def _scaffolded(kind, laid):
@@ -214,6 +215,19 @@ def test_an_angles_window_reads_its_unit_spelled_out(text):
     "20.8 rad", "20.8 degC", "20.8 degreesC", "0.3623 rad", "0.0°"])
 def test_an_angles_window_reads_no_other_unit(text):
     assert not found(PLATFORM_TILT, text)
+
+
+@pytest.mark.parametrize("text", [
+    "0.0224 N m", "0.0224 N·m", "0.0224 N⋅m", "0.0224 Nm", "0.0224 N-m",
+    "τ = 0.02240 N m,"])
+def test_a_torques_window_reads_its_unit_written_any_way(text):
+    assert found(SLEW_TORQUE, text)
+
+
+@pytest.mark.parametrize("text", [
+    "0.0224 N", "0.0224 N mm", "0.0224 N m/s", "22.4 N m", "0.008 N m"])
+def test_a_torques_window_reads_no_other_unit(text):
+    assert not found(SLEW_TORQUE, text)
 
 
 def test_a_window_across_a_power_of_ten_reads_both_sides():
