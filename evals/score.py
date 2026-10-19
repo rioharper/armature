@@ -8,8 +8,8 @@ and a run that read the answers is a copy. A red-team run whose
 `false-alarm` grader failed raised a BLOCKER or MAJOR the golden derivation
 shows wrong: it is counted beside the catch, and never gates. Every other
 grader is a diagnostic, counted and never part of the catch. Exits 1 unless
-the result is whole and every case is caught in at least 2/3 of its runs
-(evals/README.md).
+the result is whole and every case but the hold-out is caught in at least
+2/3 of its runs (evals/README.md).
 
 A hold-out case, one under evals/holdout/, is reported in a section of its
 own beside the gate, with its baseline and Δ, and never moves the exit code
@@ -125,13 +125,14 @@ def main(argv):
     if held:
         print("hold-out, reported beside the gate and never part of it:")
     for r in held:
-        _print(r, "    ")
+        _print(r, "no verdict")  # a hold-out never passes or fails
     whole = not doc.get("partial")
     if not whole:
         print(f"partial result ({doc.get('partialReason')}): not a gate run")
     ok = whole and bool(rows) and all(r.passes for r in rows)
-    print(f"suite {'passes' if ok else 'fails'}: every case at "
-          f"{GATE.numerator}/{GATE.denominator} or above, the result whole")
+    print(f"suite {'passes' if ok else 'fails'}: every case but the hold-out "
+          f"at {GATE.numerator}/{GATE.denominator} or above, the result "
+          f"whole")
     return 0 if ok else 1
 
 

@@ -1,40 +1,47 @@
 """The hold-out (#132): a case under `evals/holdout/` that nobody tunes
 against. It is generated and scaffolded like every case, reported beside the
-gate and never part of it, and frozen: its files, its golden project and its
-`Answer` hash to a pinned value."""
+gate and never part of it, and frozen: what is its own, its case files, its
+golden project and its `Answer`, hashes to a pinned value."""
 
 import hashlib
 import re
+import subprocess
 
 import pytest
 
 import generate
 import score
+import golden
 from golden.answers import ANSWERS
 
-HOLDOUT = generate.EVALS / "holdout"
-GOLDEN = generate.EVALS.parent / "engine" / "tests" / "golden"
+ROOT = generate.EVALS.parent
+HELD = generate.EVALS / "holdout"
+GOLDEN = ROOT / "engine" / "tests" / "golden"
 CASES = sorted(generate.HOLDOUT)
 
 # Bumped only deliberately, with a CHANGELOG entry saying what changed and
 # why: the hold-out is written once, never edited in response to its results.
 PINS = {
     "turret-derive":
-        "9d2724ec692aa4df5fd66954efa0c9cd696606f8827975f25706f8d6754015f8",
+        "47c19a86eccd30ccad93c3b124d7b83215d86052ec808f833c6e20836d3c129c",
 }
 
 
 def _frozen(name):
-    """The SHA-256 of `name`'s case files, its golden project and the
-    `Answer`s its graders quote, each file by its path under the repo and its
-    text with LF line endings, so a Windows checkout and the WSL copy agree."""
+    """The SHA-256 of what is `name`'s own: its brief, `case.yaml`, scaffold
+    and `catch-*` graders, its golden project and the `Answer`s its graders
+    quote, each file by its path under the repo and its text with LF line
+    endings, so a Windows checkout and the WSL copy agree. The `peeked-*`
+    and diagnostic graders every case shares are left out, so a fix to their
+    wording reaches the hold-out without bumping its pin."""
     case = generate.HOLDOUT[name]
-    root = generate.EVALS.parent
-    files = sorted(p for p in (HOLDOUT / name).rglob("*") if p.is_file())
+    files = [HELD / name / f for f in ("prompt.md", "case.yaml",
+                                       "scaffold.sh")]
+    files += sorted((HELD / name / "graders").glob("catch-*.md"))
     files += sorted((GOLDEN / case.mechanism).glob("*.py"))
     digest = hashlib.sha256()
     for path in files:
-        digest.update(path.relative_to(root).as_posix().encode() + b"\0")
+        digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0")
         digest.update(path.read_bytes().replace(b"\r\n", b"\n") + b"\0")
     for answer in filter(None, (case.answer, case.release)):
         digest.update(f"{answer} = {ANSWERS[answer]!r}".encode() + b"\0")
@@ -42,7 +49,7 @@ def _frozen(name):
 
 
 def test_the_hold_out_is_every_case_under_evals_holdout():
-    on_disk = sorted(p.parent.name for p in HOLDOUT.glob("*/case.yaml"))
+    on_disk = sorted(p.parent.name for p in HELD.glob("*/case.yaml"))
     assert on_disk == CASES == sorted(score.HOLDOUT) == sorted(PINS)
     assert not set(CASES) & set(generate.CASES)
 
@@ -58,6 +65,14 @@ def test_the_hold_out_is_frozen(name):
 
 
 @pytest.mark.parametrize("name", CASES)
+def test_a_hold_outs_pin_leaves_out_the_graders_every_case_shares(name):
+    shared = {f"{g}.md" for g in generate.DIAGNOSTICS}
+    on_disk = {p.name for p in (HELD / name / "graders").glob("*.md")}
+    assert shared <= on_disk
+    assert not any(f.startswith("catch-") for f in shared)
+
+
+@pytest.mark.parametrize("name", CASES)
 def test_a_hold_outs_mechanism_has_no_tuned_case(name):
     mechanism = generate.HOLDOUT[name].mechanism
     assert (GOLDEN / mechanism / "mechanism.py").is_file()
@@ -66,7 +81,7 @@ def test_a_hold_outs_mechanism_has_no_tuned_case(name):
 
 @pytest.mark.parametrize("name", CASES)
 def test_a_hold_out_scaffolds_its_golden_mechanism(name):
-    directory = HOLDOUT / name
+    directory = HELD / name
     assert f"name: {name}\n" in (directory / "case.yaml").read_text(
         encoding="utf-8")
     scaffold = (directory / "scaffold.sh").read_text(encoding="utf-8")
@@ -76,21 +91,37 @@ def test_a_hold_out_scaffolds_its_golden_mechanism(name):
 
 
 def _brief(name):
-    return (HOLDOUT / name / "prompt.md").read_text(encoding="utf-8")
+    return (HELD / name / "prompt.md").read_text(encoding="utf-8")
+
+
+# What would hand a turret run its trap: the moment's cause, named.
+LEAKS = (r"overturn|\btilt|\btip|off.axis|offset|centr|inertia|\bCOM\b"
+         r"|cent(?:re|er) of mass|m g d")
 
 
 @pytest.mark.parametrize("name", CASES)
 def test_a_hold_outs_brief_fixes_its_report_and_leaks_neither_answer(name):
     """The brief names the report its graders read, and gives no number in
-    the window, the bait's number, or the term the trap leaves out."""
+    the window, the bait's number, the weight's moment alone, or the
+    words that name what the bait leaves out."""
     case = generate.HOLDOUT[name]
     answer, brief = ANSWERS[case.answer], _brief(name)
+    p = getattr(golden, case.mechanism).PARAMS
     assert case.report in brief
     assert not re.search(generate.window(answer), brief)
-    for x in (answer.value, answer.bait):
+    for x in (answer.value, p["m"] * p["g"] * p["d"]):
         assert not re.search(rf"(?<![\d.]){re.escape(f'{x:.2g}')}", brief)
-        assert f"{x * 1e3:.3g} m{answer.unit}" not in brief
-    assert not re.search(r"rotor|reflect|J_m", brief, re.I)
+    assert not re.search(
+        rf"(?<![\d.]){re.escape(f'{answer.bait:.4g} {answer.unit}')}", brief)
+    assert not re.search(LEAKS, brief, re.I)
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_a_hold_outs_brief_states_the_bearings_ratings(name):
+    rated = getattr(golden, generate.HOLDOUT[name].mechanism).params.BEARING
+    brief = _brief(name)
+    for value, unit in ((rated["axial"], "N"), (rated["moment"], "N m")):
+        assert re.search(rf"(?<![\d.]){value:g}(?:\.0)? {unit} ", brief)
 
 
 @pytest.mark.parametrize("name", [n for n in CASES
@@ -116,5 +147,29 @@ def test_a_hold_out_is_graded_as_a_derive_case_is(name):
     for grader in generate.DIAGNOSTICS:
         assert files[f"{grader}.md"] == tuned[f"{grader}.md"]
     on_disk = {p.name: p.read_text(encoding="utf-8")
-               for p in (HOLDOUT / name / "graders").glob("*.md")}
+               for p in (HELD / name / "graders").glob("*.md")}
     assert on_disk == files
+
+
+def _shipped():
+    """Every file the agent can read in `copy.sh`'s copy: what git tracks,
+    but engine/tests/, which the copy leaves out, and evals/, which the
+    harness masks."""
+    listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True,
+                            capture_output=True).stdout.decode()
+    return [ROOT / f for f in listed.split("\0") if f and not
+            f.startswith(("engine/tests/", "evals/")) and (ROOT / f).is_file()]
+
+
+@pytest.mark.parametrize("name", CASES)
+def test_nothing_the_agent_reads_names_a_hold_outs_mechanism_or_answer(name):
+    """The CHANGELOG and docs/adr/ ship with the plugin, so they may say a
+    hold-out exists, and nothing more: not its case, its mechanism, its
+    report, its Answer or a number inside its window."""
+    case = generate.HOLDOUT[name]
+    window = re.compile(generate.window(ANSWERS[case.answer]))
+    words = (name, case.mechanism, case.report, case.answer)
+    for path in _shipped():
+        text = path.read_bytes().decode("utf-8", errors="ignore")
+        assert not [w for w in words if w in text], path
+        assert not window.search(text), path

@@ -123,11 +123,18 @@ def test_a_hold_out_is_reported_apart_with_its_baseline_and_delta(
         ("a", {"with": [CAUGHT] * 3}),
         (HELD, {"with": [CAUGHT, MISSED, MISSED],
                 "without": [MISSED] * 3})), capsys)
-    gate, held = out.split("hold-out")
+    gate, held = out.split("hold-out,")
     assert HELD not in gate and HELD in held
     assert "caught 1/3" in held and "baseline 0/3" in held
     assert "Δ +0.33" in held
+    assert f"no verdict  {HELD}:" in held
+    assert "PASS" not in held and "FAIL" not in held
     assert code == 0
+
+
+def test_the_footer_names_the_hold_out_outside_the_gate(tmp_path, capsys):
+    _, out = _main(tmp_path, doc(("a", {"with": [CAUGHT] * 3})), capsys)
+    assert "every case but the hold-out at 2/3 or above" in out
 
 
 def test_a_missed_hold_out_never_fails_the_suite(tmp_path, capsys):

@@ -81,10 +81,10 @@ catch rate as the rest. A release now costs about $80 of plan usage and
 
 **Amended 2026-10-18 (#132):** every case above is tuned against, so a rise
 in the catch rate may be fitting. There are now six golden mechanisms: the
-sixth, a geared turret, has one **hold-out** case, `evals/holdout/turret-derive/`,
-whose brief only implies its bait and whose trap, a motor sized without its
-rotor's reflected N² J_m, is of a class no tuned case uses. It runs in every
-release run and is reported beside the gate, never in it. Its brief,
-graders, scaffold, golden project and answer are written once and frozen by a
-pinned hash, and nothing the agent reads points at it. Rejected: gating on
-it, since a gate is what gets tuned against.
+sixth has one **hold-out** case, under `evals/holdout/`, whose brief only
+implies its bait and whose trap is of a class no tuned case uses. It runs in
+every release run and is reported beside the gate, never in it. What is the
+case's own, its brief, catch graders, scaffold, golden project and answer, is
+written once and frozen by a pinned hash, and what ships with the plugin says
+only that it exists. Rejected: gating on it, since a gate is what gets tuned
+against.
