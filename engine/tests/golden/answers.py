@@ -283,20 +283,25 @@ BUS_CAPACITANCE = Answer(
         "stop's peak under the drivers' trip, E as for the peak bus voltage; "
         "the bait is the drivers' own capacitance, nothing added")
 
-# --- the turret: its slew's peak motor torque ---------------------------------
+# --- the turret: its bearing's peak moment in the slew -------------------------
 
-_t = turret.PARAMS
-_load = _t["Izz"] + _t["m"] * _t["d"] ** 2  # the turret about its bearing
-_a = turret.missions.LIMITS.a  # the slew's acceleration limit, which it reaches
+_t, _limits = turret.PARAMS, turret.missions.LIMITS
+# The slew is a jerk-limited quarter turn that reaches its acceleration and
+# rate limits. It ends its constant acceleration a at ω₁ = v − a²/2j, and
+# there the moment across the axis, the weight's and the COM's inertial
+# loads at its height, is the largest the slew puts on the bearing.
+_w1 = _limits.v - _limits.a ** 2 / (2 * _limits.j)
 
-SLEW_TORQUE = Answer(
-    value=(_load / _t["N"] + _t["N"] * _t["J_m"]) * _a, unit="N m",
-    bait=_load / _t["N"] * _a,
-    how="τ = (J_load/N + N J_m) a at the motor, J_load = Izz + m d² the "
-        "turret about its bearing and a the slew's acceleration limit, which "
-        "the quarter turn reaches; the axis is vertical, so no gravity "
-        "torque; the bait is J_load a / N, the load alone, the rotor's "
-        "N² J_m left out")
+BEARING_MOMENT = Answer(
+    value=_t["m"] * _t["d"] * math.hypot(_t["g"] + _t["h"] * _w1 ** 2,
+                                         _t["h"] * _limits.a),
+    unit="N m", bait=0.0,
+    how="M = m d √((g + h ω₁²)² + (h a)²) across the bearing's axis, where "
+        "the slew ends its constant acceleration a at ω₁ = v − a²/2j: the "
+        "weight's moment m g d, the COM d off the axis, with the centrifugal "
+        "m d ω² and tangential m d a loads at the COM's height h; the bait "
+        "is the bearing checked on its axial load alone, the weight m g, "
+        "which puts no moment on it")
 
 ANSWERS = {name: value for name, value in globals().items()
            if isinstance(value, Answer)}

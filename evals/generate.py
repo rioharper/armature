@@ -118,10 +118,13 @@ def window(answer):
 class Case:
     """What every case carries, by keyword: `mechanism`, the golden
     mechanism its scaffold lays down, as named under engine/tests/golden/,
-    and `stated`, False on an unstated variant, whose brief only implies
-    the bait (`UNSTATED_SUFFIX`)."""
+    `stated`, False on an unstated variant, whose brief only implies
+    the bait (`UNSTATED_SUFFIX`), and `under`, the directory of evals/ its
+    own directory sits in: none for a tuned case, holdout/ for a hold-out
+    (`HOLDOUT`)."""
     mechanism: str = field(kw_only=True)
     stated: bool = field(default=True, kw_only=True)
+    under: str = field(default="", kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -264,7 +267,7 @@ formatting decide the verdict.
 
 def graders(name):
     """The graders `name`'s case is generated with, by file name."""
-    case = HOLDOUT[name] if name in HOLDOUT else CASES[name]
+    case = EVERY[name]
     if isinstance(case, Review):
         return _review_graders(case)
     answer = ANSWERS[case.answer]
@@ -506,34 +509,39 @@ def base(name):
 
 # --- the hold-out ------------------------------------------------------------
 
-# The cases under evals/holdout/, nobody tunes against (#132): each brief and
-# its graders are written once, and evals/tests/test_holdout.py freezes them
-# by hash. Each is generated as any case is, and kept out of CASES, so no
-# check the tuned cases share reaches it, and its golden mechanism has no
-# tuned case. score.py reports it beside the gate, never in it.
+# The cases under evals/holdout/, which nobody tunes against (#132): each
+# brief and its graders are written once, and evals/tests/test_holdout.py
+# freezes them by hash. Each is generated as any case is, and kept out of
+# CASES, so no check the tuned cases share reaches it, and its golden
+# mechanism has no tuned case. score.py reports it beside the gate, never in
+# it.
 HOLDOUT = {
     "turret-derive": Derive(
         mechanism="turret",
         stated=False,
-        answer="SLEW_TORQUE",
-        report="docs/testing/DR-01-slew-torque.md",
-        bait="that the motor has only the turret to swing, its inertia "
-             "geared down by the ratio",
-        sized="it counts the motor's own rotor: it says the motor "
-              "accelerates its rotor as well as the turret, adds the rotor's "
-              "inertia to the turret's, N² J_m at the pan or J_m at the "
-              "motor, and it decides R-3 on the peak torque that gives "
-              "rather than on the turret's inertia alone",
-        carried="It decides R-3 on A3: it sizes the motor on the turret's "
-                "inertia alone, J_load a / N, the rotor left out, or it "
-                "takes R-3 as met on that torque"),
+        under="holdout",
+        answer="BEARING_MOMENT",
+        report="docs/testing/DR-01-bearing-load.md",
+        bait="that the turret's weight bears straight down the pan axis, so "
+             "the bearing carries an axial load alone",
+        sized="it counts the moment across the bearing's axis: it says the "
+              "turret's COM sits off the axis, puts the weight's moment "
+              "m g d on the bearing with the slew's inertial loads at the "
+              "COM's height, and it decides R-3 on the peak moment that "
+              "gives against the 5.0 N m rating rather than on the axial "
+              "load alone",
+        carried="It decides R-3 on A3: it checks the bearing on the weight's "
+                "axial load alone, its moment left out or taken as zero, or "
+                "it takes R-3 as met without a moment it computed"),
 }
+
+# Every case, tuned or held out, by name.
+EVERY = {**CASES, **HOLDOUT}
 
 
 def directory(name):
-    """Where case `name` lives: evals/holdout/<name>/ for a hold-out,
-    evals/<name>/ for any other."""
-    return EVALS / "holdout" / name if name in HOLDOUT else EVALS / name
+    """Where case `name` lives: evals/<under>/<name>/."""
+    return EVALS / EVERY[name].under / name
 
 
 # The number a stated brief gives its bait, which a rubric's own wording of
@@ -674,10 +682,10 @@ def stale():
     """Every grader file that differs from what `graders` writes, is missing,
     or was generated and is no longer written, as a path under evals/."""
     out = []
-    for name in [*CASES, *HOLDOUT]:
-        found = directory(name) / "graders"
-        want, have = graders(name), _generated(found)
-        place = found.relative_to(EVALS).as_posix()
+    for name in EVERY:
+        written = directory(name) / "graders"
+        want, have = graders(name), _generated(written)
+        place = written.relative_to(EVALS).as_posix()
         out += [f"{place}/{f}" for f in sorted(set(want) | set(have))
                 if want.get(f) != have.get(f)]
     return out
@@ -685,15 +693,15 @@ def stale():
 
 def write():
     """Writes every case's graders and removes those no longer generated."""
-    for name in [*CASES, *HOLDOUT]:
-        found = directory(name) / "graders"
-        found.mkdir(parents=True, exist_ok=True)
+    for name in EVERY:
+        written = directory(name) / "graders"
+        written.mkdir(parents=True, exist_ok=True)
         want = graders(name)
-        for f in _generated(found):
+        for f in _generated(written):
             if f not in want:
-                (found / f).unlink()
+                (written / f).unlink()
         for f, text in want.items():
-            (found / f).write_text(text, encoding="utf-8", newline="\n")
+            (written / f).write_text(text, encoding="utf-8", newline="\n")
 
 
 def main(argv):

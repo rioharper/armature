@@ -10,8 +10,8 @@ import pytest
 
 import generate
 from conftest import unsourced_figures
-from golden.answers import (ANSWERS, CABLE_FREQUENCY, PLATFORM_TILT,
-                            SKID_CLEARANCE, SLEW_TORQUE, Answer)
+from golden.answers import (ANSWERS, BEARING_MOMENT, CABLE_FREQUENCY,
+                            PLATFORM_TILT, SKID_CLEARANCE, Answer)
 
 
 def found(answer, text):
@@ -218,16 +218,16 @@ def test_an_angles_window_reads_no_other_unit(text):
 
 
 @pytest.mark.parametrize("text", [
-    "0.0224 N m", "0.0224 N·m", "0.0224 N⋅m", "0.0224 Nm", "0.0224 N-m",
-    "τ = 0.02240 N m,"])
-def test_a_torques_window_reads_its_unit_written_any_way(text):
-    assert found(SLEW_TORQUE, text)
+    "5.204 N m", "5.204 N·m", "5.204 N⋅m", "5.204 Nm", "5.204 N-m",
+    "M = 5.2044 N m,"])
+def test_a_moments_window_reads_its_unit_written_any_way(text):
+    assert found(BEARING_MOMENT, text)
 
 
 @pytest.mark.parametrize("text", [
-    "0.0224 N", "0.0224 N mm", "0.0224 N m/s", "22.4 N m", "0.008 N m"])
-def test_a_torques_window_reads_no_other_unit(text):
-    assert not found(SLEW_TORQUE, text)
+    "5.204 N", "5.204 N mm", "5.204 N m/s", "52.04 N m", "4.709 N m"])
+def test_a_moments_window_reads_no_other_unit(text):
+    assert not found(BEARING_MOMENT, text)
 
 
 def test_a_window_across_a_power_of_ten_reads_both_sides():

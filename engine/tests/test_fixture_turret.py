@@ -1,12 +1,14 @@
 """Fixture 6: a geared turret.
 
-Answer: the slew's peak motor torque, (J_load/N + N·J_m)·a, J_load = Izz +
-m·d² the turret about its bearing and a the move's acceleration limit, which
-the quarter turn reaches; the closed forms for the muzzle's pose, the pan's
-torque and mass, and the bearing's wrench, written out here by hand.
-Trap: the motor sized on the load's inertia alone, J_load·a/N, its own
-rotor's N²·J_m left out. Every number in it is right for the turret, and it
-reads under half the torque the slew takes.
+Answer: the bearing's peak moment in the slew, m·d·√((g + h·ω₁²)² +
+(h·a)²), where the pan ends its constant acceleration a at ω₁ = v − a²/2j:
+the weight's moment m·g·d, the COM d off the axis, and the inertial loads
+the slew puts on the COM at its height h. The closed forms for the muzzle's
+pose, the pan's torque and mass, the bearing's wrench and the slew's motor
+torque, written out here by hand.
+Trap: the bearing checked on its axial load alone, the turret's weight,
+its moment left out. Every number in it is right for the turret, and it
+passes a bearing the slew overloads.
 """
 
 import math
@@ -17,21 +19,15 @@ import pytest
 import armature
 from armature.drive import CONFIRM_RATE, trace
 from golden import turret
-from golden.answers import SLEW_TORQUE
+from golden.answers import BEARING_MOMENT
 
 PARAMS = turret.PARAMS
 P = PARAMS
+RATED = turret.params.BEARING
 SLEW = turret.missions.SLEW
-A = turret.missions.LIMITS.a  # the slew's acceleration limit [rad/s^2]
+LIMITS = turret.missions.LIMITS
+A = LIMITS.a  # the slew's acceleration limit [rad/s^2]
 J_LOAD = P["Izz"] + P["m"] * P["d"] ** 2  # the turret about its bearing
-
-
-def rotorless(p):
-    """The trap's description: the turret with its motor's rotor left out."""
-    return [armature.actuator("pan_motor", joint="pan", gear=p["N"])
-            if getattr(e, "name", None) == "pan_motor" else e
-            for e in turret.mechanism(p)]
-
 
 SEED = 20261018
 
@@ -55,6 +51,11 @@ def bearing_wrench(q, qd, qdd):
     return force, np.array([0, 0, P["Izz"] * qdd]) + np.cross(com, force)
 
 
+def moment(w):
+    """The moment a wrench puts across the bearing's axis."""
+    return float(np.hypot(*w.torque[:2]))
+
+
 def sampled_states(n, seed=SEED):
     rng = np.random.default_rng(seed)
     for _ in range(n):
@@ -70,6 +71,15 @@ def m():
 @pytest.fixture(scope="module")
 def slew(m):
     return trace(m, SLEW, CONFIRM_RATE)
+
+
+@pytest.fixture(scope="module")
+def slew_wrenches(m, slew):
+    """The bearing's wrench at every sample of the slew."""
+    return [m.at(q={"pan": q}, qd={"pan": qd}).wrench("turret",
+                                                       qdd={"pan": qdd})
+            for q, qd, qdd in zip(slew.q["pan"], slew.qd["pan"],
+                                  slew.qdd["pan"])]
 
 
 # --- kinematics ---------------------------------------------------------------
@@ -120,9 +130,9 @@ def test_released_with_the_motor_off_it_stays(m):
 
 @pytest.mark.parametrize("q, qd, qdd", list(sampled_states(6)))
 def test_the_bearings_wrench_is_the_closed_form(m, q, qd, qdd):
-    """At rest the bearing carries the weight and its overturning moment,
-    m·g·d; moving, the COM's acceleration too. Along the axis it carries
-    the motor's torque less what accelerates the rotor."""
+    """At rest the bearing carries the weight and its moment, m·g·d;
+    moving, the COM's acceleration too. Along the axis it carries the
+    motor's torque less what accelerates the rotor."""
     s = m.at(q={"pan": q}, qd={"pan": qd})
     w = s.wrench("turret", qdd={"pan": qdd})
     force, torque = bearing_wrench(q, qd, qdd)
@@ -135,51 +145,65 @@ def test_the_bearings_wrench_is_the_closed_form(m, q, qd, qdd):
         P["N"] * inv.torque["pan_motor"] - P["N"] ** 2 * P["J_m"] * qdd,
         rel=1e-9, abs=1e-12)
     at_rest = m.at(q={"pan": q}).wrench("turret")
-    assert np.hypot(*at_rest.torque[:2]) == pytest.approx(
-        P["m"] * P["g"] * P["d"], rel=1e-9)
+    assert moment(at_rest) == pytest.approx(P["m"] * P["g"] * P["d"],
+                                            rel=1e-9)
 
 
-# --- trace: the slew ------------------------------------------------------------
-def test_the_slews_peak_torque_is_the_answer(slew):
-    """The quarter turn reaches its acceleration limit, and there the motor
-    gives the load's share and its own rotor's: τ = (J_load/N + N·J_m)·a."""
+# --- the bearing in the slew ----------------------------------------------------
+def test_the_bearings_peak_moment_in_the_slew_is_the_answer(slew_wrenches):
+    """The moment peaks where the pan ends its constant acceleration, at
+    its full a and the most rate it has there: m·d·√((g + h·ω₁²)² +
+    (h·a)²). It is over the bearing's moment rating, which the weight's
+    m·g·d alone is under, and the axial load is the weight throughout."""
+    peak = max(map(moment, slew_wrenches))
+    assert peak == pytest.approx(BEARING_MOMENT.value, rel=1e-3)
+    assert BEARING_MOMENT.value > RATED["moment"]
+    assert P["m"] * P["g"] * P["d"] < RATED["moment"]
+    assert [w.force[2] for w in slew_wrenches] == pytest.approx(
+        [P["m"] * P["g"]] * len(slew_wrenches), rel=1e-9)
+
+
+# --- the trap, shown failing ---------------------------------------------------
+def test_the_bearing_checked_on_its_weight_alone_passes_a_slew_it_fails(
+        slew_wrenches):
+    """The trap's check: the weight, the bearing's whole axial load, under
+    the axial rating, and no moment, under the moment rating. It passes a
+    bearing whose moment in the slew is over that rating, and the bait lies
+    outside the answer's window."""
+    axial = max(abs(w.force[2]) for w in slew_wrenches)
+    assert axial < RATED["axial"] and BEARING_MOMENT.bait < RATED["moment"]
+    assert not BEARING_MOMENT.inside(BEARING_MOMENT.bait)
+    assert max(map(moment, slew_wrenches)) > RATED["moment"]
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="the trap: the bearing carries the weight's "
+                          "moment and the slew's, over its rating")
+def test_the_weight_only_trap_holds_the_bearings_moment(slew_wrenches):
+    """The check a derivation writes for its axial-only sizing: that the
+    bearing carries no moment through the slew. It must fail."""
+    assert max(map(moment, slew_wrenches)) == pytest.approx(
+        BEARING_MOMENT.bait, abs=0.02 * RATED["moment"])
+
+
+# --- trace: the slew's motor torque --------------------------------------------
+def test_the_slews_peak_torque_is_the_closed_form(slew):
+    """The quarter turn reaches its rate and acceleration limits, and at
+    the second the motor gives the load's share and its own rotor's:
+    τ = (J_load/N + N·J_m)·a."""
     assert np.max(np.abs(slew.qdd["pan"])) == pytest.approx(A, rel=1e-9)
+    assert np.max(np.abs(slew.qd["pan"])) == pytest.approx(LIMITS.v,
+                                                           rel=1e-9)
     assert slew.q["pan"][-1] == pytest.approx(math.pi / 2, abs=1e-9)
-    assert SLEW_TORQUE.value == pytest.approx(0.0224, rel=1e-9)
-    assert slew.peak("pan_motor") == pytest.approx(SLEW_TORQUE.value,
-                                                   rel=1e-9)
+    assert slew.peak("pan_motor") == pytest.approx(
+        (J_LOAD / P["N"] + P["N"] * P["J_m"]) * A, rel=1e-9)
 
 
-def test_the_rotors_share_is_what_the_trap_leaves_out(slew):
+def test_the_trace_keeps_the_rotors_share_apart(slew):
     """The trace keeps the rotor's share apart, J_m·N·q̈ at the motor, and
-    the load across the gear is the rest: at the output, J_load·q̈. The
-    rotor's share is the larger."""
+    the load across the gear is the rest: at the output, J_load·q̈."""
     assert slew.rotor["pan_motor"] == pytest.approx(
         P["J_m"] * P["N"] * slew.qdd["pan"], rel=1e-9, abs=1e-15)
     out, _, _ = slew.output("pan_motor")
     assert out == pytest.approx(J_LOAD * slew.qdd["pan"], rel=1e-9,
                                 abs=1e-12)
-    assert np.max(np.abs(slew.rotor["pan_motor"])) > np.max(
-        np.abs(slew.torque["pan_motor"] - slew.rotor["pan_motor"]))
-
-
-# --- the trap, shown failing ---------------------------------------------------
-def test_the_motor_sized_on_the_load_alone_misses_the_slew():
-    """The rotorless description traces the slew at J_load·a/N, the bait,
-    under half the answer and outside its window."""
-    wrong = trace(armature.compile(rotorless, PARAMS), SLEW,
-                  CONFIRM_RATE).peak("pan_motor")
-    assert wrong == pytest.approx(J_LOAD / P["N"] * A, rel=1e-9)
-    assert wrong == pytest.approx(SLEW_TORQUE.bait, rel=1e-9)
-    assert not SLEW_TORQUE.inside(wrong)
-    assert wrong < 0.5 * SLEW_TORQUE.value
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="the trap: the load alone is under half the "
-                          "slew's torque")
-def test_the_load_only_trap_holds_the_slews_torque(slew):
-    """The check a derivation writes for its load-only sizing: that the
-    slew's peak motor torque is J_load·a/N. It must fail."""
-    assert slew.peak("pan_motor") == pytest.approx(J_LOAD / P["N"] * A,
-                                                   rel=0.02)

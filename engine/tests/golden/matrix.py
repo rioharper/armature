@@ -417,10 +417,15 @@ TURRET = {
                           "axis carries no gravity torque"),
     "settle": Known("C", _in(_TURRET, "test_released_with_the_motor_off_it_"
                                       "stays")),
-    "wrench": Known("C", _in(_TURRET, "test_the_bearings_wrench_is_the_"
-                                      "closed_form"),
-                    note="the weight and its overturning moment m·g·d at "
-                         "rest, the COM's acceleration moving"),
+    "wrench": Known("C", _in(
+        _TURRET, "test_the_bearings_wrench_is_the_closed_form",
+        "test_the_bearings_peak_moment_in_the_slew_is_the_answer",
+        "test_the_bearing_checked_on_its_weight_alone_passes_a_slew_it_fails",
+        "test_the_weight_only_trap_holds_the_bearings_moment"),
+        note="the weight and its moment m·g·d at rest, the COM's "
+             "acceleration moving, the slew's peak over the bearing's "
+             "rating; the last is a strict xfail: the trap's own check, "
+             "which must fail"),
     "linearise": Known("C", _in(_TURRET, "test_the_pans_mass_is_the_load_and_"
                                          "the_reflected_rotor")),
     "release": Covered(("arm_2r", "release"),
@@ -433,14 +438,12 @@ TURRET = {
                       "arm's open chain"),
     "search": Covered(("arm_2r", "search"),
                       "a margin over Coordinates reads states, whatever the "
-                      "chain; the slew's own answer is the trace's"),
+                      "chain; the slew's own answer is read off its "
+                      "trace"),
     "trace": Known("C", _in(
-        _TURRET, "test_the_slews_peak_torque_is_the_answer",
-        "test_the_rotors_share_is_what_the_trap_leaves_out",
-        "test_the_motor_sized_on_the_load_alone_misses_the_slew",
-        "test_the_load_only_trap_holds_the_slews_torque"),
-        note="the last is a strict xfail: the trap's own check, which must "
-             "fail"),
+        _TURRET, "test_the_slews_peak_torque_is_the_closed_form",
+        "test_the_trace_keeps_the_rotors_share_apart"),
+        note="(J_load/N + N·J_m)·a at the slew's acceleration limit"),
     "event": Covered(("arm_2r", "event"),
                      "an e-stop " + _ONE_HINGE),
     "charge": Covered(("parallelogram", "charge"),
@@ -550,11 +553,12 @@ TRAPS = (
          "the cable is inextensible (the rigid reduction)",
          _in("test_rigid", "test_rigid_cable_releases_with_the_sag_the_"
                            "elastic_one_shows")),
-    Trap("turret", "trace",
-         "the motor sized on the load's inertia alone, its rotor's N²J_m "
-         "left out",
-         _in(_TURRET, "test_the_motor_sized_on_the_load_alone_misses_the_slew",
-             "test_the_load_only_trap_holds_the_slews_torque")),
+    Trap("turret", "wrench",
+         "the bearing checked on its axial load alone, the weight's moment "
+         "and the slew's left out",
+         _in(_TURRET, "test_the_bearing_checked_on_its_weight_alone_passes_"
+                      "a_slew_it_fails",
+             "test_the_weight_only_trap_holds_the_bearings_moment")),
     Trap("five_bar", "inverse",
          "mj_inverse, which answers for the solver's soft constraint",
          _in(_FIVE_BAR,
