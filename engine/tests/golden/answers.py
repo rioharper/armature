@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from mpmath import mp
 
 from golden import cable_platform, spring_cable, wheel_leg
-from golden import parallelogram
+from golden import parallelogram, turret
 
 
 @dataclass(frozen=True)
@@ -282,6 +282,21 @@ BUS_CAPACITANCE = Answer(
     how="C = 2E / (V_trip² − V₀²), the least capacitance that holds the "
         "stop's peak under the drivers' trip, E as for the peak bus voltage; "
         "the bait is the drivers' own capacitance, nothing added")
+
+# --- the turret: its slew's peak motor torque ---------------------------------
+
+_t = turret.PARAMS
+_load = _t["Izz"] + _t["m"] * _t["d"] ** 2  # the turret about its bearing
+_a = turret.missions.LIMITS.a  # the slew's acceleration limit, which it reaches
+
+SLEW_TORQUE = Answer(
+    value=(_load / _t["N"] + _t["N"] * _t["J_m"]) * _a, unit="N m",
+    bait=_load / _t["N"] * _a,
+    how="τ = (J_load/N + N J_m) a at the motor, J_load = Izz + m d² the "
+        "turret about its bearing and a the slew's acceleration limit, which "
+        "the quarter turn reaches; the axis is vertical, so no gravity "
+        "torque; the bait is J_load a / N, the load alone, the rotor's "
+        "N² J_m left out")
 
 ANSWERS = {name: value for name, value in globals().items()
            if isinstance(value, Answer)}

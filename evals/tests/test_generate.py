@@ -57,8 +57,11 @@ def test_the_checked_in_graders_are_what_generate_writes():
 
 
 GOLDEN = generate.EVALS.parent / "engine" / "tests" / "golden"
+UNCASED = {"arm_2r", "turret"}
+"""The golden mechanisms with no case here: the 2R arm, which the derive
+template is, and the turret, measured apart from the tuned cases (#132)."""
 MECHANISMS = sorted(p.parent.name for p in GOLDEN.glob("*/mechanism.py")
-                    if p.parent.name != "arm_2r")
+                    if p.parent.name not in UNCASED)
 
 
 def _scaffolded(kind, laid):
