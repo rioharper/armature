@@ -198,6 +198,8 @@ it appears.
 - A datasheet number is cited from its row in docs/datasheets/index.md, never
   from memory; a CANDIDATE row carries no decision until the user confirms it.
 - Red-team (the armature-red-team agent) before CAD hours or purchases.
+- A plan leaf's Executor names the skill that works it: call the Skill tool
+  with that name before starting the leaf.
 - The plan and every wayfinder map are GitHub Issues, never a markdown file.
   Read docs/agents/issue-tracker.md before touching the tracker.
 - A change to a mass, power draw, or cost updates docs/01-spec/budgets.md in

@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **The eval's copy holds no `PROGRESS.md`.** Once tracked, the maintainers' log named the hold-out's mechanism and quoted golden numbers, and `copy.sh` shipped it to the agent. `copy.sh` leaves it out, and `test_holdout.py` and `test_copy.py` hold that.
+
+### A plan task's report is red-teamed, and derive loads for one
+
+[#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.
+
+- **The review rule.** `armature-derive`'s *When a plan task lands as a report* red-teams every report, except a re-run of an unchanged model that moves neither a number nor a requirement's verdict. A skip is stated in the report's Status line. The review is the agent's, so a user who is away changes nothing: a BLOCKER or MAJOR is fixed in the report, or the Status is blocked on it.
+- **The template.** `derivation-report-template.md` has a **Review** line under Status, naming the review file and how its findings closed.
+- **Loading the skill.** Derive's description adds natural frequencies and modes, which Milestone 2 already owns, and any plan task whose Executor is `armature-derive`. The wording answers a result: the one derive case that asks only for a mode never loaded the skill. `init`'s standing rules add that a plan leaf's Executor names the skill to load before starting it.
+
 ## 2.0.0 — 2026-10-20
 
 Seven changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, actuators and the bus are sized from a simulated mission, the engine and the agent are measured on golden mechanisms, and the engine reaches projects as a git tag. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.

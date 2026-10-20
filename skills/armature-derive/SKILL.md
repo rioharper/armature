@@ -1,6 +1,6 @@
 ---
 name: armature-derive
-description: Derive a robot's kinematics and dynamics as milestone-sized notes plus a re-runnable SymPy/SciPy model, red-teamed at each milestone. Use when a project needs equations of motion, a Jacobian, workspace or singularity analysis, actuator-sizing or statics math, or the user says "do the math" for a mechanism. Reviews go to armature-red-team.
+description: Derive a robot's kinematics and dynamics as milestone-sized notes plus a re-runnable SymPy/SciPy model, red-teamed at each milestone. Use when a project needs equations of motion, a Jacobian, workspace or singularity analysis, natural frequencies and modes, actuator-sizing or statics math, or the user says "do the math" for a mechanism; and for any plan task whose Executor is armature-derive, re-running the model to decide a requirement, size a part, or close routed findings. Reviews go to armature-red-team.
 ---
 
 # Robotics Mathematician
@@ -188,6 +188,18 @@ the report first, one submodule per section once it has more than about three,
 each with its checks module, under the same budget. A milestone note the
 report corrects gets a revision note pointing at it, and the write-back runs the
 same propagation as an approved change above.
+
+**Every report is red-teamed before the task closes**, unless it re-runs an
+unchanged model and moves neither a number nor a requirement's verdict; a report
+that skips its review says so, and why, in its Status line. A verdict counts on
+its own: "REQ-012 holds" is what a spec or a purchase rests on, even with an empty
+write-back table. Dispatch the **armature-red-team** agent as the checkpoint's
+step 2 does, with the report, its `report_<task>.py` and checks modules,
+`mechanism.py`, `params.py`, and any milestone note the report corrects, and
+name the review file in the report's **Review** line. The review is yours to
+run, not the user's, so a user who is away changes nothing: fix a BLOCKER or
+MAJOR the run can settle in the report before stopping; one it cannot sets the
+Status to blocked on it, with a row under *Items routed here*.
 
 ## Boundaries
 

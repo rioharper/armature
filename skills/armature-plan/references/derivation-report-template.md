@@ -6,6 +6,11 @@ Rev <n> — <date> — plan task <T-id> (issue #<n>), Executor: armature-derive
 four sentences, with every number it moves, old → new. A reader who stops here
 knows what changed and what it cost.
 
+**Review:** `docs/reviews/<review file>`, and how its findings closed: fixed
+here, accepted with the reason, or open and blocking. A report that skipped its
+review says why in the Status line instead (armature-derive, *When a plan task
+lands as a report*).
+
 ## Purpose
 The decision this task was handed and who handed it — the milestone, review
 finding, or requirement dispute that ended in a decision rather than a number.
