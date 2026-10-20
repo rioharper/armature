@@ -153,12 +153,13 @@ def test_a_hold_out_is_graded_as_a_derive_case_is(name):
 
 def _shipped():
     """Every file the agent can read in `copy.sh`'s copy: what git tracks,
-    but engine/tests/, which the copy leaves out, and evals/, which the
-    harness masks."""
+    but engine/tests/ and PROGRESS.md, which the copy leaves out, and evals/,
+    which the harness masks."""
     listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True,
                             capture_output=True).stdout.decode()
-    return [ROOT / f for f in listed.split("\0") if f and not
-            f.startswith(("engine/tests/", "evals/")) and (ROOT / f).is_file()]
+    return [ROOT / f for f in listed.split("\0") if f and f != "PROGRESS.md"
+            and not f.startswith(("engine/tests/", "evals/"))
+            and (ROOT / f).is_file()]
 
 
 @pytest.mark.parametrize("name", CASES)

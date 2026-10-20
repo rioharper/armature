@@ -55,6 +55,13 @@ def test_the_copy_holds_no_engine_tests(plugin_copy):
     assert not list(plugin_copy.rglob("answers.py"))
 
 
+def test_the_copy_holds_no_progress_log(plugin_copy):
+    """PROGRESS.md is the maintainers' log, and quotes golden numbers."""
+    assert (ROOT / "PROGRESS.md").is_file()
+    assert (plugin_copy / "CHANGELOG.md").is_file()
+    assert not (plugin_copy / "PROGRESS.md").exists()
+
+
 def test_the_copy_holds_every_golden_project_under_evals(plugin_copy):
     assert MECHANISMS
     for name in MECHANISMS:
