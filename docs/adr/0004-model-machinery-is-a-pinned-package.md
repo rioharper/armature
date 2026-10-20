@@ -1,6 +1,6 @@
 # ADR 0004 — The model machinery is a package projects pin, not a template they copy
 
-2026-10-11 — Status: accepted (reverses #48's placement of the truth model inside the model template; distribution still open)
+2026-10-11 — Status: accepted (reverses #48's placement of the truth model inside the model template; distribution settled by [ADR 0009](0009-the-engine-reaches-projects-as-a-git-tag.md))
 
 The mechanism description's elements, its compiler, the truth-model queries,
 the reductions, the symbolic view and the sampler live in one Python package in
