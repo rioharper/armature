@@ -91,6 +91,7 @@ evals/
   planted.sh              lays down a red-team case's: scaffold.sh, then its planted/
   generate.py             writes every case's graders from its golden Answer
   score.py                the catch rate, from --json
+  release-smoke.sh        a project's first sync from a pushed release tag
   tests/                  uv run --project engine pytest evals/tests
   <case>/
     case.yaml             its name and its scaffold

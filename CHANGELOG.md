@@ -13,6 +13,9 @@ A project takes the engine from this repository's git tag for the plugin version
   - **`check <model-dir>`** prints one state line: `in-step`, `behind … (minor|major)`, `ahead`, `rev … (in vX.Y.Z|unreleased|unknown)` or `path`. It exits 0 only when in step.
   - **The tests.** `scripts/tests/`, run with `uv run --project engine pytest scripts/tests`, run the script from a temporary plugin root at a chosen version, with fake `gh` and `uv` on PATH. Each mutant fails a test: the tag's `v` dropped, `subdirectory` dropped, major and minor swapped, the containment status inverted, and `--no-lock` ignored.
   - **By hand,** `pin` on a copied template at `v1.3.0`, which predates `engine/`, fails loudly. uv reports that the source distribution `git+https://github.com/rioharper/armature@v1.3.0#subdirectory=engine` has no subdirectory `engine`.
+- **Lockstep versions, and a smoke test of the real tag** ([#135](https://github.com/rioharper/armature/issues/135)).
+  - **One version.** The engine's `pyproject.toml` moves from 0.1.0 to the plugin's 1.3.0, so ADR 0009's equality holds before the release commit takes all three to 2.0.0. `engine/tests/test_version.py`, in tier 1, fails unless the engine's version, `plugin.json`'s and `marketplace.json`'s armature entry are equal, so the release commit moves all three.
+  - **`evals/release-smoke.sh vX.Y.Z`**, run by hand after the push, is the one test of the git source itself. It checks that the tag is on origin and matches `plugin.json`, copies the model template into a temporary `analysis/model/`, runs `engine-source.sh pin` with the lock, then `uv run python run_all.py`. It exits with the number of the step that failed, and never moves or deletes a tag. `v9.9.9` fails at step 1, and `v1.3.0`, which has no `engine/`, at step 3. The same copy, pinned by hand to a `rev` on `main`, locks and passes `run_all.py` in 50 s.
 
 ### Golden mechanisms
 
