@@ -14,8 +14,9 @@ and commits its `uv.lock`, which records the tag's commit SHA and no machine
 path. The engine's version always equals `plugin.json`'s and
 `marketplace.json`'s, and one tag `vX.Y.Z` covers all three, so the skills a
 project runs and the engine it pins are the pair the release gate measured.
-The engine goes from 0.1.0 to 2.0.0 with the bump past 1.3.0, whose
-Unreleased changes are breaking.
+The engine, at 0.1.0 until now, takes the plugin's 1.3.0 at once (#135),
+and all three go to 2.0.0 with the bump past 1.3.0, whose Unreleased
+changes are breaking.
 
 The template's committed `pyproject.toml` keeps its relative path to
 `engine/`, so the template's self-run, the golden tests and the eval scaffold
