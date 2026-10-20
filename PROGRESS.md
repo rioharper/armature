@@ -2,6 +2,48 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## Overhaul 06: designed and ticketed — 2026-10-20
+
+**Status:** Grilled in two rounds of 23 questions, all recommendations accepted. Written up as:
+- ADR 0010 (`9558ad4`, pushed);
+- spec **#139**, labelled `ready-for-agent`;
+- tickets **#140–#146** as its sub-issues, with native blocked-by edges.
+
+The #138 commits went out first (`02a7f05..699e583`). No plugin code has changed yet.
+
+**Decided:** one root `ledger.toml` holds every input number.
+- **Entries:** sections `mechanism`, `drive`, `req`, `budget.<kind>` and `part.<pn>`. Values are SI (°C for temperatures), with `as_written` checked by pint.
+- **Provenance:** six source kinds (chosen, standard, estimate, datasheet, cad, measured), and a `candidate`/`confirmed` status kept separate from them.
+- **Bands and references:** an estimate must carry a band. Budget lines are `of` references.
+- **Machinery:** `armature.ledger` in the engine, with the verbs load, check, show, render and set.
+- **Views and params:** the budgets, BOM, requirements and `CONTEXT.md` symbols become marked sections that `render` writes. `params.py` keeps only structure, with no literals.
+- Spec #139 holds the full contract.
+
+**Corrections to the 2026-10-11 review:**
+- "Names written three times" is false now (`symbolic.py:74`).
+- The new copy is `coarse_2r/params.py:54-59`.
+- Ibex has restarted, and its index is 433 words. Plumb's is 6,496.
+
+**Order:**
+- #140 (the engine module) has no blockers.
+- Then #141 (template) and #143 (render and views) in parallel.
+- Then #142 (golden mechanisms, after #141), #144 (skills and agents, after #143) and #145 (CAD, after #141).
+- #146 (docs) comes last.
+- The whole of it re-gates the next release.
+
+**Flagged:** `load()`'s nearest-file lookup was decided while writing the spec, not grilled. The template and each golden mechanism carry their own `ledger.toml`; the copy steps leave the template's behind, and the scaffold places the golden's at the project root.
+
+**#138's advisory WSL run** (started before this session's `/clear`, on `699e583`):
+- `spring-cable-derive` went from 0/3 to **3/3** on both `red-team-dispatched` and `skill-derive`.
+- The other three cases never ran. A uv `engine/.venv` built inside `~/armature-eval-138` during the first case left hard links in the plugin copy. `claude plugin eval` then refused each later case: "a file in the plugin has more than one name (a hard link)".
+- #138 is still open. Before it can close, the venv has to come out of the plugin copy and those three cases need a re-run.
+
+**Next:**
+- #140.
+- #138's re-run, then #137.
+- Restart Ibex once #144 lands, so its spec writes into the ledger.
+- `engine/MUJOCO_LOG.TXT` is still untracked.
+
 ## Catch-up: Overhauls 03–05 and the 2.0.0 release — 2026-10-20
 
 **Status:** **2.0.0 is released.** The bump commit `02a7f05` is tagged `v2.0.0`, pushed with `--atomic`, and `evals/release-smoke.sh v2.0.0` passed. `main` matches `origin/main`. The only open issues are #137 and #138. This entry was written after the fact from git, the issues' closing comments and session notes. Entries were not kept between 2026-10-13 and today, so the issues' closing comments hold the detail.
