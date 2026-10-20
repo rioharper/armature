@@ -9,7 +9,7 @@
         "name": "armature",
         "source": "./",
         "description": "Robotics engineering suite for Claude Code",
-        "version": "1.3.0",
+        "version": "2.0.0",
         "author": {
           "name": "Rio Harper"
         },

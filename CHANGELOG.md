@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 — 2026-10-20
 
 Seven changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, actuators and the bus are sized from a simulated mission, the engine and the agent are measured on golden mechanisms, and the engine reaches projects as a git tag. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
 
