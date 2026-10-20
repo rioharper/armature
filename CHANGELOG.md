@@ -2,7 +2,17 @@
 
 ## Unreleased
 
-Six changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, actuators and the bus are sized from a simulated mission, and the engine and the agent are measured on golden mechanisms. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+Seven changes: the plan moves off disk onto GitHub Issues, subagents stop inheriting the main session's model, the derivation's machinery becomes one engine compiled from a single mechanism description, every worst case is searched once, by that engine, actuators and the bus are sized from a simulated mission, the engine and the agent are measured on golden mechanisms, and the engine reaches projects as a git tag. The first two are recorded as ADRs — [0001](docs/adr/0001-plan-as-a-parallel-issue-species.md) on why the plan is its own issue species rather than a wayfinder map, [0002](docs/adr/0002-github-is-a-hard-prerequisite.md) on why the local tracker was deleted.
+
+### Engine distribution
+
+A project takes the engine from this repository's git tag for the plugin version it runs, and commits its `uv.lock` ([#133](https://github.com/rioharper/armature/issues/133), [ADR 0009](docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)). Until now derive Step 0 pointed a copied template at an absolute path into the plugin cache, which Claude Code deletes 14 days after the next update.
+
+- **`scripts/engine-source.sh`** ([#134](https://github.com/rioharper/armature/issues/134)). The script reads the version from the `plugin.json` beside it, so it needs neither `CLAUDE_PLUGIN_ROOT` nor jq.
+  - **`pin <model-dir>`** rewrites the model's `armature-engine` source line to `{ git = "https://github.com/rioharper/armature", tag = "vX.Y.Z", subdirectory = "engine" }`, and changes no other byte. It then runs `uv lock --upgrade-package armature-engine`, unless `--no-lock` is passed. It pins a path, an older tag on the same major version, or a `rev` the tag contains. It refuses with exit 2 a tag on a lower major version, which is a migration, a tag ahead of the plugin, and a `rev` the tag does not contain or that `gh` cannot place.
+  - **`check <model-dir>`** prints one state line: `in-step`, `behind … (minor|major)`, `ahead`, `rev … (in vX.Y.Z|unreleased|unknown)` or `path`. It exits 0 only when in step.
+  - **The tests.** `scripts/tests/`, run with `uv run --project engine pytest scripts/tests`, run the script from a temporary plugin root at a chosen version, with fake `gh` and `uv` on PATH. Each mutant fails a test: the tag's `v` dropped, `subdirectory` dropped, major and minor swapped, the containment status inverted, and `--no-lock` ignored.
+  - **By hand,** `pin` on a copied template at `v1.3.0`, which predates `engine/`, fails loudly. uv reports that the source distribution `git+https://github.com/rioharper/armature@v1.3.0#subdirectory=engine` has no subdirectory `engine`.
 
 ### Golden mechanisms
 

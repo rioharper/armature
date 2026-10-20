@@ -8,3 +8,5 @@ evals/**/*.patch text eol=lf
 # The hold-out is frozen by a hash over its text (evals/tests/test_holdout.py),
 # which reads it with LF line endings; keep it LF on disk too.
 evals/holdout/** text eol=lf
+# Plugin scripts run under bash, on Windows and Linux alike.
+scripts/*.sh text eol=lf
