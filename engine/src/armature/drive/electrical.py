@@ -48,6 +48,7 @@ COPPER = 234.5           # K: annealed copper's resistance extrapolates to
 CURRENTS = ("A_rms", "A_peak")
 VOLTAGES = ("V_rms", "V_peak")
 SPEEDS = {"krpm": 1000 * RPM, "rpm": RPM, "(rad/s)": 1.0}
+KV_SPEEDS = {"rpm/V": RPM, "(rad/s)/V": 1.0}   # rad/s per volt, per unit Kv
 SIDES = ("motor", "output")
 BETWEEN = ("line", "phase")
 WIRINGS = tuple(K_MOD)
@@ -438,11 +439,12 @@ def _current_limit(c, motor, driver):
     return min(limits) if limits else None
 
 
-def kt_from_kv(kv, *, convention):
-    """Kt from a velocity constant `kv` in rpm/V, on the motor's shaft, per
-    A_peak. Kv is rpm per volt of line-to-line peak back-EMF, which is also
-    no-load rpm per bus volt under space-vector modulation. The convention is
-    a choice, because the two in use are 15 % apart:
+def kt_from_kv(kv, *, per="rpm/V", convention):
+    """Kt from a velocity constant `kv`, on the motor's shaft, per A_peak.
+    `per` is `"rpm/V"`, as a datasheet prints it, or `"(rad/s)/V"`, as the
+    ledger stores it. Kv is speed per volt of line-to-line peak back-EMF,
+    which is also no-load speed per bus volt under space-vector modulation.
+    The convention is a choice, because the two in use are 15 % apart:
 
     - `"sinusoidal"`: Kt = (√3/2)·(60/2π)/Kv, the 8.27/Kv of a sinusoidally
       commutated motor, and the one the model's own physics implies;
@@ -452,7 +454,9 @@ def kt_from_kv(kv, *, convention):
     kv = _number("kt_from_kv", "kv", kv)
     scale = {"sinusoidal": SQ3 / 2, "trapezoidal": 1.0}
     _among("kt_from_kv", "convention", convention, tuple(scale))
-    return Kt(scale[convention] / (kv * RPM), per="A_peak", side="motor")
+    _among("kt_from_kv", "per", per, tuple(KV_SPEEDS))
+    return Kt(scale[convention] / (kv * KV_SPEEDS[per]), per="A_peak",
+              side="motor")
 
 
 @dataclass(frozen=True)

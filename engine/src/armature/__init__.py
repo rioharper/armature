@@ -57,6 +57,13 @@ A mission's `drive.event` is forward-simulated on a copy of the model, each
 motor coasting, shorted, flux-braking or following a torque profile, with
 the bus stepped alongside.
 
+`armature.ledger` reads a project's `ledger.toml` (ADR 0010), where every
+input number lives once with its unit, band, status and provenance:
+`ledger.load("mechanism")` is a plain SI dict for `compile`, and
+`py -m armature.ledger check` reports each entry whose `as_written`
+disagrees with its value, whose unit is not SI, or whose citation is
+missing. It is imported on its own, never from here.
+
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
 PARAMS, directory, states)` writes the Milestone 0 review artifact: the

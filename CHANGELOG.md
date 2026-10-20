@@ -4,6 +4,17 @@
 
 - **The eval's copy holds no `PROGRESS.md`.** Once tracked, the maintainers' log named the hold-out's mechanism and quoted golden numbers, and `copy.sh` shipped it to the agent. `copy.sh` leaves it out, and `test_holdout.py` and `test_copy.py` hold that.
 
+### The ledger: `armature.ledger`'s load, check and show
+
+[#140](https://github.com/rioharper/armature/issues/140), the engine half of Overhaul 06 ([#139](https://github.com/rioharper/armature/issues/139), [ADR 0010](docs/adr/0010-every-input-number-lives-once-in-the-ledger.md)). Nothing in the template or the skills reads a ledger yet; #141–#146 move them on.
+
+- **`load(section=None, *, path=None)`** finds the nearest `ledger.toml` at or above the working directory (or `path`), validates every entry, and returns a section as plain SI floats and arrays with each `of` resolved through `qty`. A malformed entry raises `LedgerError` naming the entry and the field. `Ledger.bands(section)` gives the bands that replace `params.BANDS`.
+- **`check(path=None)`** returns coded `Finding`s: `unit.as-written` (1e-9 relative), `unit.unparsed`, `unit.not-si` (°C excepted), `band.missing`, `band.nominal-outside`, `source.citation`, `status.candidate-cited` (any number of `of` hops down; a line that states no status counts as confirmed), `of.dangling`, `of.cycle`, and the warning `price.old` (a datasheet price retrieved more than 90 days ago). `py -m armature.ledger check [--json]` exits 1 on an error. The markdown findings are #143's.
+- **Bands** hold element by element on a vector or tensor, so an estimated COM can carry one.
+- **`show <prefix>`** prints one line per entry. A budget prefix adds its lines' resolved values, total, allocation and margin. A budget's allocation is its entry named `allocation`, which the spec left open.
+- **pint ≥ 0.26 and tomlkit** are engine dependencies. pint is imported only when `check` or a budget's `show` needs it, so `load` never imports it.
+- **`kt_from_kv(kv, per="(rad/s)/V", …)`** takes the ledger's SI Kv beside the default rpm/V. `Ke`'s `per="V_rms/(rad/s)"` and its krpm form are both tested against the value in V·s/rad.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.

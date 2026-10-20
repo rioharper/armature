@@ -9,6 +9,7 @@ three-phase copper loss is 1.5·R_LL·I_rms² whatever the wiring.
 import math
 
 import numpy as np
+import pint
 import pytest
 
 from armature.drive import (Current, Curve, Driver, DriveError, Gearbox, Ke, Kt,
@@ -100,6 +101,36 @@ def test_kt_from_kv_gives_each_published_relation():
         kt_from_kv(304)
     with pytest.raises(ValueError, match="sinusoidal"):
         kt_from_kv(304, convention="dc")
+
+
+@pytest.mark.parametrize("kv", [8.0, 20.0])    # the template's kv1, kv2
+@pytest.mark.parametrize("convention, scale", [("sinusoidal", SQ3 / 2),
+                                               ("trapezoidal", 1.0)])
+def test_kt_from_kv_in_si_is_the_closed_form_and_its_rpm_form(kv, convention,
+                                                              scale):
+    # The ledger stores Kv in rad/(s·V), converted by pint, not the module;
+    # in it Kt is √3/2 over Kv sinusoidally, 1 over Kv as Kt = Ke.
+    si = pint.UnitRegistry().Quantity(kv, "rpm/V").to("rad/s/V").magnitude
+    rad = kt_from_kv(si, per="(rad/s)/V", convention=convention)
+    rpm = kt_from_kv(kv, convention=convention)
+    assert rad.value == pytest.approx(scale / si, rel=1e-12)
+    assert rpm.value == pytest.approx(scale / si, rel=1e-12)
+    assert (rad.per, rad.side) == (rpm.per, rpm.side) == ("A_peak", "motor")
+    with pytest.raises(ValueError, match="rpm/V"):
+        kt_from_kv(kv, per="krpm/V", convention=convention)
+
+
+@pytest.mark.parametrize("value, per", [(88.4, "V_rms/krpm"),
+                                        (None, "V_rms/(rad/s)")])
+def test_ke_in_either_speed_basis_is_its_value_in_v_s_per_rad(value, per):
+    # The template's shoulder, 88.4 V_rms/krpm line to line on a wye, by pint
+    # in V·s/rad; a wye's line-to-line RMS is its d-q magnitude, so that is
+    # Ke in d-q whichever speed the datasheet printed it per.
+    si = pint.UnitRegistry().Quantity(88.4, "V/krpm").to("V*s/rad").magnitude
+    ke = Ke(si if value is None else value, per=per, between="line",
+            side="motor")
+    assert check(motor(kt=None, ke=ke), 1.0).ke == pytest.approx(si,
+                                                                 rel=1e-12)
 
 
 def test_plumb_mj5208_at_9_55_over_kv_fails_against_its_datasheet_ke():
