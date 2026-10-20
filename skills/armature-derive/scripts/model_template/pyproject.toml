@@ -1,8 +1,9 @@
 # The model's environment. The truth model, the description's compiler, the
 # symbolic view and the sampler are the engine, a package this model pins rather
-# than copies (ADR 0004). Until the engine is distributed, it is an editable path
-# dependency on the plugin's `engine/`: the path below is right where this
-# template ships, and a copied project points it at its plugin checkout.
+# than copies (ADR 0004). The path below is right only where this template
+# ships, so the plugin's own runs test the working tree. A copied project pins
+# the engine by the plugin's git tag instead, with engine-source.sh as
+# armature-derive's Step 0 says, and commits uv.lock (ADR 0009).
 #
 #     uv run python run_all.py      # every milestone's self-tests
 #     uv run pytest                 # the same checks, through test_derivation.py

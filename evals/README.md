@@ -54,6 +54,16 @@ claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-mod
 uv run --project engine python evals/score.py <out>.json
 ```
 
+**The release procedure.** The engine's version, `plugin.json`'s and `marketplace.json`'s are one version and one tag `vX.Y.Z` names all three ([ADR 0009](../docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)), so a tag must point at the exact commit the release run gated:
+
+1. Bump the three versions in one commit. `engine/tests/test_version.py` fails until all three agree.
+2. Run the release run above on that commit.
+3. If it passes, tag that commit `vX.Y.Z`. If it fails, the fix is a new commit and the run is repeated on it; no tag points at an ungated commit.
+4. Push `main` and the tag together: `git push --atomic origin main vX.Y.Z`.
+5. Run `bash evals/release-smoke.sh vX.Y.Z` from the tagged commit. It is the one test of the git source a project syncs from: the tag on origin, `engine-source.sh pin` with the lock, then `run_all.py` on the fetched engine.
+
+A tag once pushed may already be in a project's `uv.lock`, so it is never moved or deleted: a failure after the push is a patch release, the next patch version through the same five steps.
+
 A move to a new model is its own deliberate release run, recorded in the CHANGELOG. Raise `-j` only after a release run stays inside the Max window: a usage-limit error scores a run 0 without marking the result partial, and so reads as a missed trap.
 
 **On demand,** while editing `armature-derive`, the red-team agent or `review-checklist.md`. These runs are advisory:

@@ -115,7 +115,7 @@ uv run --with 'build123d~=0.11' python cad/parts/<PART-ID>.py
 
 ## Install details
 
-`armature-derive`'s model depends on the **engine**, the Python package in [`engine/`](engine/) (imported as `armature`, pinned to MuJoCo 3.15). It compiles the project's mechanism description into the MuJoCo truth model every milestone is checked against. The model runs in its own environment through [uv](https://docs.astral.sh/uv/), so uv must be on PATH. Until the engine is published, the model's `pyproject.toml` takes it as an editable path dependency on the plugin's `engine/` folder.
+`armature-derive`'s model depends on the **engine**, the Python package in [`engine/`](engine/) (imported as `armature`, pinned to MuJoCo 3.15). It compiles the project's mechanism description into the MuJoCo truth model every milestone is checked against. The model runs in its own environment through [uv](https://docs.astral.sh/uv/), so uv must be on PATH. A project pins the engine by the git tag of the plugin release it runs and commits `uv.lock` ([ADR 0009](docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)), so the model's first `uv sync` needs access to GitHub as well as PyPI. Later syncs work offline from uv's cache.
 
 Armature keeps the plan on GitHub Issues, so it needs `gh`, `gh auth login`, and a GitHub remote. `/armature:init` checks all three and offers to create the repo (private by default). There is no non-GitHub option. To run from a local copy instead of the marketplace, point `--plugin-dir` at this repo.
 

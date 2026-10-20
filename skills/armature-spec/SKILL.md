@@ -58,7 +58,7 @@ Write the document to `docs/01-spec/spec.md` using the structure in `references/
 - Recommendations come with rationale and rejected alternatives.
 - Fill in Section 6 (Kinematic & Motion Envelope) with real numbers, not placeholders, once the architecture is chosen.
 - Fill in Section 8 (Software & Compute Architecture) to the same standard: every link carries a budget and a seam-level verification, every data artifact names its schema.
-- Run Section 9's actuator and bus checks as its template section says, under armature-derive's `references/derivation-standards.md`, *Actuators and the bus* (`${CLAUDE_PLUGIN_ROOT}/skills/armature-derive/references/derivation-standards.md`). The model's environment needs uv, with the engine path set as armature-derive's Step 0 says. Re-run them whenever Phase 4 confirms a part's row.
+- Run Section 9's actuator and bus checks as its template section says, under armature-derive's `references/derivation-standards.md`, *Actuators and the bus* (`${CLAUDE_PLUGIN_ROOT}/skills/armature-derive/references/derivation-standards.md`). The model's environment needs uv, and its engine is pinned right after the copy, as armature-derive's Step 0 says. Re-run them whenever Phase 4 confirms a part's row.
 - Open questions are a first-class section; an honest "TBD pending prototype" beats a confident guess.
 - Every number carries its unit, in SI (imperial in parentheses only if the user's shop works in it).
 - Seed `docs/01-spec/budgets.md` and `docs/01-spec/traceability.md` from their templates in `references/`.

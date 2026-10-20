@@ -8,6 +8,8 @@ Seven changes: the plan moves off disk onto GitHub Issues, subagents stop inheri
 
 A project takes the engine from this repository's git tag for the plugin version it runs, and commits its `uv.lock` ([#133](https://github.com/rioharper/armature/issues/133), [ADR 0009](docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)). Until now derive Step 0 pointed a copied template at an absolute path into the plugin cache, which Claude Code deletes 14 days after the next update.
 
+**Breaking for a project that followed the old Step 0.** Its `analysis/model/pyproject.toml` names a machine path into the plugin cache, which `engine-source.sh check` reports as `path` and the derive checkpoint stops on. The repair is `engine-source.sh pin analysis/model`, which accepts a path, then committing `pyproject.toml` and `uv.lock`.
+
 - **`scripts/engine-source.sh`** ([#134](https://github.com/rioharper/armature/issues/134)). The script reads the version from the `plugin.json` beside it, so it needs neither `CLAUDE_PLUGIN_ROOT` nor jq.
   - **`pin <model-dir>`** rewrites the model's `armature-engine` source line to `{ git = "https://github.com/rioharper/armature", tag = "vX.Y.Z", subdirectory = "engine" }`, and changes no other byte. It then runs `uv lock --upgrade-package armature-engine`, unless `--no-lock` is passed. It pins a path, an older tag on the same major version, or a `rev` the tag contains. It refuses with exit 2 a tag on a lower major version, which is a migration, a tag ahead of the plugin, and a `rev` the tag does not contain or that `gh` cannot place.
   - **`check <model-dir>`** prints one state line: `in-step`, `behind … (minor|major)`, `ahead`, `rev … (in vX.Y.Z|unreleased|unknown)` or `path`. It exits 0 only when in step.
@@ -16,6 +18,12 @@ A project takes the engine from this repository's git tag for the plugin version
 - **Lockstep versions, and a smoke test of the real tag** ([#135](https://github.com/rioharper/armature/issues/135)).
   - **One version.** The engine's `pyproject.toml` moves from 0.1.0 to the plugin's 1.3.0, so ADR 0009's equality holds before the release commit takes all three to 2.0.0. `engine/tests/test_version.py`, in tier 1, fails unless the engine's version, `plugin.json`'s and `marketplace.json`'s armature entry are equal, so the release commit moves all three.
   - **`evals/release-smoke.sh vX.Y.Z`**, run by hand after the push, is the one test of the git source itself. It checks that the tag is on origin and matches `plugin.json`, copies the model template into a temporary `analysis/model/`, runs `engine-source.sh pin` with the lock, then `uv run python run_all.py`. It exits with the number of the step that failed, and never moves or deletes a tag. `v9.9.9` fails at step 1, and `v1.3.0`, which has no `engine/`, at step 3. The same copy, pinned by hand to a `rev` on `main`, locks and passes `run_all.py` in 50 s.
+- **The docs, and the release procedure** ([#136](https://github.com/rioharper/armature/issues/136)).
+  - **Derive Step 0** runs `engine-source.sh pin analysis/model` right after the template is copied, and commits `uv.lock`; the paragraph telling the agent to write the cache's absolute engine path is gone, and so is the template `pyproject.toml`'s comment saying a copy points at its plugin checkout. Spec §9's copy, in `spec-template.md` and spec's SKILL.md, points at Step 0.
+  - **Derive's checkpoint** runs `engine-source.sh check .` before the self-tests. `behind (minor)` and a `rev` the tag contains are pinned and committed; `behind (major)`, `ahead` and `path` stop and report, and a `path` is offered `pin`; an unreleased or unplaceable `rev` is reported and the checkpoint goes on.
+  - **`init`'s re-run** runs `check` on `analysis/model/`, where it exists, beside its `.mcp.json` repair, and acts on it as the checkpoint does.
+  - **`evals/README.md`, *The commands*,** holds the five-step release procedure: bump the three versions in one commit, run the release run on it, tag that commit, `git push --atomic origin main vX.Y.Z`, then `evals/release-smoke.sh`. A failure after the push is a patch release, and a tag is never moved.
+  - **`references/model-layout.md`** and the README say the engine is pinned by git tag with `uv.lock` committed, and the README that a project's first `uv sync` needs GitHub.
 
 ### Golden mechanisms
 

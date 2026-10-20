@@ -12,7 +12,7 @@ The current folder is the project root.
 
 If `CLAUDE.md` here already carries a `**Stage:**` line, this is an Armature project: report its stage and stop. A `CLAUDE.md` without one is somebody else's file: ask through AskUserQuestion whether to merge the template into it or replace it, and carry that answer into step 4.
 
-The stop carries one repair: where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`. Report and repair is the whole of a re-run; a project that has no `.mcp.json` wanted none.
+The stop carries two repairs. Where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`; a project that has no `.mcp.json` wanted none. Where `analysis/model/` exists, run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check analysis/model` and report its line, acting on it as armature-derive's checkpoint does. Report and repair is the whole of a re-run.
 
 ## 2. Probe the machine
 

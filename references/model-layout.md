@@ -45,7 +45,11 @@ queries on a state (`pose`, `jacobian`, `inverse`, `settle`, `wrench`, `linearis
 `release`), the reductions and `account`, the symbolic view, the sampler, the worst-case
 search (`armature.search`, which takes a `Margin` over a `Space` of named axes) and the
 review artifact. It is a standard Python package with its own tests, outside this file's rules, so
-a fix reaches a project as a version bump, never a re-copy. Its docstrings are its
+a fix reaches a project as a version bump, never a re-copy. A project pins it by the git
+tag of the plugin release it runs, the engine's version being the plugin's, and commits
+`uv.lock`; a fix between releases is a `rev` pin on a commit on `main`, until the next tag
+contains it (the plugin's `docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md`).
+armature-derive's Step 0 writes the pin and its checkpoint checks it. The engine's docstrings are its
 reference, and `armature/__init__.py` is the map. `Coordinates`' docstring works a
 contact margin through: one contact stood on the floor by `rest_on`, another's
 `clearance` searched as the margin.
@@ -53,7 +57,7 @@ contact margin through: one contact stood on the floor by `rest_on`, another's
 The project keeps its half beside its milestone modules:
 
 ```
-pyproject.toml           the model's environment: the engine as an editable path dependency
+pyproject.toml           the model's environment: the engine pinned by git tag, uv.lock committed
 params.py                the values, keyed by name; standard library only
 mechanism.py             MILESTONE = (0, ...); mechanism(p), DERIVED, and the truth model
 mechanism_checks.py      compiles exactly, boxes inside the ranges, a release that fails

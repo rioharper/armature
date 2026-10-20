@@ -13,7 +13,13 @@ The derivation is four self-contained parts, each with its own `.md` note, its o
 
 Milestones 1–3 close through the same **checkpoint**:
 
-1. Run the self-tests via Bash, in `analysis/model/`: `uv run python run_all.py` and `uv run pytest`, which reach the same discovered checks. All must pass, `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`.
+1. Run the self-tests via Bash, in `analysis/model/`. First `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check .`, which prints one line stating the engine's state against the plugin you run, and act on it:
+   - `in-step`: go on.
+   - `behind … (minor)`, or `rev … (in vX.Y.Z)`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin .`, commit `pyproject.toml` and `uv.lock`, and go on. The runs below are then the upgrade's check.
+   - `behind … (major)`, `ahead` or `path`: stop and report. A move across a major version is a migration, so read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` with the user first; `ahead` means the plugin is out of date. A path is never committed (Step 0); offer `pin`, which replaces one, and run it once the user agrees.
+   - `rev … (unreleased)` or `rev … (unknown)`: report it and go on.
+
+   Then `uv run python run_all.py` and `uv run pytest`, which reach the same discovered checks. All must pass, `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`.
 2. Dispatch the **armature-red-team** agent with the milestone's `.md`, its modules and their checks modules, `mechanism.py` and `mechanism_checks.py`, and earlier milestones as context. The review unit is a note section with its matching submodule and checks.
 3. Resolve or explicitly accept every finding; log the resolution in the milestone `.md`'s revision note.
 4. Merge the branch. The merge is the phase gate — the next milestone starts only after it.
@@ -29,7 +35,7 @@ analysis/derivation/
   02_dynamics.md       <- Milestone 2
   03_results.md        <- Milestone 3
 analysis/model/
-  pyproject.toml           <- the model's environment: the engine, as a path dependency
+  pyproject.toml           <- the model's environment: the engine pinned by git tag (Step 0), with uv.lock
   params.py                <- Milestone 0 (parameter values, workspace, rate envelope, load cases)
   params_checks.py         <-   its self-tests: both signs present, every direction a set
   mechanism.py             <- Milestone 0 (the mechanism description, the variant, the truth model)
@@ -89,7 +95,13 @@ Write the model into `00_setup.md` (system description, numbered assumptions, ho
 
 **Fill the template's boxes**, whose comments say what each is for: **`WORKSPACE`, the region the requirements name**, keyed by coordinate, a second box inside the joint ranges because a singularity is allowed to live in the gap between the two; `QD_LIMITS` and `QDD_LIMITS`, the rate envelope, keyed by dof. A floating body has no joint range, so its claims are checked over a pose envelope: decide it here, write it into `00_setup.md` beside the joint envelope, and pass it to every sample as `poses={joint: armature.pose_envelope(box=..., tilt=..., yaw=...)}`.
 
-The model has its own environment, `analysis/model/pyproject.toml`, which takes the engine as an editable path dependency and with it the engine's pinned MuJoCo. When you copy the template, point `[tool.uv.sources]`'s path at the plugin's `engine/`, written as the absolute path `${CLAUDE_PLUGIN_ROOT}/engine` resolves to: uv does not expand environment variables in a source path, so the literal `${CLAUDE_PLUGIN_ROOT}` fails to lock. `UV=absent` in the project's environment record is a blocker for this milestone, not a footnote; install it before deriving, and say so in the plan if the machine cannot.
+The model has its own environment, `analysis/model/pyproject.toml`, which takes the engine, and with it the engine's pinned MuJoCo, from the git tag of the plugin release you run. `UV=absent` in the project's environment record is a blocker for this milestone, not a footnote; install it before deriving, and say so in the plan if the machine cannot. The template's copy names a path that only resolves inside the plugin, so right after copying the template, from the project root:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model
+```
+
+It rewrites the engine's source line to this plugin's tag and runs `uv lock`; commit `pyproject.toml` and `uv.lock` together, so another machine, or this one in six months, syncs the same engine commit. The first sync needs GitHub as well as PyPI. Never write the engine's source by hand, and never commit a local path. A fix needed between releases arrives as `rev = "<sha>"` of a commit on `main`, in place of `tag`, and the checkpoint pins it back to a tag once a release contains it. Why a tag, and not a path into the plugin cache: `${CLAUDE_PLUGIN_ROOT}/docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md`.
 
 ## Milestone 1: Kinematics
 
