@@ -69,12 +69,23 @@ def gated(ctx):
             moved = [FILENAME]
         reasons += [f"ledger number {n}" for n in moved]
     for path in ctx.changed:
-        if path.startswith(MODEL):
-            reasons.append(f"model code {path}")
-        elif (path.startswith(CAD) and not path.startswith(OTS)
-              and PurePosixPath(path).suffix in PART_SUFFIXES):
-            reasons.append(f"part definition {path}")
-        elif path.startswith(TEXT) and text_outside(ctx.repo, ctx.base,
-                                                     ctx.tip, path):
-            reasons.append(f"text {path}")
+        what = kind(path)
+        if what is not None and (what != "text" or text_outside(
+                ctx.repo, ctx.base, ctx.tip, path)):
+            reasons.append(f"{what} {path}")
     return reasons
+
+
+def kind(path):
+    """What a review gates that `path` is: `model code`, a `part
+    definition`, or spec or plan `text` (gated outside its rendered
+    sections alone); None for anything else. The ledger is gated by its
+    numbers (`numbers`), never by its path."""
+    if path.startswith(MODEL):
+        return "model code"
+    if (path.startswith(CAD) and not path.startswith(OTS)
+            and PurePosixPath(path).suffix in PART_SUFFIXES):
+        return "part definition"
+    if path.startswith(TEXT):
+        return "text"
+    return None

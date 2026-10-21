@@ -134,6 +134,14 @@ class Repo:
     def dirty(self):
         """The paths with uncommitted changes, untracked files included,
         leaving out the gate's own `.armature/`."""
-        out = self.git("status", "--porcelain", "-z", "--untracked-files=all")
-        paths = [entry[3:] for entry in out.split("\0") if len(entry) > 3]
+        run = subprocess.run(["git", "-C", str(self.root), "status",
+                              "--porcelain", "-z", "--untracked-files=all"],
+                             capture_output=True, check=True)
+        entries = iter(run.stdout.decode("utf-8", "replace").split("\0"))
+        paths = []
+        for entry in entries:
+            if len(entry) > 3:
+                paths.append(entry[3:])
+                if "R" in entry[:2] or "C" in entry[:2]:
+                    next(entries, None)     # a rename's source path
         return [p for p in paths if not p.startswith(OWN)]
