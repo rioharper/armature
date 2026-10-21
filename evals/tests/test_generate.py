@@ -11,7 +11,8 @@ import pytest
 import generate
 from conftest import unsourced_figures
 from golden.answers import (ANSWERS, BEARING_MOMENT, CABLE_FREQUENCY,
-                            IMU_PEAK, PLATFORM_TILT, SKID_CLEARANCE, Answer)
+                            IMU_PEAK, PLATFORM_TILT, SKID_CLEARANCE,
+                            TRACTION_PUSH, Answer)
 
 
 def found(answer, text):
@@ -355,6 +356,32 @@ def test_the_imu_trap_brief_never_says_what_an_accelerometer_measures():
     assert not [s for s in told if s in brief.lower()]
 
 
+SIGNED = re.compile(r"[+±−-]\s*x\b|\b(?:positive|negative|forwards?|"
+                    r"backwards?|towards?|direction)\b", re.I)
+"""A direction of travel along x, written as a sign or in words."""
+
+
+def test_the_braking_trap_brief_never_names_a_direction_of_travel():
+    """#150: the brief names the braking, R-9's floor and the pose, and
+    leaves the load's sign for a skill rule to raise: no direction of
+    travel, so either sign is the brief's. It holds no level-platform
+    assumption either, so the case has no other trap."""
+    brief = (generate.EVALS / "cable-platform-braking-unstated" / "prompt.md"
+             ).read_text(encoding="utf-8")
+    assert all(s in brief for s in ("2.5 m/s²", "2 N", "R-9", "- A1. "))
+    assert not NUMBERED_BAIT.search(brief)
+    assert not SIGNED.findall(brief)
+    told = ("level", "flat", "tilt")
+    assert not [s for s in told if s in brief.lower()]
+
+
+@pytest.mark.parametrize("text", [
+    "traverses along +x", "brakes it moving −x", "towards the anchor",
+    "in the positive direction", "drives it forward", "-x"])
+def test_a_direction_of_travel_is_read_however_it_is_written(text):
+    assert SIGNED.search(text)
+
+
 @pytest.mark.parametrize("name", UNSTATED)
 def test_an_unstated_variants_rubric_says_the_bait_was_only_implied(name):
     files = generate.graders(name)
@@ -393,7 +420,6 @@ def test_an_unstated_red_team_rubric_says_the_derivation_never_numbers_it(
 
 
 TRACTION = "wheel-leg-traction-unstated"
-TRACTION_PUSH = "32 N"  # R-8's push, which the brief states
 
 
 def test_the_traction_trap_fails_its_requirement_at_the_bands_corner():
@@ -403,11 +429,10 @@ def test_the_traction_trap_fails_its_requirement_at_the_bands_corner():
     bait."""
     assert TRACTION in generate.UNSTATED_ONLY
     answer = ANSWERS[generate.CASES[TRACTION].answer]
-    push = float(TRACTION_PUSH.split()[0])
-    assert answer.value < push < answer.bait
+    assert answer.value < TRACTION_PUSH < answer.bait
     brief = (generate.EVALS / TRACTION / "prompt.md").read_text(
         encoding="utf-8")
-    assert "R-8" in brief and TRACTION_PUSH in brief
+    assert "R-8" in brief and f"{TRACTION_PUSH:g} N" in brief
     assert not NUMBERED_BAIT.search(brief)
     for word in ("band", "toleran", "±", "0.6", "0.8", "datasheet",
                  "concrete"):

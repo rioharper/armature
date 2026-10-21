@@ -125,28 +125,33 @@ PLATFORM_TILT = Answer(
 BRAKING = 2.5  # m/s², the brief's braking along x at the edge midpoint
 
 with mp.workdps(30):
-    _m = mp.mpf(cable_platform.PARAMS["m"])
-    _braked = {sign: [float(t) for t in _platform_rest(
-                   cable_platform.params, (sign * _m * BRAKING, 0, 0))[1]]
-               for sign in (+1, -1)}
-_worst = min(_braked, key=lambda sign: min(_braked[sign]))
+    _braking_mass = mp.mpf(cable_platform.PARAMS["m"])
+    _braking_tensions = {
+        sign: [float(t) for t in _platform_rest(
+            cable_platform.params, (sign * _braking_mass * BRAKING, 0, 0))[1]]
+        for sign in (+1, -1)}
+_braking_worst = min(_braking_tensions,
+                     key=lambda sign: min(_braking_tensions[sign]))
 
 
-def _row(sign):
-    tensions = ", ".join(f"{t:.2f}" for t in _braked[sign])
+def _braking_row(sign):
+    tensions = ", ".join(f"{t:.2f}" for t in _braking_tensions[sign])
     return (f"{'+' if sign > 0 else '−'}x: T = ({tensions}) N, "
-            f"least {min(_braked[sign]):.2f} N")
+            f"least {min(_braking_tensions[sign]):.2f} N")
 
 
 BRAKING_TENSION = Answer(
-    value=min(_braked[_worst]), unit="N", bait=min(_braked[-_worst]),
+    value=min(_braking_tensions[_braking_worst]), unit="N",
+    bait=min(_braking_tensions[-_braking_worst]),
     how="the least cable tension over both signs of the braking load: the "
-        f"d'Alembert load ±m·a x̂ = ±{float(_m) * BRAKING:g} N at the COM of "
-        "the free platform, which rests where Σ T_i u_i = m g ẑ ∓ m a x̂ and "
+        f"d'Alembert load ±m·a x̂ = ±{float(_braking_mass) * BRAKING:g} N at "
+        "the COM of the free platform, which rests where "
+        "Σ T_i u_i = m g ẑ ∓ m a x̂ and "
         "Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ ± m a x̂) = 0, each T_i = "
         "EA/l0_i · (|span_i| − l0_i) while taut, hung at "
         f"{tuple(float(c) for c in cable_platform.params.POSE)} m, tilt "
-        f"included; per sign, c1 to c4: {_row(+1)}; {_row(-1)}")
+        f"included; per sign, c1 to c4: {_braking_row(+1)}; "
+        f"{_braking_row(-1)}")
 
 
 # --- the wheel leg: its skid pad's worst clearance ---------------------------
@@ -237,6 +242,8 @@ SKID_WORST_AT = tuple(float(h) for h in _hips)  # the hips (A, E) it falls at
 
 # --- the wheel leg: its tyre's traction at the friction band's low corner -----
 
+TRACTION_PUSH = 32.0  # N, R-8's push in the traction brief, at the torso
+
 # Everything the wheel carries: the torso, the four links and the wheel
 # itself. The carriage's rail cart rides its rail.
 _TRACTION_CARRIED = ("m_torso", "m_l1", "m_l2", "m_l3", "m_l4", "m_wheel")
@@ -277,10 +284,10 @@ CABLE_SAG = Answer(
 # An accelerometer on the bob, which is pulled 4 mm below its rest and let go:
 # inside the sag, so the cable stays taut through the swing. At the bottom
 # the bob accelerates up at (k/m)·δ, and the accelerometer reads that plus g.
-_PULL = 0.004  # [m]
+PULL = 0.004  # m, the brief's pull below rest, the bob let go from there
 
 IMU_PEAK = Answer(
-    value=_k / _m * _PULL + G, unit="m/s²", bait=_k / _m * _PULL,
+    value=_k / _m * PULL + G, unit="m/s²", bait=_k / _m * PULL,
     how="(k/m)·δ + g, the specific force an accelerometer on the bob reads "
         "at the bottom of its swing, δ = 4 mm the pull below rest, inside "
         "the cable's m g / k sag so the cable stays taut; the bob's own "

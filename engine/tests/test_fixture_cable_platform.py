@@ -216,7 +216,12 @@ def test_settle_tilts_to_the_answer_at_the_stated_pose():
 
 
 # --- braking along x at the stated pose -------------------------------------------
-def _braking(p):
+# R-9 of the braking case's brief: the winch's floor, below which a cable can
+# jump its spool [N].
+WINCH_FLOOR = 2.0
+
+
+def _with_a_com_site(p):
     """The golden description with a site at the platform's COM, where the
     braking's d'Alembert load acts."""
     return [*platform(p), site("com", body="platform", pos=HOME + COM)]
@@ -225,7 +230,7 @@ def _braking(p):
 def braked(sign):
     """The golden project hung at its POSE, settled under m·a along ±x."""
     load = (sign * cable_platform.PARAMS["m"] * BRAKING, 0.0, 0.0)
-    out = armature.compile(_braking, cable_platform.PARAMS).at(
+    out = armature.compile(_with_a_com_site, cable_platform.PARAMS).at(
         q={"hang": (RIG.POSE, np.eye(3))}).settle(loads={"com": load})
     assert out.stable
     return out.tension
@@ -243,9 +248,8 @@ def test_braking_along_x_slackens_the_worst_sign_to_the_answer():
 
 
 def test_the_answer_fails_the_winch_floor_and_the_bait_passes_it():
-    floor = 2.0  # N, the brief's winch floor
-    assert BRAKING_TENSION.value < floor < BRAKING_TENSION.bait
-    assert BRAKING_TENSION.bounds[1] < floor
+    assert BRAKING_TENSION.value < WINCH_FLOOR < BRAKING_TENSION.bait
+    assert BRAKING_TENSION.bounds[1] < WINCH_FLOOR
 
 
 # --- the level-platform variant and its release ----------------------------------

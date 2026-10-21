@@ -533,6 +533,11 @@ TRAPS = (
     Trap("cable_platform", "release",
          "the platform stays level (the level variant's locked turns)",
          _in(_PLATFORM, "test_level_platform_assumption_holds")),
+    Trap("cable_platform", "settle",
+         "the braking load checked at one sign only, not the sign that "
+         "slackens the cables",
+         _in(_PLATFORM, "test_braking_along_x_slackens_the_worst_sign_to_the_"
+                        "answer")),
     Trap("wheel_leg", "search", "first contact checked at α = 0 only",
          _in(_LEG, "test_the_same_margin_at_alpha_zero_alone_passes")),
     Trap("wheel_leg", "inverse",
@@ -557,6 +562,11 @@ TRAPS = (
          "the stiffness read from qfrc_bias alone, about 0 N/m",
          _in(_SPRING, "test_a_bias_only_linearisation_reads_zero",
              "test_the_bias_only_trap_reads_the_cables_stiffness")),
+    Trap("spring_cable", "linearise",
+         "the accelerometer read as the bob's acceleration, not its specific "
+         "force",
+         _in(_SPRING, "test_the_linearised_swing_read_as_specific_force_is_"
+                      "the_imu_peak")),
     Trap("spring_cable", "release",
          "the cable is inextensible (the rigid reduction)",
          _in("test_rigid", "test_rigid_cable_releases_with_the_sag_the_"

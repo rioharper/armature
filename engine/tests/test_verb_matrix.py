@@ -5,9 +5,12 @@ covered elsewhere, naming a known-answer cell on the same code path; or not
 applicable, with its reason. A cell checked only against the engine itself is
 none of the three, so it cannot be written here. Every node id the matrix
 names must be one pytest collects, so a test renamed or deleted fails here,
-and every trap is shown failing beside the verb that catches it.
+and every trap is shown failing beside the verb that catches it. A cell's
+test that holds an answer's bait outside its window shows a trap, so a trap
+names it.
 """
 
+import ast
 import functools
 import subprocess
 import sys
@@ -90,6 +93,27 @@ def test_every_trap_is_shown_failing_beside_the_verb_that_catches_it():
         cell = MATRIX[trap.mechanism][trap.verb]
         assert isinstance(cell, Known), trap.trap
         assert set(trap.tests) <= set(cell.tests), trap.trap
+
+
+def _reads_a_bait(node_id):
+    """Whether the test `node_id` names reads an answer's `.bait`."""
+    path, name = node_id.split("[")[0].split("::")
+    tree = ast.parse((ROOT / path).read_text(encoding="utf-8"))
+    test = next(n for n in tree.body
+                if isinstance(n, ast.FunctionDef) and n.name == name)
+    return any(isinstance(n, ast.Attribute) and n.attr == "bait"
+               for n in ast.walk(test))
+
+
+def test_every_cell_test_that_shows_a_bait_failing_is_a_traps():
+    """A test in a cell that holds an answer's bait against its window shows
+    a trap failing, so a trap names it."""
+    trapped = {i for trap in TRAPS for i in trap.tests}
+    shown = sorted(i for row in MATRIX.values() for cell in row.values()
+                   if isinstance(cell, Known) for i in cell.tests
+                   if "::" in i and _reads_a_bait(i))
+    assert shown
+    assert not [i for i in shown if i not in trapped]
 
 
 def test_every_golden_mechanism_has_a_trap():

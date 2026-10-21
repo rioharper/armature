@@ -160,20 +160,6 @@ CASES = {
                 "it takes R-4 as met because an inextensible cable cannot "
                 "oscillate",
         release="CABLE_SAG"),
-    "spring-cable-imu-unstated": Derive(
-        mechanism="spring_cable",
-        stated=False,
-        answer="IMU_PEAK",
-        report="docs/testing/DR-02-imu-range.md",
-        bait="that the accelerometer reads the bob's acceleration",
-        sized="it rejects A3: it says the accelerometer reads specific "
-              "force, so at the bottom of the swing it reads g on top of the "
-              "bob's upward acceleration, and it decides R-10 on that "
-              "reading against the ±1.5 g range, about 14.7 m/s²",
-        carried="It decides R-10 on A3: it compares the bob's acceleration "
-                "alone, about 8 m/s² or 0.82 g, with the ±1.5 g range, or it "
-                "takes R-10 as met because the swing's acceleration stays "
-                "under 1.5 g"),
     "cable-platform-derive": Derive(
         mechanism="cable_platform",
         answer="PLATFORM_TILT",
@@ -186,22 +172,6 @@ CASES = {
         carried="It decides R-2 on A3: it says the deck stays level or "
                 "reads a tilt of about 0°, or it takes R-2 as met because "
                 "the cables only translate the platform"),
-    # Unstated only (#150): a signed load checked at one sign.
-    "cable-platform-braking-unstated": Derive(
-        mechanism="cable_platform",
-        stated=False,
-        answer="BRAKING_TENSION",
-        report="docs/testing/DR-02-braking-tension.md",
-        bait="that the platform brakes in one direction",
-        sized="it rejects A3: it loads the platform with the braking's "
-              "m·a = 5 N along x at both signs, settling it or balancing "
-              "its forces and moments under each, it shows both signs' "
-              "cable tensions, one sign's least about 6.6 N and the "
-              "other's the answer, and it decides R-9 on the worse sign",
-        carried="It decides R-9 on A3: it checks the braking load at one "
-                "sign only, whichever it is, and shows no tensions for the "
-                "other, or it takes the least tension as about 6.6 N and "
-                "R-9 as met"),
     "wheel-leg-derive": Derive(
         mechanism="wheel_leg",
         answer="SKID_CLEARANCE",
@@ -477,12 +447,6 @@ CASES.update({
 # derivation using the bait without ever numbering it, so the review must
 # find it too: its `claim`, `where` and `sound` are worded on that derivation
 # (`IMPLICIT`).
-#
-# A derive case may instead be unstated only (#137): `stated` false, its name
-# ending `-unstated`, and no stated twin, since stating its bait would state
-# the question its trap tests. It is written in CASES as it is, its `bait`
-# the default reading its brief implies, and has no variant
-# (`unstated_only`).
 UNSTATED_SUFFIX = "-unstated"
 _INEXTENSIBLE = "that the cable is inextensible"
 _LEVEL = "that the platform stays level"
@@ -546,12 +510,20 @@ CASES.update({
                                     **IMPLICIT.get(name, {}))
     for name, case in list(CASES.items()) if case.stated})
 
-# The wheel leg's traction at its tyre's friction band's low corner (#149):
-# the brief gives the nominal μ and never the band, so the default reading,
-# the nominal, is the bait.
+# --- the unstated-only trap cases --------------------------------------------
+
+# A derive case may instead be unstated only (#137): `stated` false, its name
+# ending `-unstated`, and no stated twin, since stating its bait would state
+# the question its trap tests. It is written in CASES as it is, its `bait`
+# the default reading its brief implies, and has no variant
+# (`unstated_only`).
 CASES.update({
+    # The wheel leg's traction at its tyre's friction band's low corner
+    # (#149): the brief gives the nominal μ and never the band, so the
+    # default reading, the nominal, is the bait.
     "wheel-leg-traction-unstated": Derive(
-        mechanism="wheel_leg", stated=False,
+        mechanism="wheel_leg",
+        stated=False,
         answer="WHEEL_TRACTION",
         report="docs/testing/DR-02-traction.md",
         bait="that the tyre's friction is its nominal 0.7",
@@ -562,6 +534,41 @@ CASES.update({
         carried="It decides R-8 on A3: it gives the traction at the "
                 "nominal μ of 0.7, about 34 N, and takes R-8 as met without "
                 "checking the friction at its band's low corner"),
+    # The cable platform's least tension braking along x (#150): the brief
+    # names no direction of travel, so the default reading, one sign, is the
+    # bait.
+    "cable-platform-braking-unstated": Derive(
+        mechanism="cable_platform",
+        stated=False,
+        answer="BRAKING_TENSION",
+        report="docs/testing/DR-02-braking-tension.md",
+        bait="that the platform brakes in one direction",
+        sized="it rejects A3: it loads the platform with the braking's "
+              "m·a = 5 N along x at both signs, settling it or balancing "
+              "its forces and moments under each, it shows both signs' "
+              "cable tensions, one sign's least about 6.6 N and the "
+              "other's the answer, and it decides R-9 on the worse sign",
+        carried="It decides R-9 on A3: it checks the braking load at one "
+                "sign only, whichever it is, and shows no tensions for the "
+                "other, or it takes the least tension as about 6.6 N and "
+                "R-9 as met"),
+    # The accelerometer on the mass on a cable (#151): the brief never says
+    # what it measures, so the default reading, the bob's acceleration, is
+    # the bait.
+    "spring-cable-imu-unstated": Derive(
+        mechanism="spring_cable",
+        stated=False,
+        answer="IMU_PEAK",
+        report="docs/testing/DR-02-imu-range.md",
+        bait="that the accelerometer reads the bob's acceleration",
+        sized="it rejects A3: it says the accelerometer reads specific "
+              "force, so at the bottom of the swing it reads g on top of the "
+              "bob's upward acceleration, and it decides R-10 on that "
+              "reading against the ±1.5 g range, about 14.7 m/s²",
+        carried="It decides R-10 on A3: it compares the bob's acceleration "
+                "alone, about 8 m/s² or 0.82 g, with the ±1.5 g range, or it "
+                "takes R-10 as met because the swing's acceleration stays "
+                "under 1.5 g"),
 })
 
 
