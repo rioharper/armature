@@ -8,8 +8,9 @@ things a machine confirms.
 What that buys, in order of value:
 
 1. **The inertia loop closes before anyone opens CAD.** Realized mass, COM,
-   and inertia against the values `analysis/model/params.py` assumed —
-   cross-platform, at sketch grade, no SolidWorks needed.
+   and inertia against the values the ledger says the dynamics assumed —
+   cross-platform, at sketch grade, no SolidWorks needed — and written
+   back into the ledger with `set --from-part` (below).
 2. **The recipe self-validates.** A wall that goes negative under a fillet,
    a feature that fails to build, a driven dimension the recipe can't
    survive — found in a second. `rebuild_sweep` catches builds that
@@ -32,8 +33,9 @@ What that buys, in order of value:
 
 | File | Role |
 |---|---|
-| `check/` | Library package. Mass properties in SI, target comparison, parameter-rebuild sweeps, interference, SVG views, one submodule each. **Holds the unit contract — read `check/__init__.py`'s docstring first.** |
+| `check/` | Library package. Mass properties in SI, target comparison, parameter-rebuild sweeps, interference, SVG views, and the ledger's reader (`check/ledger.py`, standard library only), one submodule each. **Holds the unit contract — read `check/__init__.py`'s docstring first.** |
 | `part.py` | Template for `cad/parts/<PART-ID>.py`. Worked example: the plate-with-a-boss from SKILL.md. Copy and edit. |
+| `ledger.toml` | The worked example's numbers, for this template's own self-run: the stock's density and the bracket's mass budget line. **Never copy it into a project**: a part file reads the nearest ledger at or above its folder, and this one beside it would shadow the project's. |
 | `sweep/` | Template for a planning-stage interference sweep. Worked example: planar 2R arm folding into its base housing. Replace the envelopes and `CARRIERS` in `sweep/bodies.py`. |
 | `stubs.py` | COTS placeholders for when armature-librarian can't find a vendor STEP. Enforces datasheet provenance; its release gate `still_placeholder()` only sees stubs *this process built* — read its docstring before gating on it. |
 | `run_all.py`, `layout.py`, `layout_checks.py` | The runner and the code-line budget, the same files armature-derive's model template ships. |
@@ -63,19 +65,47 @@ arm genuinely folds into its own base post, so `python -m sweep` prints the
 colliding pairs and **exits 1 by design** until the swept range excludes the
 collision. `run_all.py`, `part.py`, and `layout.py` exit 0.
 
-`part.py` and `sweep/` both import `analysis/model/params.py`, which is
-standard library only. The sweep also imports `mechanism.py` and compiles
-it with the engine: each envelope rides on a site of the description, posed
-by the truth model, over the description's joint ranges. Both locate those
-files *relative to their own path* — `../../analysis/model/` from
-`cad/parts/` — so keep them two directories below the project root. `part.py`'s mass
-target falls back to a budget row when there is no derivation yet, and says
-so in its printed provenance line; the sweep's link lengths have no fallback
-(a guessed link length hides a real self-collision or invents one), and
-nor do its postures (a hand-written pose is a second forward kinematics),
-so running it — its self-tests included — needs `params.py` and
-`mechanism.py` present: run the armature-derive milestone that produces
+`part.py` and `sweep/` both read the project's `ledger.toml` (ADR 0010).
+A part file reads the nearest one at or above its own folder with the
+standard library's `tomllib`: the stock's density, its body's mass, COM and
+inertia targets, and its mass budget line. The sweep reads the ledger the
+model reads, at or above `analysis/model/`, through the engine, and also
+imports `mechanism.py` and compiles it: each envelope rides on a site of
+the description, posed by the truth model, over the description's joint
+ranges. It locates `analysis/model/` *relative to its own path* —
+`../../analysis/model/` from `cad/parts/` — so keep it two directories
+below the project root. `part.py`'s target falls back to its budget line
+while `BODY` is still the placeholder, at sketch grade, and says so in its
+printed provenance line; the sweep's link lengths have no fallback (a
+guessed link length hides a real self-collision or invents one), and nor do
+its postures (a hand-written pose is a second forward kinematics), so
+running it — its self-tests included — needs the ledger's `mechanism`
+section and `mechanism.py`: run the armature-derive milestone that produces
 them first. Importing the package alone never needs them.
+
+## Writing the measurement back
+
+Once a part's numbers are worth the dynamics' re-run, write them into the
+ledger from `cad/parts/`:
+
+```bash
+uv run --project ../../analysis/model --with 'build123d~=0.11' \
+    python -m armature.ledger set part.<PART-ID> --from-part <PART-ID>.py
+```
+
+`set` runs `<PART-ID>.py --mass-properties`, which prints the measurement as
+one JSON line, and writes `part.<PART-ID>.mass`, `.com` and `.inertia` with
+`source = { kind = "cad", ref = "<file>@<rev>" }` and `status = "candidate"`;
+the rev is the file's last commit, `+dirty` if it has changed since. The
+tensor carries its `point` and `axes` and the COM its `point` (the origin it
+is measured from) and `axes`, from the part file's `ABOUT`, `ORIGIN` and
+`AXES`; `set` refuses a measurement without them. It writes through
+tomlkit, so comments, order and the fields it doesn't own — a `note`, an
+estimate's `band` — survive, and a new entry goes at the end of the file. A
+re-run on an unchanged part changes nothing, a confirmation included. Then
+point the description's body at the entries with `of` and re-run the model:
+`ledger check` flags a `confirmed` body that reads a `candidate`, until you
+confirm the measurement.
 
 ## Prerequisite
 
@@ -99,13 +129,13 @@ uv add 'build123d~=0.11'      # or: pip install 'build123d~=0.11'
 
 ## The two rules
 
-**Units.** build123d is millimetre-native; `params.py` is SI. `mm()` in
+**Units.** build123d is millimetre-native; the ledger is SI. `mm()` in
 `check/` is the only place a factor of 1000 may appear, and everything
 `check/` returns is SI, because the comparison happens in the derivation's
 units. The full contract is `check/__init__.py`'s docstring.
 
 **One source of truth.** The `.py` never restates a dimension that lives in
-`params.py` or an interface table — it imports them. A `.md` and a `.py`
+the ledger or an interface table — it reads them. A `.md` and a `.py`
 that disagree about a bolt circle are worse than having no `.py` at all.
 
 ## Where this stops

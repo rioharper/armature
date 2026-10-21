@@ -1,0 +1,104 @@
+# ledger.toml — the 2R arm's input numbers, each written once (ADR 0010).
+# `params.py` loads it, walking up from its own folder, and `run_all.py`
+# runs `python -m armature.ledger check` on it as Milestone 0. Values are SI.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+
+[mechanism.l1]
+value = 0.30
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "link 1's length"
+
+[mechanism.l2]
+value = 0.25
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "link 2's length"
+
+[mechanism.lc1]
+value = 0.15
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "link 1's COM from the shoulder"
+
+[mechanism.lc2]
+value = 0.125
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "link 2's COM from the elbow"
+
+[mechanism.m1]
+value = 1.20
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link 1's mass"
+
+[mechanism.m2]
+value = 0.80
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link 2's mass"
+
+# Each link's inertia is a slender rod's, about its COM and on every axis:
+# across the link, then about its own axis.
+[mechanism.I1]
+value = 0.012
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link 1's inertia about its COM, across the link"
+
+[mechanism.I2]
+value = 0.006
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link 2's inertia about its COM, across the link"
+
+[mechanism.Ix1]
+value = 0.00024
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link 1's inertia about its own axis"
+
+[mechanism.Ix2]
+value = 0.00016
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link 2's inertia about its own axis"
+
+[mechanism.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures" }
+note = "gravitational acceleration"
+
+[mechanism.N1]
+value = 50.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "the shoulder's gear ratio"
+
+[mechanism.N2]
+value = 30.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "the elbow's gear ratio"
+
+[mechanism.J1]
+value = 2e-5
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "the shoulder motor's rotor inertia"
+
+[mechanism.J2]
+value = 1e-5
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "the elbow motor's rotor inertia"
+
+[mechanism.limit]
+value = 0.5
+unit = "N*m"
+source = { kind = "chosen", ref = "spec" }
+note = "each motor's torque limit, motor side"

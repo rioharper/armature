@@ -16,10 +16,10 @@ import numpy as np
 import armature
 from armature import actuator, body, contact, gravity, joint, loop, shape, site
 
-from params import BANDS as ALL_BANDS, COM_AT, LINKS, PARAMS, PUSH_AT, TORSO_COM
+from params import COM_AT, LEDGER, LINKS, PARAMS, PUSH_AT, TORSO_COM
 
-# The mechanism's tolerance bands: those of PARAMS' parameters.
-BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
+# The mechanism's tolerance bands: its ledger section's.
+BANDS = LEDGER.bands("mechanism")
 MILESTONE = (0, "Milestone 0: the mechanism description")
 
 
@@ -35,7 +35,7 @@ def mechanism(p):
 
     out = [body("cart", mass=p["m_cart"], com=(0, 0, 0),
                 inertia=np.diag([1e-4] * 3)),
-           body("torso", mass=p["m_torso"], com=(*TORSO_COM, 0),
+           body("torso", mass=p["m_torso"], com=TORSO_COM,
                 inertia=np.diag([p["I_torso"]] * 3))]
     for name, (start, end, _, _) in LINKS.items():
         i = p[f"I_{name}"]
@@ -63,7 +63,7 @@ def mechanism(p):
               point=at("C"), range=(-100.0, 100.0)),
         site("C2", body="l2", pos=at("C")),
         site("C4", body="l4", pos=at("C")),
-        site("push", body="torso", pos=(*PUSH_AT, 0)),
+        site("push", body="torso", pos=PUSH_AT),
         loop("pin", "C2", "C4"),
         actuator("motor_A", joint="A", gear=p["N"], rotor_inertia=p["J"]),
         actuator("motor_E", joint="E", gear=p["N"], rotor_inertia=p["J"]),

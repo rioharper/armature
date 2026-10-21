@@ -21,6 +21,8 @@ mkdir -p "$dest/evals/golden"
 
 git -C "$root" archive "$tree" -- . ':(exclude)engine/tests' ':(exclude)PROGRESS.md' \
     | tar -x -C "$dest"
-# The golden projects alone: not answers.py, matrix.py or the package.
+# The golden projects alone, each its modules and its ledger.toml: not
+# answers.py, matrix.py or the package.
 git -C "$root" archive "$tree" -- ':(glob)engine/tests/golden/*/*.py' \
+    ':(glob)engine/tests/golden/*/ledger.toml' \
     | tar -x -C "$dest/evals/golden" --strip-components=3

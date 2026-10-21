@@ -13,10 +13,10 @@ import numpy as np
 import armature
 from armature import body, cable, joint
 
-from params import BANDS as ALL_BANDS, PARAMS
+from params import LEDGER, PARAMS
 
-# The mechanism's tolerance bands: those of PARAMS' parameters.
-BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
+# The mechanism's tolerance bands: its ledger section's.
+BANDS = LEDGER.bands("mechanism")
 MILESTONE = (0, "Milestone 0: the mechanism description")
 
 

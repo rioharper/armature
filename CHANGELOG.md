@@ -41,6 +41,26 @@
 - **Traceability gains `failed`:** open → analyzed → tested, failed, or waived. The budgets template's breach rule says so. A reserve is a line holding the headroom its REQ demands.
 - **One provenance vocabulary.** The budgets, BOM and derive texts use ADR 0010's six kinds and the `candidate`/`confirmed` status in place of guess / model / list price, Confirmed / TBD / Assumed, and the `standard` tag.
 
+### CAD reads the ledger and writes its measurement back
+
+[#145](https://github.com/rioharper/armature/issues/145). The worked bracket's numbers are unchanged.
+
+- **`part.py` reads the ledger with `tomllib`.** It reads the nearest `ledger.toml` at or above its own folder, through `check/ledger.py`, which is standard library only. A part file still needs build123d and nothing else. `DENSITY` is the stock's entry, `part.al-6061-t6.density`. The target is the body's mass, COM and inertia entries named in `BODY`, each read through any `of` chain, and the tensor is refused without its `point` and `axes`. `_resolve_target` returns all three, and its provenance line names the file, each entry and its kind, and the tensor's frame. While `BODY` is still the placeholder, at sketch grade, the target falls back to the budget line `budget.mass.<PART-ID>`. A renamed entry, a missing budget line or a half-pointed `BODY` raises.
+- **The template's own `ledger.toml`** holds the bracket's density and its budget line, for its self-run. It is never copied into a project, where it would shadow the root's.
+- **`py -m armature.ledger set part.<pn> --from-part <file>`** runs the part file's `--mass-properties` export, one JSON line, and writes `.mass`, `.com` and `.inertia`. Each has `kind = "cad"`, `ref = "<file>@<rev>"` (the file's last commit, `+dirty` if it has changed since, or `uncommitted`) and `status = "candidate"`. The tensor carries its `point` and `axes`, and the COM its origin as `point` and its `axes`. The write goes through tomlkit, so comments, order and every field `set` doesn't own survive, and new entries go at the end of the file. A re-run with the same measurement and rev changes nothing, a user's confirmation included. A moved measurement is a candidate again. `set` refuses an export without its frame, and leaves the ledger as it was on any refusal.
+- **`sweep/`** reads its link lengths and compiles the truth model from the ledger's `mechanism` section nearest `analysis/model/`, the one the model reads, and imports no `params.py`. With no ledger it stops, as it did with no `params.py`.
+
+### The golden mechanisms read the ledger
+
+[#142](https://github.com/rioharper/armature/issues/142). Every golden value is unchanged, and every golden input is bit for bit what it was.
+
+- **Each golden project has its own `ledger.toml`**, beside its files, and `ledger check` finds nothing in any of the six. Each `params.py` loads it from its own folder and passes the template's no-literal rule, which `test_golden.py` reads from the template's `params_checks.py` itself. A copied golden project runs its ledger check as Milestone 0.
+- **The cable platform's rig is ledger entries.** Its anchors, attachments, COM, home and pose are vector entries under `part.rig` and `part.platform`, its cable stiffness and gravity scalar ones, and its inertia one tensor in `mechanism`, which `mechanism(p)` reads through `p`. The red-team case's planted centre law carries the tensor with the rest lengths.
+- **The wheel leg's POINTS and LINKS are read from its mechanism entries**, so each point and link is still written once. Its workspace is `req.REQ-001`…`REQ-004`, and its COM fraction, the torso's COM and push point (now 3-vectors) and the skid pad's radius are `part.*` entries.
+- **The parallelogram's drive is its `drive` section**, each figure with its basis. Its counterweights' COMs, r1 and r3, are still solved in `params.py` from the balance condition, since they are not inputs.
+- **The hold-out's golden project takes the same shape.** ADR 0008 freezes its content, not its file format: its numbers are unchanged, and its pin, which now covers its ledger, is bumped.
+- **`scaffold.sh` places the golden's `ledger.toml` at the project's root**, where `load` finds it walking up from `analysis/model/`, and fails if it did not land. `copy.sh` copies each golden's ledger into `evals/golden/` with its modules, and `test_copy.py` holds both.
+
 ### Init, spec, the librarian and the red team write and read the ledger
 
 [#144](https://github.com/rioharper/armature/issues/144). The datasheet index stops holding numbers.

@@ -48,8 +48,8 @@ def centre_law(m=PARAMS["m"]):
     length = np.linalg.norm(span, axis=1)
     tension = m * G * length / (4 * span[:, 2])
     rest = length / (1 + tension / EA)
-    return ({"m": m, **{f"l0_{i + 1}": float(rest[i]) for i in range(4)}},
-            tension)
+    return (PARAMS | {"m": m, **{f"l0_{i + 1}": float(rest[i])
+                                 for i in range(4)}}, tension)
 
 
 def tilt(rotation):

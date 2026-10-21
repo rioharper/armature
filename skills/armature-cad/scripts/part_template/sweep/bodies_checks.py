@@ -1,7 +1,7 @@
 """
 sweep/bodies_checks.py — self-tests for bodies.py: the sweep finds a
 collision that is there and none for a mechanism that clears, the pair
-excuses hold what their comments claim, link lengths come from params.py
+excuses hold what their comments claim, link lengths come from the ledger
 or nowhere, and postures from the engine's truth model of mechanism.py or
 nowhere. Each is written to FAIL if the guard it covers is removed.
 """
@@ -123,40 +123,40 @@ def test_threshold_slop_holds_at_every_q1():
     print("  [PASS] base<->link1 threshold absorbs OCC float noise at every q1")
 
 
-def test_link_lengths_come_from_params_or_nowhere():
-    def resolve_with(params_src):
-        """Resolve link lengths against a params.py written to a temp dir.
+def _entry(name, value, unit="m"):
+    """One chosen ledger entry, as the model template writes its lengths."""
+    return (f'[{name}]\nvalue = {value}\nunit = "{unit}"\n'
+            f'source = {{ kind = "chosen", ref = "spec §5" }}\n\n')
 
-        Every directory already holding a params.py is dropped from
-        sys.path for the duration: `import params` searches the whole
-        path, so a real params.py elsewhere would otherwise answer the case
-        meant to test having none. Same hermetic setup as part_checks.py.
-        """
-        saved = sys.path[:]
-        with tempfile.TemporaryDirectory() as tmp:
-            if params_src is not None:
-                Path(tmp, "params.py").write_text(params_src)
-            sys.path[:] = [tmp] + [p for p in saved if not Path(p or ".", "params.py").exists()]
-            sys.modules.pop("params", None)
-            importlib.invalidate_caches()
-            try:
-                return bodies._resolve_lengths()
-            finally:
-                sys.path[:] = saved
-                sys.modules.pop("params", None)
 
-    assert resolve_with("PARAMS = {'l1': 0.30, 'l2': 0.25}\n") == (300.0, 250.0)
-    # No params.py anywhere: fatal, not a fallback to a typed 300.0 /
-    # 250.0 - there is no safe placeholder for a link length.
-    assert _raised(RuntimeError, resolve_with, None)
-    # A renamed key, or no PARAMS table, is a broken link to the derivation,
-    # not a missing-module event: it propagates.
-    assert _raised(KeyError, resolve_with, "PARAMS = {'l1': 0.30}\n")
-    assert _raised(AttributeError, resolve_with, "NOT_PARAMS = {}\n")
-    # params.py failing its own import (e.g. no sympy) is NOT the same as no
-    # params.py at all - `exc.name != "params"` must re-raise it.
-    assert _raised(ModuleNotFoundError, resolve_with, "import definitely_not_a_real_module_xyz\n")
-    print("  [PASS] link lengths from params.py, no silent fallback")
+def _in_ledger(text, fn):
+    """`fn(model_dir)` with a ledger holding `text` above `model_dir`, or
+    no ledger when `text` is None. A temp dir sits outside any project, so
+    nothing nearer than the one written here can answer."""
+    with tempfile.TemporaryDirectory() as tmp:
+        model = Path(tmp, "analysis", "model")
+        model.mkdir(parents=True)
+        if text is not None:
+            Path(tmp, "ledger.toml").write_text(text, encoding="utf-8")
+        return fn(model)
+
+
+def test_link_lengths_come_from_the_ledger_or_nowhere():
+    from armature.ledger import LedgerError
+
+    lengths = _entry("mechanism.l1", 0.30) + _entry("mechanism.l2", 0.25)
+    assert _in_ledger(lengths, bodies._resolve_lengths) == (300.0, 250.0)
+    # No ledger anywhere: fatal, not a fallback to a typed 300.0 / 250.0 -
+    # there is no safe placeholder for a link length.
+    assert _raised(RuntimeError, _in_ledger, None, bodies._resolve_lengths)
+    # A renamed entry, or no mechanism section, is a broken link to the
+    # derivation, not a missing-ledger event: it propagates.
+    assert _raised(KeyError, _in_ledger, _entry("mechanism.l1", 0.30), bodies._resolve_lengths)
+    assert _raised(LedgerError, _in_ledger, _entry("req.REQ-001", 0.30), bodies._resolve_lengths)
+    # The lengths the model reads, not the part's: a part template's ledger
+    # beside the sweep holds no mechanism section and must not answer.
+    assert bodies.MODEL_DIR == Path(bodies.__file__).resolve().parents[3] / "analysis" / "model"
+    print("  [PASS] link lengths from the ledger, no silent fallback")
 
 
 def test_envelopes_ride_on_the_engines_sites():
@@ -183,24 +183,23 @@ def test_envelopes_ride_on_the_engines_sites():
 def test_poses_come_from_the_description_or_nowhere():
     def resolve_with(mechanism_src):
         """Resolve the truth model against a mechanism.py written to a temp
-        dir, beside a params.py, with every other mechanism.py dropped from
-        sys.path for the duration - the same hermetic setup as above."""
-        saved = sys.path[:]
-        with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "params.py").write_text("PARAMS = {'l': 0.3}\n")
+        model dir, below a ledger holding its one length, with every other
+        mechanism.py dropped from sys.path for the duration, so a real one
+        elsewhere cannot answer the case meant to test having none."""
+        def resolve(model):
+            saved = sys.path[:]
             if mechanism_src is not None:
-                Path(tmp, "mechanism.py").write_text(mechanism_src)
-            sys.path[:] = [tmp] + [p for p in saved
-                                   if not Path(p or ".", "mechanism.py").exists()]
-            for name in ("params", "mechanism"):
-                sys.modules.pop(name, None)
+                Path(model, "mechanism.py").write_text(mechanism_src)
+            sys.path[:] = [str(model)] + [p for p in saved
+                                          if not Path(p or ".", "mechanism.py").exists()]
+            sys.modules.pop("mechanism", None)
             importlib.invalidate_caches()
             try:
-                return bodies._resolve_truth()
+                return bodies._resolve_truth(model)
             finally:
                 sys.path[:] = saved
-                for name in ("params", "mechanism"):
-                    sys.modules.pop(name, None)
+                sys.modules.pop("mechanism", None)
+        return _in_ledger(_entry("mechanism.l", 0.3), resolve)
 
     pendulum = (
         "from armature import body, joint\n"

@@ -1,0 +1,246 @@
+# ledger.toml — the wheel leg's input numbers, each written once (ADR 0010):
+# a five-bar leg on a wheel. `params.py` loads it, walking up from its own
+# folder, and `run_all.py` runs `python -m armature.ledger check` on it as
+# Milestone 0. Values are SI.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+# The leg's five points at home, in the torso's frame: A and E the hips, B
+# and D the knees, C the pin.
+
+[mechanism.Ax]
+value = -0.05
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the hip A, x"
+
+[mechanism.Ay]
+value = 0.0
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the hip A, y"
+
+[mechanism.Bx]
+value = -0.10
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the knee B, x"
+
+[mechanism.By]
+value = -0.10
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the knee B, y"
+
+[mechanism.Cx]
+value = 0.0
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the pin C, x"
+
+[mechanism.Cy]
+value = -0.25
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the pin C, y"
+
+[mechanism.Ex]
+value = 0.05
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the hip E, x"
+
+[mechanism.Ey]
+value = 0.0
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the hip E, y"
+
+[mechanism.Dx]
+value = 0.11
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the knee D, x"
+
+[mechanism.Dy]
+value = -0.09
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the knee D, y"
+
+# The four links: l1 A to B, l2 B to C, l3 E to D, l4 D to C.
+
+[mechanism.m_l1]
+value = 0.30
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link l1's mass"
+
+[mechanism.m_l2]
+value = 0.45
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link l2's mass"
+
+[mechanism.m_l3]
+value = 0.35
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link l3's mass"
+
+[mechanism.m_l4]
+value = 0.50
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "link l4's mass"
+
+[mechanism.I_l1]
+value = 1.0e-3
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link l1's inertia about its COM, every axis"
+
+[mechanism.I_l2]
+value = 2.0e-3
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link l2's inertia about its COM, every axis"
+
+[mechanism.I_l3]
+value = 1.5e-3
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link l3's inertia about its COM, every axis"
+
+[mechanism.I_l4]
+value = 2.5e-3
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "link l4's inertia about its COM, every axis"
+
+[mechanism.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures" }
+note = "gravitational acceleration"
+
+[mechanism.N]
+value = 20.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "each hip's gear ratio"
+
+[mechanism.N_hub]
+value = 10.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "the hub's gear ratio"
+
+[mechanism.J]
+value = 1e-5
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "each rotor's inertia"
+
+[mechanism.kB]
+value = 2.0
+unit = "N*m/rad"
+source = { kind = "chosen", ref = "spec" }
+note = "the knee B's spring"
+
+[mechanism.m_torso]
+value = 3.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the torso"
+
+[mechanism.I_torso]
+value = 0.02
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "the torso's inertia about its COM, every axis"
+
+[mechanism.m_cart]
+value = 0.2
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the carriage's rail cart, not carried by the wheel"
+
+[mechanism.m_wheel]
+value = 0.4
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the wheel"
+
+[mechanism.r]
+value = 0.06
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the wheel's radius"
+
+[mechanism.w]
+value = 0.015
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the tyre's half width"
+
+[mechanism.mu]
+value = 0.7
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "the tyre's friction coefficient on the floor"
+
+# --- req: the requirements' thresholds, keyed by REQ id ---
+# The hips' working range: a box inside their joint ranges, over which the
+# loop closes everywhere.
+
+[req.REQ-001]
+value = -1.0
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-001" }
+note = "the workspace's least hip A angle"
+
+[req.REQ-002]
+value = 1.0
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-002" }
+note = "the workspace's greatest hip A angle"
+
+[req.REQ-003]
+value = -0.5
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-003" }
+note = "the workspace's least hip E angle"
+
+[req.REQ-004]
+value = 2.0
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-004" }
+note = "the workspace's greatest hip E angle"
+
+# --- part: what the description reads besides, and the skid pad ---
+
+[part.leg.com-at]
+value = 0.4
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "each link's COM, as a fraction of the way from its first point"
+
+[part.torso.com]
+value = [0.0, 0.08, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the torso's COM, in its frame"
+
+[part.torso.push]
+value = [0.0, 0.12, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "where the torso's site loads act, in its frame"
+
+# The description carries no pad; the variant that adds one reads this.
+[part.skid-pad.radius]
+value = 0.09
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the radius of a skid pad round the knee B"

@@ -11,10 +11,13 @@
 #     Milestone 0. The golden project is evals/golden/<mechanism>/ in the
 #     copy copy.sh makes, which holds no engine/tests/ (#128), and
 #     engine/tests/golden/<mechanism>/ in a checkout, for evals/tests;
-#  2. points pyproject.toml's engine at this plugin's engine/, by absolute path;
-#  3. runs `uv sync` with a persistent cache of its own, so the agent's
+#  2. places the golden project's ledger.toml at the project's root, where a
+#     project keeps its ledger (ADR 0010) and params.py's `load` finds it,
+#     walking up from analysis/model/;
+#  3. points pyproject.toml's engine at this plugin's engine/, by absolute path;
+#  4. runs `uv sync` with a persistent cache of its own, so the agent's
 #     sandboxed `uv run` needs no network grant (#112);
-#  4. commits the lot, so the project has the history a spec stage leaves.
+#  5. commits the lot, so the project has the history a spec stage leaves.
 set -euo pipefail
 
 mechanism="${1:?usage: scaffold.sh <mechanism>}"
@@ -31,6 +34,9 @@ model=analysis/model
 mkdir -p "$model" docs/testing
 cp "$template/run_all.py" "$template/test_derivation.py" "$model/"
 cp "$golden"/*.py "$model/"
+cp "$golden/ledger.toml" ledger.toml
+grep -qF "[mechanism." ledger.toml \
+    || { echo "the golden project's ledger.toml did not land at the project's root" >&2; exit 1; }
 sed "s|^armature-engine = { path = \"[^\"]*\"|armature-engine = { path = \"$engine\"|" \
     "$template/pyproject.toml" > "$model/pyproject.toml"
 grep -qF "path = \"$engine\"" "$model/pyproject.toml" \

@@ -11,18 +11,54 @@ recipe, replace them with the same question asked about your part — they are
 the only thing standing between a silently wrong dimension and a green run.
 """
 
+import ast
 import importlib
 import inspect
+import json
 import math
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 from build123d import Axis
 
-from check import compare_to_target, contained, mass_properties
+from check import compare_to_target, contained, ledger, mass_properties
 
 part = importlib.import_module(Path(__file__).stem.removesuffix("_checks"))
+HERE = Path(__file__).resolve().parent
+
+# The body a re-derivation describes: its mass through a budget line, `of`
+# a part's entry twice over, so the target reads 2 x 0.052 kg; its COM; and
+# its tensor, about its COM in the part's axes. SI throughout.
+BODY = {"mass": "mechanism.m2", "com": "mechanism.c2", "inertia": "mechanism.I2"}
+LEDGER = """\
+[mechanism.m2]
+of = "budget.mass.forearm"
+
+[mechanism.c2]
+value = [0.0, 0.0, 0.004]
+unit = "m"
+
+[mechanism.I2]
+value = [[5e-5, 0.0, 0.0], [0.0, 4e-5, 0.0], [0.0, 0.0, 9e-5]]
+unit = "kg*m^2"
+point = "the forearm's COM"
+axes = "the part's"
+
+[budget.mass.forearm]
+of = "part.half.mass"
+qty = 2
+
+[budget.mass.ARM-BRK-001]
+value = 0.105
+unit = "kg"
+
+[part.half.mass]
+value = 0.052
+unit = "kg"
+"""
 
 
 def _raised(exc_type, fn, *args, **kwargs):
@@ -35,62 +71,121 @@ def _raised(exc_type, fn, *args, **kwargs):
     return None
 
 
-def _resolve_with(params_src, key, allow=True):
-    """Resolve a target against a params.py written to a temp dir, and
-    return (target, provenance, that temp params.py).
-
-    EVERY directory on sys.path that holds a params.py is dropped for
-    the duration, not just PARAMS_DIR: `import params` searches the
-    whole path, including the part's own directory, so a project that
-    keeps params.py beside the part file would otherwise have its real
-    one answer the case that is meant to test having none.
-    """
-    saved = sys.path[:]
+def _resolve_with(text, body=BODY, allow=True):
+    """Resolve a target against a ledger written to a temp dir, and return
+    (target, provenance, that ledger's path). The budget line is read from
+    the same ledger, by the name part.py gives it."""
     with tempfile.TemporaryDirectory() as tmp:
-        if params_src is not None:
-            Path(tmp, "params.py").write_text(params_src)
-        sys.path[:] = [tmp] + [p for p in saved if not Path(p or ".", "params.py").exists()]
-        sys.modules.pop("params", None)
-        importlib.invalidate_caches()
-        try:
-            return part._resolve_target(key, allow_fallback=allow) + (Path(tmp, "params.py"),)
-        finally:
-            sys.path[:] = saved
-            sys.modules.pop("params", None)
+        path = Path(tmp, ledger.FILENAME)
+        path.write_text(text.replace("budget.mass.ARM-BRK-001", part.BUDGET_LINE), encoding="utf-8")
+        return part._resolve_target(body, allow_fallback=allow, ledger_path=path) + (path,)
 
 
 def test_target_provenance_is_the_truth():
-    renamed = "PARAMS = {'m_link1': 1.20}\n"  # what a re-derivation does
-    # params.py present, key gone. Swallowing that substitutes a hand-typed
-    # 0.105 kg, prints "no analysis/model/params.py yet" with params.py
-    # sitting right there, and exits 0.
-    assert _raised(KeyError, _resolve_with, renamed, "m1")
-    # A missing PARAMS table and a params.py whose own imports fail are the
-    # same class of event, and must not fail three different ways.
-    assert _raised(AttributeError, _resolve_with, "MASSES = {}\n", "m1")
-    assert _raised(ModuleNotFoundError, _resolve_with, "import no_such_module_xyz\n", "m1")
+    target, prov, real = _resolve_with(LEDGER)
+    # All three, not the mass alone, and the mass through both hops.
+    assert target == {
+        "mass": 2 * 0.052, "com": (0.0, 0.0, 0.004),
+        "inertia": [[5e-5, 0.0, 0.0], [0.0, 4e-5, 0.0], [0.0, 0.0, 9e-5]],
+        "about": part.ABOUT,
+    }, target
+    # The line names the file actually read, each entry it read, and the
+    # frame the tensor is about, so a point that isn't ABOUT shows.
+    assert prov.startswith(f"target driven from {real}: mass mechanism.m2"), prov
+    assert "the forearm's COM" in prov and "the part's" in prov, prov
 
-    target, prov, real = _resolve_with("PARAMS = {'m1': 0.104}\n", "m1")
-    assert target == {"mass": 0.104}
-    # The line must name the file that was actually imported, not the
-    # directory the template HOPED to read: the module here is loaded from
-    # a temp dir, so naming PARAMS_DIR would be exactly that false credit.
-    assert prov == f"target driven from {real}[m1]", prov
+    # Entry gone (what a re-derivation's rename does): swallowing that
+    # substitutes the budget line and prints a line claiming the
+    # derivation drove it.
+    renamed = LEDGER.replace("[mechanism.m2]", "[mechanism.m_forearm]")
+    assert _raised(KeyError, _resolve_with, renamed)
+    # A tensor with no stated point is compared against whatever point the
+    # props were taken about: refused, as `set` refuses writing one.
+    frameless = LEDGER.replace('point = "the forearm\'s COM"\n', "")
+    assert "point" in str(_raised(ValueError, _resolve_with, frameless))
+    # Half-pointed is neither a target nor a placeholder.
+    half = dict(BODY, com="<ledger entry: the body's COM>")
+    assert _raised(ValueError, _resolve_with, LEDGER, half)
+    # A lumped body names its mass alone, and is checked on its mass alone.
+    target, _, _ = _resolve_with(LEDGER, {"mass": "mechanism.m2", "com": None, "inertia": None})
+    assert target == {"mass": 2 * 0.052}, target
 
-    # The fallback: opt-in, and honest about which of the two reasons it is.
-    target, prov, _ = _resolve_with(None, "m1")
-    assert target == {"mass": part.BUDGET_MASS} and "FALLBACK" in prov, prov
-    assert _raised(RuntimeError, _resolve_with, None, "m1", False)
-    # An unset PARAM_KEY falls back even though params.py is RIGHT THERE,
-    # so the line must not claim the file is missing. Spelled out rather
-    # than read from PARAM_KEY, which you are expected to set.
-    target, prov, _ = _resolve_with(renamed, "<params key for this body>")
-    assert "FALLBACK" in prov and "placeholder" in prov, prov
-    assert "no params.py" not in prov, prov
+    # The fallback: opt-in, honest about why, and still read from the ledger.
+    target, prov, real = _resolve_with(LEDGER, part.BODY)
+    assert target == {"mass": 0.105}, target
+    assert "FALLBACK" in prov and "placeholder" in prov and str(real) in prov, prov
+    assert _raised(RuntimeError, _resolve_with, LEDGER, part.BODY, False)
+    # A budget line that has gone is a broken link too, not a fallback.
+    assert _raised(KeyError, _resolve_with, LEDGER.replace("budget.mass.ARM", "budget.mass.X"), part.BODY)
     # Whatever the fallback produces still has to be a target check/ will
     # accept — it raises on an empty one, and an empty one is a green gate.
     assert isinstance(compare_to_target(mass_properties(part.build(), part.DENSITY), target), list)
-    print("  [PASS] target provenance: fallback opt-in and honest, broken links raise")
+    print("  [PASS] target provenance: all three from the ledger, fallback opt-in, broken links raise")
+
+
+def test_the_part_file_imports_the_standard_library_and_build123d_alone():
+    # A part file runs where the engine doesn't: it reads the ledger with
+    # tomllib (through check/ledger.py, itself standard library only) and
+    # imports neither the engine, nor tomlkit, nor the model's params.py.
+    tree = ast.parse(Path(part.__file__).read_text(encoding="utf-8"))
+    imported = {alias.name.split(".")[0] for node in ast.walk(tree)
+                if isinstance(node, ast.Import) for alias in node.names}
+    imported |= {node.module.split(".")[0] for node in ast.walk(tree)
+                 if isinstance(node, ast.ImportFrom) and node.level == 0}
+    outside = imported - sys.stdlib_module_names
+    assert outside == {"build123d", "check"}, outside
+    assert part.DENSITY == ledger.value(ledger.entries(part.LEDGER), part.DENSITY_ENTRY)[0]
+    print("  [PASS] the part file imports the standard library, build123d and check/ alone")
+
+
+def test_set_from_part_writes_the_measurement_back():
+    try:
+        from armature.ledger import check, load
+    except ModuleNotFoundError as exc:
+        if exc.name != "armature":
+            raise
+        print("  [SKIP] no engine here; the full run, in the model's environment, runs this")
+        return
+    name = f"part.{part.PART_ID}"
+    with tempfile.TemporaryDirectory() as tmp:
+        # The part file, check/ and its ledger, copied where set may write.
+        shutil.copy(part.LEDGER, Path(tmp, ledger.FILENAME))
+        shutil.copytree(HERE / "check", Path(tmp, "check"),
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(part.__file__, tmp)
+        argv = [sys.executable, "-m", "armature.ledger", "set", name,
+                "--from-part", Path(part.__file__).name]
+
+        def run():
+            done = subprocess.run(argv, cwd=tmp, capture_output=True,
+                                  text=True, encoding="utf-8")
+            assert done.returncode == 0, done.stderr
+            return done.stdout.splitlines(), Path(tmp, ledger.FILENAME).read_bytes()
+
+        said, first = run()
+        assert said == [f"set {name}.{k}" for k in ("mass", "com", "inertia")], said
+        errors = [f for f in check(tmp) if f.level == "error"]
+        assert errors == [], errors
+        props = mass_properties(part.build(), part.DENSITY, about=part.ABOUT)
+        written = load(path=tmp)
+        assert written[f"{name}.mass"].value == props["mass"]
+        assert list(written[f"{name}.com"].value) == list(props["com"])
+        assert written[f"{name}.inertia"].point == ledger.export(
+            props, part.PART_ID, part.ORIGIN, part.AXES)["point"]
+        assert written[f"{name}.mass"].source["kind"] == "cad"
+        # A second run of the same part changes nothing.
+        assert run() == ([f"{name}: unchanged"], first)
+    print("  [PASS] set --from-part writes three cad entries check passes, and a re-run changes nothing")
+
+
+def test_the_export_is_one_json_line():
+    done = subprocess.run([sys.executable, part.__file__, ledger.EXPORT],
+                          capture_output=True, text=True, encoding="utf-8")
+    assert done.returncode == 0, done.stderr
+    lines = done.stdout.splitlines()
+    assert len(lines) == 1 and set(json.loads(lines[0])) == {
+        "mass", "com", "inertia", "point", "axes", "origin"}, lines
+    print("  [PASS] the export prints one JSON line and nothing else")
 
 
 def test_boss_follows_the_bore():

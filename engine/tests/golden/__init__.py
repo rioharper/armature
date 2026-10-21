@@ -5,8 +5,10 @@ does, so this loads each one in-process with its own `params.py` standing in
 as `params`, under unique module names: `golden.arm_2r` is that directory's
 mechanism module, its `params` the parameter module. A project with a
 `missions.py` and a `drive.py` has them loaded the same way, as its
-`missions` and `drive`. The known answers are in
-`answers.py`, beside the directories and never inside one.
+`missions` and `drive`. Each directory's numbers are its own `ledger.toml`'s
+(ADR 0010), which its `params.py` loads from beside it; a project keeps its
+at its root, where the eval scaffold places a golden's. The known answers
+are in `answers.py`, beside the directories and never inside one.
 """
 
 import importlib.util
