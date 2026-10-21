@@ -176,9 +176,14 @@ def load(section=None, *, path=None):
 def parse(path):
     """Parse and validate the ledger file at `path`."""
     path = Path(path)
+    return loads(path.read_bytes().decode("utf-8"), path)
+
+
+def loads(text, path):
+    """Parse and validate a ledger's `text`, read from `path`: a ledger at
+    another commit, which the gate reads from git."""
     try:
-        with path.open("rb") as f:
-            data = tomllib.load(f)
+        data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:
         raise LedgerError(f"{path}: not TOML: {e}") from None
     entries = {}
@@ -191,7 +196,7 @@ def parse(path):
             if entry.name in entries:
                 raise LedgerError(f"{entry.name}: written twice")
             entries[entry.name] = entry
-    return Ledger(entries, path)
+    return Ledger(entries, Path(path))
 
 
 def _tables(top, body, depth, keys=()):
