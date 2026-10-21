@@ -365,6 +365,28 @@ def test_an_unstated_red_team_rubric_says_the_derivation_never_numbers_it(
         "catch-finding.md"]
 
 
+TRACTION = "wheel-leg-traction-unstated"
+TRACTION_PUSH = "32 N"  # R-8's push, which the brief states
+
+
+def test_the_traction_trap_fails_its_requirement_at_the_bands_corner():
+    """#149: the answer, μ at its band's low corner, fails R-8's push; the
+    bait, the nominal μ, passes it; and the brief states the push and R-8
+    but never the band, a tolerance or the band's ends, and numbers no
+    bait."""
+    assert TRACTION in generate.UNSTATED_ONLY
+    answer = ANSWERS[generate.CASES[TRACTION].answer]
+    push = float(TRACTION_PUSH.split()[0])
+    assert answer.value < push < answer.bait
+    brief = (generate.EVALS / TRACTION / "prompt.md").read_text(
+        encoding="utf-8")
+    assert "R-8" in brief and TRACTION_PUSH in brief
+    assert not NUMBERED_BAIT.search(brief)
+    for word in ("band", "toleran", "±", "0.6", "0.8", "datasheet",
+                 "concrete"):
+        assert word not in brief.lower(), word
+
+
 def peeks(grader, tool_input):
     """Whether `grader`'s input_match finds `tool_input`, serialised as JSON
     compact or spaced, the same either way."""
