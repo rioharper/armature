@@ -19,27 +19,26 @@ from .show import show
 from .views import render
 from .write import set_from_part
 
+PATH_HELP = ("the ledger, or a folder at or below it (default: the working "
+             "directory)")
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="python -m armature.ledger")
     verbs = parser.add_subparsers(dest="verb", required=True)
-    for verb in ("check", "show"):
-        sub = verbs.add_parser(verb)
-        sub.add_argument("--path", help="the ledger, or a folder at or "
-                         "below it (default: the working directory)")
+    for verb in ("check", "show", "render"):
+        verbs.add_parser(verb)
+    verbs.add_parser("set", help="write a part file's measured mass, COM "
+                     "and inertia as cad candidates")
+    for sub in verbs.choices.values():
+        sub.add_argument("--path", help=PATH_HELP)
     verbs.choices["check"].add_argument("--json", action="store_true")
     verbs.choices["show"].add_argument("prefix")
-    verbs.add_parser("render").add_argument(
-        "--path", help="the ledger, or a folder at or below it (default: "
-        "the working directory)")
-    put = verbs.add_parser("set", help="write a part file's measured mass, "
-                           "COM and inertia as cad candidates")
+    put = verbs.choices["set"]
     put.add_argument("name", help="the part's entries, part.<pn>")
     put.add_argument("--from-part", required=True, metavar="FILE",
                      help="the part file whose --mass-properties export "
                      "this runs")
-    put.add_argument("--path", help="the ledger, or a folder at or below it "
-                     "(default: the working directory)")
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):   # a Windows pipe is cp1252
         stream.reconfigure(encoding="utf-8")

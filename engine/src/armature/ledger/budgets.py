@@ -12,15 +12,26 @@ BREACH = 1e-12   # a total past its allocation by less, relative, is level
 REQ_ID = re.compile(r"\bREQ-\d+\b")
 
 
+class BudgetUnitError(LedgerError):
+    """A budget line in another unit from its budget's: `entry` is the
+    line, the finding `check` reports it as `budget.unit`."""
+
+    def __init__(self, entry, message):
+        super().__init__(f"{entry}: {message}")
+        self.entry = entry
+        self.reason = message
+
+
 @dataclass(frozen=True)
 class Tally:
     """A budget `budget.<kind>`: each line's entry and resolved value, its
-    allocation entry (or None), and the unit they are all in."""
+    allocation entry (or None), the unit they are all in, and `allowed`,
+    the allocation's resolved value (or None)."""
     name: str
     lines: list
     allocation: object
     unit: str
-    have: float = None
+    allowed: float = None
 
     @property
     def total(self):
@@ -29,12 +40,14 @@ class Tally:
     @property
     def margin(self):
         """The allocation less the total, or None with no allocation."""
-        return None if self.have is None else self.have - self.total
+        if self.allowed is None:
+            return None
+        return self.allowed - self.total
 
     @property
     def breached(self):
         return self.margin is not None and -self.margin > BREACH * max(
-            abs(self.have), abs(self.total))
+            abs(self.allowed), abs(self.total))
 
 
 def budgets(ledger):
@@ -53,8 +66,8 @@ def tally(ledger, budget):
             else units[lines[0].name] if lines else "1")
     for name, other in units.items():
         if parse_unit(other) != parse_unit(unit):
-            raise LedgerError(f"{name}: a {budget} line is in {other}, and "
-                              f"the budget in {unit}")
+            raise BudgetUnitError(name, f"a {budget} line is in {other}, "
+                                  f"and the budget in {unit}")
     return Tally(budget, [(e, ledger.resolve(e.name)) for e in lines],
                  allocation, unit,
                  None if allocation is None

@@ -45,6 +45,9 @@ that REQ in `source.ref`. Nothing debits it directly. A debit anywhere else
 shrinks the margin it sits in, so the reserve is spent the moment the lines
 around it outgrow the allocation.
 
+Every line is in its allocation's unit. A line in another is `budget.unit`,
+and `check` sums nothing for that budget until it is fixed.
+
 When the lines, the reserve among them, sum past the allocation the budget
 is **breached**, and `check` reports `budget.breach`. Each requirement the
 budget answers to has failed: the REQ its allocation reads or cites, and

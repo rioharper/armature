@@ -17,14 +17,14 @@ value outside an estimate's band is then `check`'s finding.
 """
 
 import json
-import math
 import subprocess
 import sys
 from pathlib import Path
 
 import tomlkit
 
-from .entries import LedgerError, find, parse
+from . import newlines
+from .entries import LedgerError, find, finite, parse
 
 EXPORT = "--mass-properties"   # the flag a part file's export answers to
 UNCOMMITTED = "uncommitted"    # the rev of a file git has no commit of
@@ -32,6 +32,7 @@ UNCOMMITTED = "uncommitted"    # the rev of a file git has no commit of
 QUANTITIES = (("mass", "kg", ()), ("com", "m", (3,)),
               ("inertia", "kg*m^2", (3, 3)))
 FRAME = ("point", "axes", "origin")
+OTHER_KINDS = ("as_written", "basis")   # a cited source's, never cad's
 
 
 def set_from_part(name, part_file, *, path=None, python=None):
@@ -50,16 +51,14 @@ def set_from_part(name, part_file, *, path=None, python=None):
         raise LedgerError(f"{part_file}: no such part file")
     props = _export(part, python or sys.executable)
     ref = f"{_cited(part, ledger.parent)}@{_rev(part)}"
-    with ledger.open(encoding="utf-8", newline="") as f:
-        raw = f.read()
-    newline = "\r\n" if "\r\n" in raw else "\n"   # the file's, kept
-    text = raw.replace("\r\n", "\n")
+    raw = ledger.read_bytes()
+    text, newline = newlines.split(raw.decode("utf-8"))   # the file's, kept
     doc = tomlkit.parse(text)
     changed, new = [], []
     for key, fields in _entries(props, ref):
         table = doc.get("part", {}).get(pn, {}).get(key)
         if table is None:
-            new.append(_render(pn, key, fields))
+            new.append(_toml_table(pn, key, fields))
         elif not _update(table, fields, f"{name}.{key}"):
             continue
         changed.append(f"{name}.{key}")
@@ -67,18 +66,13 @@ def set_from_part(name, part_file, *, path=None, python=None):
     if new:   # at the end, where no comment above it is anyone else's
         out = out.rstrip("\n") + "\n\n" + "\n\n".join(new) + "\n"
     if out != text:
-        _write(ledger, out.replace("\n", newline))
+        newlines.write(ledger, out, newline)
         try:
             parse(ledger)
         except LedgerError:
-            _write(ledger, raw)
+            ledger.write_bytes(raw)
             raise
     return changed
-
-
-def _write(path, text):
-    with path.open("w", encoding="utf-8", newline="") as f:
-        f.write(text)
 
 
 def _part_number(name):
@@ -131,8 +125,7 @@ def _number(props, key, shape):
     """The export's `key`, a float or nested lists of floats of `shape`."""
     x = props.get(key)
     if not shape:
-        if isinstance(x, bool) or not isinstance(x, (int, float)) \
-                or not math.isfinite(x):
+        if not finite(x):
             raise LedgerError(f"{EXPORT}: {key} is a finite number; got "
                               f"{x!r}")
         return float(x)
@@ -142,7 +135,7 @@ def _number(props, key, shape):
     return [_number({key: v}, key, shape[1:]) for v in x]
 
 
-def _render(pn, key, fields):
+def _toml_table(pn, key, fields):
     """`[part.<pn>.<key>]` with `fields`, as text, for a new entry."""
     table = tomlkit.table()
     for field, value in fields.items():
@@ -157,13 +150,19 @@ def _render(pn, key, fields):
 def _update(table, fields, name):
     """Write `fields` into an entry's table, in place, leaving every field
     it does not own; True where the measurement or its source moved, and
-    then its status is candidate again."""
+    then its status is candidate again. An entry of another kind becoming
+    `cad` loses the fields that kind owned, `as_written` and `basis` (its
+    source, `retrieved` included, is replaced whole); its `note` and `band`
+    stay."""
     if "of" in table:
         raise LedgerError(f"{name}: an of entry, and set writes a value; "
                           f"remove its of first")
     if all(field in table and table[field].unwrap() == value
            for field, value in fields.items() if field != "status"):
         return False
+    if table.get("source", {}).get("kind") != fields["source"]["kind"]:
+        for field in OTHER_KINDS:
+            table.pop(field, None)
     for field, value in fields.items():
         table[field] = _item(value)
     return True

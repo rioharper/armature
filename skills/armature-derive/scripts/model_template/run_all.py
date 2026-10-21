@@ -30,9 +30,10 @@ are missing is UNCHECKED: its check prints the inputs it lacks and fails,
 unless the module's DRIVE_EXEMPT names it with an argued reason, which then
 prints in its row in place of FAILS.
 
-Before any of them, and before any milestone module is imported, it runs
-`python -m armature.ledger check` on the nearest `ledger.toml` at or above
-this folder (ADR 0010), as Milestone 0's first check: a unit slip, an
+Before any of them, and before any milestone module is imported, it calls
+the engine's `armature.ledger.check()` in-process, the check `python -m
+armature.ledger check` runs, on the nearest `ledger.toml` at or above this
+folder (ADR 0010), as Milestone 0's first check: a unit slip, an
 estimate with no band or a dangling `of` stops the run there, before a model
 sizes anything on it. Where there is no ledger, or no engine to check one
 with, it says so and goes on.
@@ -284,8 +285,9 @@ def discover_exemptions(names=None):
 
 
 def ledger_check():
-    """The ledger's check, `python -m armature.ledger check` on the nearest
-    `ledger.toml` at or above this folder: it prints every finding and fails
+    """The ledger's check, `armature.ledger.check()` called in-process on
+    the nearest `ledger.toml` at or above this folder, as `python -m
+    armature.ledger check` would run it: it prints every finding and fails
     on an error. None where the engine does not import or no ledger is
     found, which `main` prints."""
     try:

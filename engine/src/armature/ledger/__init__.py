@@ -46,7 +46,9 @@ An entry is the table `[<section>.<name>]`, in a section `mechanism`
 - A budget `budget.<kind>` holds its lines and one `allocation` entry, the
   most its lines may sum to. Lines past it are a breach, which fails each
   REQ the budget answers to: a `req.*` entry one of its entries' `of`
-  chains reaches, or a REQ id one of its entries' `source.ref` names. A
+  chains reaches, or a REQ id one of its entries' `source.ref` names.
+  Every line is in the allocation's unit; `check` fails one that is not,
+  `budget.unit`, and sums nothing for that budget. A
   reserve is a line holding the headroom its REQ demands.
 - A view is a whole markdown table `render` writes between
   `<!-- ledger:<view> -->` and `<!-- /ledger -->`: `budget.<kind>`, `bom`,

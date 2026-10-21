@@ -168,6 +168,30 @@ def test_a_moved_measurement_is_a_candidate_again(tmp_path):
     assert ledger["part.ARM-BRK-001.com"].status == "confirmed"
 
 
+DATASHEET_MASS = LEDGER + """
+[part.ARM-BRK-001.mass]
+value = 0.0952
+unit = "kg"
+basis = { per = "bracket" }
+as_written = "95.2 g"
+band = [0.09, 0.12]
+status = "confirmed"
+source = { kind = "datasheet", ref = "vendor sheet", retrieved = 2026-10-01 }
+note = "the bracket, bought in"
+"""
+
+
+def test_a_measurement_over_another_kind_drops_that_kinds_fields(tmp_path):
+    part = project(tmp_path, ledger=DATASHEET_MASS)
+    set_from_part("part.ARM-BRK-001", part, path=tmp_path)
+    mass = load(path=tmp_path)["part.ARM-BRK-001.mass"]
+    assert (mass.as_written, mass.basis) == (None, None)
+    assert mass.source == {"kind": "cad",
+                           "ref": "cad/parts/ARM-BRK-001.py@uncommitted"}
+    assert (mass.note, mass.band) == ("the bracket, bought in", (0.09, 0.12))
+    assert check(tmp_path) == []
+
+
 @pytest.mark.parametrize("field", ["point", "axes", "origin"])
 def test_a_measurement_without_its_frame_is_refused(tmp_path, field):
     part = project(tmp_path, {k: v for k, v in PROPS.items() if k != field})

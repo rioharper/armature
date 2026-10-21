@@ -13,10 +13,10 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
-from .budgets import budgets, reqs, tally
-from .entries import CONFIRMED_BY_KIND, LedgerError, OfError, load
+from .budgets import BudgetUnitError, budgets, reqs, tally
+from .entries import CONFIRMED_BY_KIND, OfError, load
 from .units import CURRENCY, parse_unit, registry as _registry
-from .views import stale
+from .views import number, stale
 
 AS_WRITTEN = 1e-9      # |as_written − value| allowed, relative to the larger
 SI_FACTOR = 1e-12      # |a unit's factor to SI − 1| that still counts as SI
@@ -65,20 +65,24 @@ def check(path=None, *, today=None):
 def _project(ledger):
     """The findings on the budgets as a whole and on the project's
     markdown: a breach, a breached REQ whose traceability row is not
-    failed (when that file exists), and a stale view."""
+    failed (when that file exists), a line in another unit from its
+    budget's, which leaves the budget unsummed, and a stale view."""
     breached = []
     for budget in budgets(ledger):
         try:
             t = tally(ledger, budget)
-        except LedgerError:   # an of check reports, or a unit show raises
+        except BudgetUnitError as e:
+            yield "budget.unit", e.entry, e.reason
+            continue
+        except OfError:   # the line's own of finding reports it
             continue
         if t.breached:
             breached.append(t)
             failing = reqs(ledger, budget)
             yield ("budget.breach", budget,
-                   f"its lines sum to {_shown(t.total)} {t.unit}, past its "
-                   f"allocation of {_shown(t.have)} {t.unit} by "
-                   f"{_shown(-t.margin)} {t.unit}"
+                   f"its lines sum to {number(t.total)} {t.unit}, past its "
+                   f"allocation of {number(t.allowed)} {t.unit} by "
+                   f"{number(-t.margin)} {t.unit}"
                    + (f"; it fails {', '.join(failing)}" if failing else ""))
     trace = ledger.path.parent / TRACE
     if breached and trace.is_file():
@@ -152,8 +156,8 @@ def _band(e):
     lo, hi = e.band
     if np.any(e.value < lo) or np.any(e.value > hi):
         yield ("band.nominal-outside", "error",
-               f"value {_shown(e.value)} is outside its band "
-               f"[{_shown(lo)}, {_shown(hi)}]")
+               f"value {number(e.value)} is outside its band "
+               f"[{number(lo)}, {number(hi)}]")
 
 
 def _unit(e):
@@ -179,9 +183,9 @@ def _as_written(e, ureg, unit):
     written = None
     if units is not None:
         try:
-            number = (json.loads(match[1]) if match[1].startswith("[")
+            parsed = (json.loads(match[1]) if match[1].startswith("[")
                       else float(match[1]))
-            written = ureg.Quantity(np.array(number, dtype=float), units)
+            written = ureg.Quantity(np.array(parsed, dtype=float), units)
         except ValueError:   # json's error is a ValueError too
             pass
     if written is None:
@@ -202,7 +206,7 @@ def _as_written(e, ureg, unit):
     scale = max(np.abs(converted).max(), np.abs(e.value).max())
     if np.abs(converted - e.value).max() > AS_WRITTEN * scale:
         yield ("unit.as-written", "error",
-               f"{e.as_written!r} is {_shown(converted, 17)} {e.unit}, not "
+               f"{e.as_written!r} is {number(converted, 17)} {e.unit}, not "
                f"the value")
 
 
@@ -235,10 +239,3 @@ def _of(ledger, e):
             yield ("status.candidate-cited", "error",
                    f"confirmed, but it reads {cited.name}, a candidate")
             return
-
-
-def _shown(x, digits=6):
-    """A scalar or an array, to `digits` significant figures."""
-    if np.ndim(x) == 0:
-        return f"{x:.{digits}g}"
-    return np.array2string(np.asarray(x), precision=digits)

@@ -16,6 +16,7 @@ FILENAME = "ledger.toml"
 
 # Each section and how many keys deep its entries sit: `[mechanism.l1]` is
 # one key below `mechanism`, `[part."moteus-r4.11".mass]` two below `part`.
+# The CAD part template's stdlib-only `check/ledger.py` keeps a copy.
 SECTIONS = {"mechanism": 1, "drive": 1, "req": 1, "budget": 2, "part": 2}
 KINDS = ("chosen", "standard", "estimate", "datasheet", "cad", "measured")
 STATUSES = ("candidate", "confirmed")
@@ -141,9 +142,14 @@ class Ledger:
         chain = self.chain(name)
         return math.prod(e.qty for e in chain[:-1]) * chain[-1].value
 
+    def end(self, name):
+        """The entry `name`'s `of` chain ends at, the one holding its value:
+        `name`'s own entry where it has no `of`."""
+        return self.chain(name)[-1]
+
     def unit(self, name):
         """The unit `name`'s value is in, read through its `of` chain."""
-        return self.chain(name)[-1].unit
+        return self.end(name).unit
 
 
 def find(path=None):
@@ -247,9 +253,14 @@ def _entry(top, keys, t):
                  point=point, axes=axes)
 
 
+def finite(x):
+    """Whether `x` is a finite int or float, and not a bool."""
+    return (isinstance(x, (int, float)) and not isinstance(x, bool)
+            and math.isfinite(x))
+
+
 def _number(name, field, x):
-    if isinstance(x, bool) or not isinstance(x, (int, float)) \
-            or not math.isfinite(x):
+    if not finite(x):
         raise LedgerError(f"{name}: {field} is a finite number; got {x!r}")
     return float(x)
 

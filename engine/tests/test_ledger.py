@@ -1,9 +1,10 @@
 """The ledger (ADR 0010): load, check and show, against ledgers written here.
 
-Answer: each expected value is a literal worked by hand from the entry it
-reads: a 14.2 g part is 0.0142 kg and two of it 0.0284 kg, and 88.4 V/krpm
-is 88.4·60/(2000π) V·s/rad. Each finding is shown firing on an entry built
-to trip it and silent on the same entry put right.
+Answer: each expected value is worked from the fixture's inputs by hand,
+in derivation-standards.md's checks rule: two of a 14.2 g part are
+2 × 0.0142 kg, and 88.4 V/krpm is 88.4·60/(2000π) V·s/rad. A literal is an
+input or a tolerance. Each finding is shown firing on an entry built to
+trip it and silent on the same entry put right.
 """
 
 import datetime
@@ -102,12 +103,27 @@ qty = 3
 """
 
 
+# PART's inputs, and its budget worked from them: each line is its qty
+# times what it reads, and the margin the allocation less their total.
+MASS, ALLOCATION = 0.0142, 0.10
+DRIVERS = 2 * MASS
+SPARES = 3 * DRIVERS
+TOTAL = DRIVERS + SPARES
+MARGIN = ALLOCATION - TOTAL
+KE = 88.4 * 60 / (2000 * np.pi)   # 88.4 V/krpm, in V·s/rad
+
+
+def shown(x):
+    """`x` as the ledger prints it: 6 significant figures."""
+    return f"{x:.6g}"
+
+
 def test_load_resolves_of_with_qty_through_a_two_hop_chain(tmp_path):
     lines = load("budget.mass", path=write(tmp_path, PART))
-    assert lines["drivers"] == pytest.approx(0.0284, rel=1e-12)
-    assert lines["spares"] == pytest.approx(0.0852, rel=1e-12)
-    assert lines["allocation"] == 0.10
-    assert load("part.moteus-r4.11", path=tmp_path)["mass"] == 0.0142
+    assert lines["drivers"] == pytest.approx(DRIVERS, rel=1e-12)
+    assert lines["spares"] == pytest.approx(SPARES, rel=1e-12)
+    assert lines["allocation"] == ALLOCATION
+    assert load("part.moteus-r4.11", path=tmp_path)["mass"] == MASS
 
 
 def test_load_returns_vectors_and_tensors_as_arrays(tmp_path):
@@ -414,11 +430,10 @@ def test_show_prints_one_line_per_entry_under_a_prefix(tmp_path):
 
 def test_show_of_a_budget_sums_its_lines_against_the_allocation(tmp_path):
     out = show("budget.mass", path=write(tmp_path, PART))
-    # 2 × 14.2 g = 28.4 g, 3 × that = 85.2 g; 113.6 g against 100 g.
     tail = [line.split() for line in out.splitlines()[-5:]]
-    assert tail == [["drivers", "0.0284", "kg"], ["spares", "0.0852", "kg"],
-                    ["total", "0.1136", "kg"], ["allocation", "0.1", "kg"],
-                    ["margin", "-0.0136", "kg"]]
+    assert tail == [[key, shown(x), "kg"] for key, x in [
+        ("drivers", DRIVERS), ("spares", SPARES), ("total", TOTAL),
+        ("allocation", ALLOCATION), ("margin", MARGIN)]]
 
 
 def test_show_of_nothing_raises(tmp_path):
@@ -567,9 +582,10 @@ def test_render_writes_a_budget_whole_and_check_is_then_clean(tmp_path):
     assert rows[0] == ["Line item", "Entry", "Budget (kg)",
                        "Current estimate (kg)", "Margin (kg)", "Source",
                        "Status"]
-    # 2 × 14.2 g, 3 × that, and 113.6 g against 100 g: 13.6 g over.
-    assert [r[3] for r in rows[1:]] == ["0.0284", "0.0852", "0.1136"]
-    assert rows[-1][2] == "0.1" and rows[-1][4].startswith("-0.0136")
+    assert [r[3] for r in rows[1:]] == [shown(x)
+                                        for x in (DRIVERS, SPARES, TOTAL)]
+    assert rows[-1][2] == shown(ALLOCATION)
+    assert rows[-1][4].startswith(shown(MARGIN))
     assert found(root, "view.stale") == []
 
 
@@ -649,8 +665,10 @@ def test_a_budget_row_reads_its_note_and_cites_what_it_reads(tmp_path):
     assert rows[1][5] == ("2 × `part.moteus-r4.11.mass` → datasheet: "
                           "moteus-r4.11, retrieved 2026-10-01")
     assert rows[2][0] == "spares"     # no note: the line's own name
-    assert rows[3] == ["Total", "`budget.mass.allocation`", "0.1", "0.1136",
-                       "-0.0136, breached", "chosen: REQ-04", "confirmed"]
+    assert rows[3] == ["Total", "`budget.mass.allocation`",
+                       shown(ALLOCATION), shown(TOTAL),
+                       f"{shown(MARGIN)}, breached", "chosen: REQ-04",
+                       "confirmed"]
 
 
 def test_the_bom_has_a_row_per_part_entry_and_names_what_it_drives(
@@ -666,12 +684,12 @@ def test_the_bom_has_a_row_per_part_entry_and_names_what_it_drives(
     assert by["mass"][7] == ("REQ-04, `budget.mass.drivers`, "
                              "`budget.mass.spares`")
     assert by["ke"] == [
-        "the shoulder winding", "moteus-r4.11", "ke", "0.844158 V*s/rad",
+        "the shoulder winding", "moteus-r4.11", "ke", f"{shown(KE)} V*s/rad",
         "88.4 V/krpm (per V_rms, between line)",
         "datasheet: moteus-r4.11, retrieved 2026-10-01", "candidate",
         "`part.moteus-r4.11.kt`"]
     # An of line in the BOM reads its entry: the value and the source.
-    assert by["kt"][3] == "0.844158 V*s/rad"
+    assert by["kt"][3] == f"{shown(KE)} V*s/rad"
     assert by["kt"][5].startswith("`part.moteus-r4.11.ke` → datasheet")
 
 
@@ -800,13 +818,31 @@ def trace(**statuses):
 
 
 def test_a_budget_over_its_allocation_is_a_breach(tmp_path):
-    # 0.90 kg + 0.15 kg = 1.05 kg against 1.0 kg: 0.05 kg over.
+    # OVER's arm and reserve against its REQ-004.
+    total, allocation = 0.90 + 0.15, 1.0
     findings = check(project(tmp_path, OVER, {}), today=TODAY)
     assert [(f.code, f.entry) for f in findings] == [
         ("budget.breach", "budget.mass")]
     assert findings[0].message == (
-        "its lines sum to 1.05 kg, past its allocation of 1 kg by 0.05 kg; "
-        "it fails REQ-004, REQ-012")
+        f"its lines sum to {shown(total)} kg, past its allocation of "
+        f"{shown(allocation)} kg by {shown(total - allocation)} kg; "
+        f"it fails REQ-004, REQ-012")
+
+
+def test_a_budget_line_in_another_unit_is_an_error_not_skipped(tmp_path):
+    # A price line in a mass budget: 109 USD against 0.1 kg is no sum.
+    text = PART + '\n[budget.mass.cost]\nof = "part.moteus-r4.11.price"\n'
+    findings = check(project(tmp_path, text, {}), today=TODAY)
+    assert [(f.code, f.level, f.entry) for f in findings] == [
+        ("budget.unit", "error", "budget.mass.cost")]
+    assert "USD" in findings[0].message and "kg" in findings[0].message
+    assert ledger("check", cwd=tmp_path).returncode == 1
+
+
+def test_a_budget_line_whose_of_names_nothing_is_reported_once(tmp_path):
+    text = PART + '\n[budget.mass.cost]\nof = "part.nothing.mass"\n'
+    root = project(tmp_path, text, {})
+    assert [f.code for f in check(root, today=TODAY)] == ["of.dangling"]
 
 
 @pytest.mark.parametrize("arm, breached", [("0.85", False), ("0.849", False),

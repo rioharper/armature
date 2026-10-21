@@ -25,6 +25,9 @@ FILENAME = "ledger.toml"
 EXPORT = "--mass-properties"  # the flag `set --from-part` runs a part file with
 # How many keys below its section an entry sits, as the engine reads it:
 # `[part."moteus-r4.11".mass]` is two below `part`, `[mechanism.m2]` one.
+# A copy of `SECTIONS` in the engine's `armature/ledger/entries.py`, kept
+# here because this file imports nothing but the standard library: change
+# both together.
 SECTIONS = {"mechanism": 1, "drive": 1, "req": 1, "budget": 2, "part": 2}
 
 

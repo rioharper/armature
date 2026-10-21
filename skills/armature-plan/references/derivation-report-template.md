@@ -37,8 +37,9 @@ silence.
 | Number | was | now | where it changed |
 
 Every number this report moves and every file that carries it. An input is its
-ledger entry, edited once, then `render` and `check`, which carry it into the
-budgets, the BOM, the requirements table and `CONTEXT.md`'s symbols; the
+ledger entry, changed by the project's standing rule on a changed number,
+which carries it into the budgets, the BOM, the requirements table and
+`CONTEXT.md`'s symbols; the
 rows after it are the prose that quotes it, the milestone notes and the spec's
 text. A derived number, such as a margin, has no entry, and its row names the
 note that quotes it. This table is the propagation checklist.

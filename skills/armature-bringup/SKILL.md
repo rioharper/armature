@@ -37,7 +37,7 @@ Then close the loop on the report (`references/test-report-template.md` in **arm
 
 - Fill Setup and Purpose if this was the first run.
 - Judge each captured value against its pass bound and write **Result**: pass/fail stated with the number.
-- Write **Feeds** and make the updates it names: the traceability row, and the measured value into its ledger entry as **armature-derive**'s *Calibration* says, then `render` and `check`, which carry it into the budgets.
+- Write **Feeds** and make the updates it names: the traceability row, and the measured value into its ledger entry as **armature-derive**'s *Calibration* says, then follow the project's standing rule on a changed number, which carries it into the budgets.
 
 **Done when** the report's Result states pass/fail with the number and every Feeds row is updated or marked n/a. An aborted run is done too — its abort is in the Data section, and the Result says what stopped it.
 

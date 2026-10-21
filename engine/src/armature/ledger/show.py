@@ -1,10 +1,9 @@
 """`show`: the entries under a prefix, one line each, so a reader loads the
 part of the ledger an artifact cites rather than all of it."""
 
-import numpy as np
-
 from .budgets import tally
 from .entries import LedgerError, load
+from .views import number
 
 DASH = "-"   # a column with nothing in it
 
@@ -33,30 +32,24 @@ def _budget(ledger, budget):
     """A budget's rows: each line resolved, the total, the allocation and
     the margin, all in the allocation's unit, or the first line's."""
     t = tally(ledger, budget)
-    rows = [[e.key, _number(v), t.unit] for e, v in t.lines]
-    rows.append(["total", _number(t.total), t.unit])
+    rows = [[e.key, number(v), t.unit] for e, v in t.lines]
+    rows.append(["total", number(t.total), t.unit])
     if t.allocation is None:
         return rows + [["allocation", DASH, ""]]
-    return rows + [["allocation", _number(t.have), t.unit],
-                   ["margin", _number(t.margin), t.unit]]
+    return rows + [["allocation", number(t.allowed), t.unit],
+                   ["margin", number(t.margin), t.unit]]
 
 
 def _value(e):
     if e.of is None:
-        return _number(e.value)
+        return number(e.value)
     return f"of {e.of}" + ("" if e.qty == 1 else f" x{e.qty:g}")
-
-
-def _number(v):
-    if np.ndim(v) == 0:
-        return f"{v:.6g}"
-    return "[" + ", ".join(_number(x) for x in v) + "]"
 
 
 def _band(band):
     if band is None:
         return DASH
-    return f"[{_number(band[0])}, {_number(band[1])}]"
+    return f"[{number(band[0])}, {number(band[1])}]"
 
 
 def _columns(rows, indent=""):

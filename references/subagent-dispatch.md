@@ -46,11 +46,11 @@ a lookup scoped too wide, and the fix is a narrower run, not a bigger model.
 
 - **One part, or one slice of a field, per run.** A prompt carrying five parts makes a run
   long enough to hit the stall watchdog, and the whole run dies together.
-- **Prefer the agent that writes as it goes.** The librarian opens its run file before its
-  first fetch and appends every row, entry and cached file the moment it exists (`Open the run file`
-  in `agents/librarian.md`), so a killed run still leaves what it found. The inventor and
-  the red-team write once at the end: a dead run leaves nothing, so keep an inventor's idea
-  family narrow and re-run rather than resume it.
+- **Prefer the agent that writes as it goes.** The librarian opens its staging file before
+  its first fetch and appends every row, entry and cached file the moment it exists (`Open
+  the staging file` in `agents/librarian.md`), so a killed run still leaves what it found.
+  The inventor and the red-team write once at the end: a dead run leaves nothing, so keep an
+  inventor's idea family narrow and re-run rather than resume it.
 - **Read the wreckage before re-hunting.** A file left in `docs/datasheets/staging/` is an
   unmerged run: read it, merge what stands, and re-dispatch only the gaps.
 

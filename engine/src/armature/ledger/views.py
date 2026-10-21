@@ -14,13 +14,13 @@ except in a folder whose name starts with a dot or that holds a ledger of
 its own. A marker inside a fenced code block is text, not a marker.
 """
 
-import math
 import os
 import re
 from pathlib import Path
 
 import numpy as np
 
+from . import newlines
 from .budgets import budgets, reqs, tally
 from .entries import FILENAME, LedgerError, load
 
@@ -40,11 +40,10 @@ def render(path=None):
     files it changed, so a second run returns none."""
     ledger = load(path=path)
     changed = []
-    for file, text, crlf in _documents(ledger):
+    for file, text, newline in _documents(ledger):
         new = _rewrite(ledger, file, text)
         if new != text:
-            file.write_text(new.replace("\n", "\r\n") if crlf else new,
-                            encoding="utf-8", newline="")
+            newlines.write(file, new, newline)
             changed.append(file)
     return changed
 
@@ -89,7 +88,7 @@ def view_table(ledger, view):
 
 def _documents(ledger):
     """Each markdown file of the project, with its text (newlines as \\n)
-    and whether it was written with \\r\\n, in a stable order."""
+    and the newline it was written with, in a stable order."""
     root = ledger.path.parent
     for folder, subs, files in os.walk(root):
         subs[:] = sorted(
@@ -107,7 +106,7 @@ def _documents(ledger):
             except UnicodeDecodeError:
                 raise LedgerError(f"{file}: holds ledger markers and is "
                                   f"not UTF-8") from None
-            yield file, text.replace("\r\n", "\n"), "\r\n" in text
+            yield file, *newlines.split(text)
 
 
 def _marked(file, lines):
@@ -171,8 +170,9 @@ def _budget(ledger, view):
         rows.append(["Total", "", "", number(t.total), "", "", ""])
     else:
         margin = number(t.margin) + (", breached" if t.breached else "")
-        rows.append(["Total", f"`{a.name}`", number(t.have), number(t.total),
-                     margin, _source(ledger, a), _status(a)])
+        rows.append(["Total", f"`{a.name}`", number(t.allowed),
+                     number(t.total), margin, _source(ledger, a),
+                     _status(a)])
     return _table(["Line item", "Entry", f"Budget{u}",
                    f"Current estimate{u}", f"Margin{u}", "Source", "Status"],
                   rows)
@@ -218,15 +218,16 @@ def _cell(text):
     return " ".join(str(text).split()).replace("|", "\\|")
 
 
-def number(v):
-    """A scalar to 6 significant figures, or a nested list of them."""
+def number(v, digits=6):
+    """A scalar to `digits` significant figures, or a nested list of them:
+    every number `render`, `show` and `check` print."""
     if np.ndim(v) == 0:
-        return f"{v:.6g}"
-    return "[" + ", ".join(number(x) for x in v) + "]"
+        return f"{v:.{digits}g}"
+    return "[" + ", ".join(number(x, digits) for x in v) + "]"
 
 
 def _value(ledger, e, unit=True):
-    end = ledger.chain(e.name)[-1]
+    end = ledger.end(e.name)
     text = number(ledger.resolve(e.name))
     if unit:
         text += f" {end.unit}"
@@ -236,11 +237,11 @@ def _value(ledger, e, unit=True):
 
 
 def _band(ledger, e):
-    band = ledger.chain(e.name)[-1].band
-    if band is None:
+    end = ledger.end(e.name)
+    if end.band is None:
         return ""
-    qty = ledger.resolve(e.name) / ledger.chain(e.name)[-1].value \
-        if e.of is not None else 1
+    band = end.band
+    qty = ledger.resolve(e.name) / end.value if e.of is not None else 1
     return f"[{number(np.multiply(qty, band[0]))}, " \
            f"{number(np.multiply(qty, band[1]))}]"
 
@@ -257,7 +258,7 @@ def _source(ledger, e):
     it reads, `qty` times, and the source the chain ends at."""
     if e.of is None:
         return _cited(e.source)
-    end = ledger.chain(e.name)[-1]
+    end = ledger.end(e.name)
     reads = ("" if e.qty == 1 else f"{e.qty:g} × ") + f"`{e.of}`"
     own = "" if e.source is None else f"; {_cited(e.source)}"
     return f"{reads} → {_cited(end.source)}{own}"
