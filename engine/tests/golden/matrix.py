@@ -237,6 +237,7 @@ WHEEL_LEG = {
         _LEG, "test_static_torques_match_virtual_work",
         "test_the_wheel_carries_the_weight",
         "test_the_cone_margin_is_positive_where_the_closed_form_holds",
+        "test_the_tyres_traction_at_its_bands_low_corner_is_the_answer",
         "test_without_the_floor_the_torso_has_nothing_to_stand_on")),
     "settle": Known("I", _in(_LEG, "test_settle_under_the_static_torques_"
                                    "stays"),
@@ -536,6 +537,11 @@ TRAPS = (
          "the five-bar's statics without the contact row",
          _in(_LEG, "test_without_the_floor_the_torso_has_nothing_to_stand_"
                    "on")),
+    Trap("wheel_leg", "inverse",
+         "the tyre's traction read at its nominal μ, not its band's low "
+         "corner",
+         _in(_LEG, "test_the_tyres_traction_at_its_bands_low_corner_is_the_"
+                   "answer")),
     Trap("parallelogram", "margins",
          "regeneration into a PSU that cannot sink current",
          _in(_PARALLELOGRAM, "test_the_stop_trips_a_source_that_cannot_sink_"

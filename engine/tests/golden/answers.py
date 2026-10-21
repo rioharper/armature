@@ -195,6 +195,30 @@ SKID_CLEARANCE = Answer(
 SKID_WORST_AT = tuple(float(h) for h in _hips)  # the hips (A, E) it falls at
 
 
+# --- the wheel leg: its tyre's traction at the friction band's low corner -----
+
+# Everything the wheel carries: the torso, the four links and the wheel
+# itself. The carriage's rail cart rides its rail.
+_TRACTION_CARRIED = ("m_torso", "m_l1", "m_l2", "m_l3", "m_l4", "m_wheel")
+
+with mp.workdps(30):
+    _traction_normal = mp.mpf(wheel_leg.PARAMS["g"]) * mp.fsum(
+        mp.mpf(wheel_leg.PARAMS[k]) for k in _TRACTION_CARRIED)
+    _traction_low = mp.mpf(wheel_leg.BANDS["mu"][0]) * _traction_normal
+    _traction_nominal = mp.mpf(wheel_leg.PARAMS["mu"]) * _traction_normal
+
+WHEEL_TRACTION = Answer(
+    value=float(_traction_low), unit="N", bait=float(_traction_nominal),
+    how="μ_low · (m_torso + m_l1 + m_l2 + m_l3 + m_l4 + m_wheel) · g = "
+        "{:.4g} · {:.4g} N = {:.4g} N, the tyre's friction limit at its "
+        "band's low corner on the weight the wheel carries (the rail cart "
+        "rides its rail); the bait is the same at the nominal μ, "
+        "{:.4g} · {:.4g} N = {:.4g} N".format(
+            wheel_leg.BANDS["mu"][0], float(_traction_normal),
+            float(_traction_low), wheel_leg.PARAMS["mu"],
+            float(_traction_normal), float(_traction_nominal)))
+
+
 # --- the mass on a cable -----------------------------------------------------
 
 G = 9.81  # the engine's default gravity, which the bob hangs in [m/s^2]

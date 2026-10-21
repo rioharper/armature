@@ -187,7 +187,10 @@ note = "the tyre's half width"
 [mechanism.mu]
 value = 0.7
 unit = "1"
-source = { kind = "chosen", ref = "spec" }
+as_written = "0.7"
+band = [0.6, 0.8]
+status = "confirmed"
+source = { kind = "datasheet", ref = "the tyre's datasheet, its friction range on sealed concrete", retrieved = 2026-10-21 }
 note = "the tyre's friction coefficient on the floor"
 
 # --- req: the requirements' thresholds, keyed by REQ id ---
