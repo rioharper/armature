@@ -28,7 +28,7 @@ Its graders are generated like every case's (`HOLDOUT` in `generate.py`), and it
 
 ## Where it runs
 
-On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; the maintainer's is `Ubuntu` (26.04). Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
+On WSL2, on the maintainer's machine. The distro is whichever `wsl -l` lists; the maintainer's is `Ubuntu-24.04`. Native Windows refuses any run that grants a shell (#104). Inside the distro you need:
 - `claude` 2.1.301 or later, installed natively in the distro (`curl -fsSL https://claude.ai/install.sh | bash`) and logged in there (`claude auth status`). A Windows `claude` from npm is on WSL's PATH through `/mnt/c` and shadows a missing Linux one; it runs the suite on Windows, which scores every case 0 in seconds. Check that `command -v claude` is not under `/mnt/`;
 - `bwrap` and `socat`, the sandbox's backend (`sudo apt install bubblewrap socat`);
 - `uv` (`curl -LsSf https://astral.sh/uv/install.sh | sh`).
@@ -45,7 +45,7 @@ It writes a `git archive` of HEAD into an empty directory, so commit first. It l
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $85 of plan usage and takes about 170 min, over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them:
+**The release run,** before every version bump. It costs about $100 of plan usage and takes about 220 min, as 2.0.0's did (#137), over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them:
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
