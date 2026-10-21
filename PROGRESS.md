@@ -2,6 +2,42 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## What's left before the pre-CAD pipeline is finished — 2026-10-21
+
+**Status:** Overhauls 01–06 are built, merged to `main` and pushed. #147's traps are on `main` (`30d13da`). Of the eleven review candidates, three that sit before CAD (07, 10, 11) are not designed, and three pipeline-v2 decisions are still open. Nothing since 2.0.0 is released, so Ibex's cached plugin has neither the ledger nor the new traps. Ibex restarted on 2026-10-16 (brief Rev 1.0, staged to spec) and has not moved since. Its spec is the acceptance test.
+
+**Done since the last entry:**
+- **Overhaul 06, the ledger:** #140–#146 built, and #139 closed 2026-10-21. The integration branch was fast-forwarded to `2f29e17`, with the code review's fixes. The choices the build made are in the CHANGELOG's *Unreleased* section.
+- **#147, three traps that survive a passing `run_all.py`:** #148–#151 closed. On-demand wiring runs at `30d13da` caught all three cases 1/1 with 0 peeks. `red-team-dispatched` and `skill-derive` were 1/1 on each.
+
+**Left, in order:**
+1. **The release run.** Editing derive, spec, CAD and the agents re-gated it (`evals/README.md`). Expect about $117 and 259 min. The run does three jobs:
+   - It gates the version bump.
+   - It reports #147's Δ, which closes #147 and #137.
+   - It re-runs the three derive cases that #138's advisory run never reached. `699e583` is the fix, and `spring-cable-derive` already went 0/3 → 3/3.
+
+   Score only after every case in a copy has finished. `uv run --project engine` leaves a hard-linked `engine/.venv` in the copy, and later cases then refuse at $0.
+2. **Overhaul 07, gates instead of the Stage line.** Not grilled. The red team's own rule is "always before CAD hours or purchases", so this is the gate pre-CAD work ends at. Undecided: which actions gate, what evidence each needs, where a review's checks live, and how a project argues an exemption. The ledger now provides the data the gate needs (`status.candidate-cited`, budget margins).
+3. **The open pipeline-v2 decisions.** Each one gets a grill, an ADR, a spec and tickets.
+   - **Plan vs map:** reopens ADR 0001. Ibex and Plumb both used a map in place of a plan.
+   - **Where safety lives:** Overhaul 11's hazard rows per energy source go here. Its inputs now exist: the mechanism (01), the bus model (03) and battery and spring entries in the ledger (06).
+   - **Where controls and electrical live, beyond the actuators and bus.** ADR 0007 settled only the actuator-and-bus part of "where feasibility lives".
+4. **Overhaul 10, symbolic vs numeric.** The 2026-10-11 order put it with CAD, but it is a derive-stage problem. The Lagrangian import timed out after 240 s at four links. Ibex's two five-bar legs, wheels and floating base are far past that, so settle it before Ibex reaches derive Milestone 2.
+5. **Ibex's spec, on the released plugin**, writing into `ledger.toml` from the start. It is the acceptance test for 1–4. Treat its findings as plugin feedback.
+
+**Loose ends (not blocking):**
+- Glossary clashes: "slack" means both a margin's room and a slack cable, and `Envelope` clashes with "envelope".
+- `Simulated.moved.speed` jumps about 28 rad/s at a cable snap.
+- `load()`'s nearest-`ledger.toml` lookup was not grilled, and the copy steps leave the template's file behind.
+- `py -m armature.ledger` works only once spec §9 has pinned the engine.
+- The Pinocchio, Placo and CalculiX environment decision (pixi or micromamba beside uv) is still open. #62's Pinocchio backend has never run on this machine.
+- `engine/MUJOCO_LOG.TXT` is untracked and not ignored.
+
+**Not pre-CAD:**
+- Overhauls 08 (geometry → bodies) and 09 (loads and structure checks). These wait for Ibex to reach CAD.
+- Eval measurement: #152, the red-team with/without comparison (blocked by #138), and #153, the bare baseline. #153's arm probe needs the user's go-ahead or a hand run.
+- Plumb and CineWave V2 stay deferred.
+
 ## Overhaul 06: designed and ticketed — 2026-10-20
 
 **Status:** Grilled in two rounds of 23 questions, all recommendations accepted. Written up as:
