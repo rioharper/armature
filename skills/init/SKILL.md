@@ -84,14 +84,17 @@ Seed these files:
 - `docs/decisions.md`: header `# Decision log`, one column-format line
   `<!-- date · decision · why · supersedes -->`, and its first entry — the
   project init itself.
+- `ledger.toml`: one comment line, `# Every input number, once: mechanism, drive,
+  req, budget.<kind> and part.<pn> entries.`, and no entry.
 - `docs/datasheets/index.md`: header, the legend comment
-  `<!-- Clauses read: the sections, tables, or pages actually verified. Price: list
-  price at its quantity break, or "quote only" where the vendor publishes none;
-  dated by Retrieved. File: the cached PDF, HTML snapshot, or image + transcript; a
-  source with no saveable document points at its survey record,
-  docs/datasheets/<task>-<subject>-<slice>.md. -->`,
+  `<!-- A row holds no number: a part's numbers and prices are its part.<pn>
+  entries in ledger.toml, each citing this row's P/N. Clauses read: the
+  sections, tables, or pages actually verified, ending "price: quote only"
+  where the vendor publishes no price. File: the cached PDF, HTML snapshot, or
+  image + transcript; a source with no saveable document points at its survey
+  record, docs/datasheets/<task>-<subject>-<slice>.md. -->`,
   and the empty table
-  `| P/N | Manufacturer | Key numbers | Clauses read | Price | Source URL | Retrieved | File |`.
+  `| P/N | Manufacturer | Clauses read | Source URL | Retrieved | File |`.
 - `docs/environment.md` from step 2's output, in the shape
   `references/environment-record.md` gives: one section for this machine,
   headed by hostname, OS, and today's date, closing with the gaps this project
@@ -195,15 +198,21 @@ it appears.
 
 ## Standing rules
 
-- A datasheet number is cited from its row in docs/datasheets/index.md, never
-  from memory; a CANDIDATE row carries no decision until the user confirms it.
+- Every input number lives once, as an entry in ledger.toml, and is cited
+  from it, never from memory. A datasheet number is a part.<pn> entry, its
+  row in docs/datasheets/index.md saying what was verified. An entry whose
+  `status` is `candidate` carries no decision until the user confirms it,
+  and only the user's confirmation sets `confirmed`.
+- After a number changes, edit its ledger entry, the one place it is written,
+  then run `py -m armature.ledger render`, then `py -m armature.ledger check`,
+  and settle every error before anything reads the number.
 - Red-team (the armature-red-team agent) before CAD hours or purchases.
 - A plan leaf's Executor names the skill that works it: call the Skill tool
   with that name before starting the leaf.
 - The plan and every wayfinder map are GitHub Issues, never a markdown file.
   Read docs/agents/issue-tracker.md before touching the tracker.
-- A change to a mass, power draw, or cost updates docs/01-spec/budgets.md in
-  the same session; that file's header carries the debit and reserve rules.
+- A change to a mass, power draw, or cost is debited in the same session;
+  docs/01-spec/budgets.md's header carries the debit and reserve rules.
 - Every design decision gets a line in docs/decisions.md. One that is hard to
   reverse, surprising without context, and a real trade-off also gets a
   paragraph-long ADR in docs/adr/NNNN-slug.md, linked from that line.

@@ -869,6 +869,25 @@ def test_each_template_carries_its_views_as_render_writes_them(
     assert re.findall(r"^<!-- ledger:(\S+) -->$", copied, re.M) == views
 
 
+LIBRARIAN = Path(__file__).resolve().parents[2] / "agents" / "librarian.md"
+
+
+def test_the_librarians_staged_entries_check_clean_once_merged(tmp_path):
+    # Merge appends a section's toml block to the project's ledger as
+    # written, so the worked one must load and check clean there.
+    text = LIBRARIAN.read_text(encoding="utf-8")
+    blocks = re.findall(r"^```toml\n(.*?)^```$", text, re.M | re.S)
+    assert blocks, "librarian.md shows no staged ledger entries"
+    root = project(tmp_path, "# seeded by init\n\n" + "\n".join(blocks), {})
+    staged = list(load(path=root))
+    assert staged
+    for e in staged:
+        assert e.section.startswith("part."), e.name
+        assert (e.kind, e.status) == ("datasheet", "candidate"), e.name
+        assert e.as_written and "retrieved" in e.source, e.name
+    assert [f for f in check(root, today=TODAY) if f.level == "error"] == []
+
+
 def test_render_from_the_shell_rewrites_the_views(tmp_path):
     root = project(tmp_path, PART, {BUDGETS: marked("budget.mass")})
     run = ledger("render", cwd=root)

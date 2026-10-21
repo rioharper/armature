@@ -29,7 +29,7 @@ model you chose for the hard thinking.
 
 | Agent | Tier | Why |
 |---|---|---|
-| `armature-librarian` | `sonnet` | search, verify the P/N, transcribe the numbers; what guards a mistranscription is the cached document and the ledger row that cites it, not a bigger model |
+| `armature-librarian` | `sonnet` | search, verify the P/N, transcribe the numbers; what guards a mistranscription is the cached document and the index row that cites it, not a bigger model |
 | `armature-inventor` | `sonnet` | reads widely and writes a brief that the red-team and the user both review before anything is built on it |
 | `armature-red-team` | `inherit` | a missed finding costs CAD hours and purchases, so it runs on whatever you deliberately chose |
 
@@ -46,8 +46,8 @@ a lookup scoped too wide, and the fix is a narrower run, not a bigger model.
 
 - **One part, or one slice of a field, per run.** A prompt carrying five parts makes a run
   long enough to hit the stall watchdog, and the whole run dies together.
-- **Prefer the agent that writes as it goes.** The librarian opens its ledger before its
-  first fetch and appends every row and cached file the moment it exists (`Open the ledger`
+- **Prefer the agent that writes as it goes.** The librarian opens its run file before its
+  first fetch and appends every row, entry and cached file the moment it exists (`Open the run file`
   in `agents/librarian.md`), so a killed run still leaves what it found. The inventor and
   the red-team write once at the end: a dead run leaves nothing, so keep an inventor's idea
   family narrow and re-run rather than resume it.
