@@ -110,3 +110,9 @@ The cost accepted:
 
 Revisit when an input number a decision needs has no section to live in, or
 when Overhaul 07's gate needs a finding `check` cannot produce.
+
+**Amended 2026-10-21 (ADR 0011):** a hook now consumes `check`. ADR 0011 gates
+two actions, `merge` and `buy`, on `check` reporting no error, among other
+evidence. At `buy`, `price.old` counts as an error, and an ordered part's
+entries must be `confirmed` with no `estimate` source. The plugin's hook asks
+the user before an edit sets `status = "confirmed"`.
