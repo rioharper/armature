@@ -190,8 +190,8 @@ unit = "1"
 as_written = "0.7"
 band = [0.6, 0.8]
 status = "confirmed"
-source = { kind = "datasheet", ref = "the tyre's datasheet, its friction range on sealed concrete", retrieved = 2026-10-21 }
-note = "the tyre's friction coefficient on the floor"
+source = { kind = "datasheet", ref = "TY-1", retrieved = 2026-10-21 }
+note = "the tyre's friction coefficient on the floor, its datasheet's range on sealed concrete"
 
 # --- req: the requirements' thresholds, keyed by REQ id ---
 # The hips' working range: a box inside their joint ranges, over which the

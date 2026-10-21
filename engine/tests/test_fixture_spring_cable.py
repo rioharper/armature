@@ -14,7 +14,7 @@ import pytest
 
 import armature
 from golden import spring_cable
-from golden.answers import CABLE_FREQUENCY, IMU_PEAK
+from golden.answers import CABLE_FREQUENCY, IMU_PEAK, PULL
 
 # The description is the golden project's, the mass on a cable. The spring is
 # its control, built from the same bob and slide.
@@ -145,7 +145,6 @@ def test_at_rest_the_cable_carries_the_weight_and_the_slide_nothing():
 
 
 # --- an accelerometer on the bob (#151) ----------------------------------------
-PULL = 0.004  # the brief's pull below rest, the bob let go from there [m]
 RANGE = 1.5 * G  # the accelerometer's ±1.5 g full scale [m/s^2]
 
 
