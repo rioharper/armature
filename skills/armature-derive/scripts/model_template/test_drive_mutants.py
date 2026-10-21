@@ -49,8 +49,8 @@ def test_kt_by_the_trapezoidal_convention_fails_the_constants_check(
         monkeypatch):
     """drive.py reading Kt as 9.55/Kv: refused against Ke by the engine,
     and off the hand reading."""
-    monkeypatch.setattr(drive, "kt_from_kv", lambda kv, convention: (
-        kt_from_kv(kv, convention="trapezoidal")))
+    monkeypatch.setattr(drive, "kt_from_kv", lambda kv, per, convention: (
+        kt_from_kv(kv, per=per, convention="trapezoidal")))
     with pytest.raises((AssertionError, DriveError)):
         drive_checks.test_each_motors_constants_agree_on_their_bases()
 

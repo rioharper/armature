@@ -30,6 +30,13 @@ are missing is UNCHECKED: its check prints the inputs it lacks and fails,
 unless the module's DRIVE_EXEMPT names it with an argued reason, which then
 prints in its row in place of FAILS.
 
+Before any of them, and before any milestone module is imported, it runs
+`python -m armature.ledger check` on the nearest `ledger.toml` at or above
+this folder (ADR 0010), as Milestone 0's first check: a unit slip, an
+estimate with no band or a dangling `of` stops the run there, before a model
+sizes anything on it. Where there is no ledger, or no engine to check one
+with, it says so and goes on.
+
 During development run one milestone by name — a module or a package:
 
     uv run python run_all.py kinematics
@@ -41,6 +48,7 @@ template, where the modules it collects are part files and libraries.
 """
 
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -58,6 +66,8 @@ DEFAULT_ORDER = float("inf")
 # stand by naming it in a module-level mapping of this name, margin name to
 # the reason, argued: `DRIVE_EXEMPT = {"elbow_motor: winding": "..."}`.
 UNCHECKED_EXEMPT = "DRIVE_EXEMPT"
+
+LEDGER_TITLE = "Milestone 0: the ledger"
 
 
 def is_model_module(stem):
@@ -273,6 +283,35 @@ def discover_exemptions(names=None):
             for check in checks if getattr(check, "exempt", None)}
 
 
+def ledger_check():
+    """The ledger's check, `python -m armature.ledger check` on the nearest
+    `ledger.toml` at or above this folder: it prints every finding and fails
+    on an error. None where the engine does not import or no ledger is
+    found, which `main` prints."""
+    try:
+        from armature.ledger import LedgerError, check, find
+    except ModuleNotFoundError as e:
+        if e.name != "armature":
+            raise   # the engine is there, and something it needs is not
+        return None
+    try:
+        path = find(HERE)
+    except LedgerError:
+        return None
+
+    def ledger():
+        findings = check(path)
+        for finding in findings:
+            print(f"  {finding}")
+        errors = [f for f in findings if f.level == "error"]
+        assert not errors, (
+            f"ledger check: {len(errors)} error(s) in {path}; the first is "
+            f"{errors[0]}")
+        print(f"  [PASS] ledger check on {os.path.relpath(path, HERE)}: no "
+              f"error, {len(findings)} warning(s)")
+    return ledger
+
+
 def _run(title, checks):
     print(f"=== {title} ===")
     for check in checks:
@@ -285,6 +324,12 @@ def main(names=None):
                if not (HERE / f"{name}.py").is_file()
                and not (HERE / name / "__init__.py").is_file()]
     assert not unknown, f"no module or package named {unknown} in {HERE}"
+    ledger = ledger_check()
+    _run(LEDGER_TITLE, [ledger] if ledger else [])
+    if ledger is None:
+        print(f"  no ledger.toml at or above {HERE}, or no engine to check "
+              f"one with")
+    print("")
     milestones = discover_milestones(names)
     assert milestones, (f"no milestone modules named {names} in {HERE}" if names
                         else f"no milestone modules found in {HERE}")

@@ -22,6 +22,7 @@ The derivation hangs its own `RigidBody`s on these frames and points and runs
 from dataclasses import dataclass
 from types import MappingProxyType
 
+import numpy as np
 import sympy as sp
 from sympy.physics.mechanics import (Point, ReferenceFrame, dynamicsymbols,
                                      inertia)
@@ -47,6 +48,11 @@ class Symbolic:
     (q_b − home_b), keyed by its follower, and a rigid cable's length less
     its rest length. A variant's masses, COMs and dyadics are its lumped
     ones, exactly: a body lumped away has mass 0.
+
+    A parameter whose value is a 3-vector is an array of three symbols,
+    `<name>_x` to `<name>_z`, and one whose value is a 3×3 tensor a
+    symmetric array of six, `<name>_xx` to `<name>_zz`, `_xy` standing for
+    `_yx` too. `numbers(values)` is the substitution for every symbol.
     """
     description: object
     q: MappingProxyType
@@ -67,11 +73,30 @@ class Symbolic:
     def coordinates(self):
         return tuple(self.q)
 
+    def numbers(self, values):
+        """Each parameter symbol's number in `values`, a mapping keyed as
+        the parameters are: what `.subs` takes. A vector's or a tensor's
+        symbols take its elements."""
+        numbers = {}
+        for name, value in values.items():
+            symbols = np.asarray(self.params[name], dtype=object)
+            if symbols.shape != np.shape(value):
+                raise ValueError(f"parameter {name!r} is shaped "
+                                 f"{symbols.shape}; got {np.shape(value)}")
+            if symbols.ndim == 2 and not np.allclose(value,
+                                                     np.transpose(value)):
+                raise ValueError(f"parameter {name!r} is a tensor and not "
+                                 f"symmetric; its _xy stands for _yx")
+            numbers.update(zip(symbols.ravel(),
+                               np.ravel(value).astype(float).tolist()))
+        return numbers
+
 
 def symbolic(mechanism, params):
     """The symbolic view of `mechanism` (or a variant), with a real SymPy
-    symbol for each key of `params`; the values are not read."""
-    symbols = {k: sp.Symbol(k, real=True) for k in params}
+    symbol for each key of `params`, or an array of them where its value is
+    a vector or a tensor; the values are read for their shapes only."""
+    symbols = {k: _symbols(k, np.shape(v)) for k, v in params.items()}
     d = describe(mechanism, symbols)
     world, origin = ReferenceFrame("world"), Point("origin")
     origin.set_vel(world, 0)
@@ -173,6 +198,22 @@ def _floating(j, b, q, locks, world, origin, axes):
             axes[f"{j.name}:{c}"] = axis
         frame = turned
     return frame, point
+
+
+def _symbols(name, shape):
+    """Parameter `name`'s symbol, or its array of them for a 3-vector or a
+    symmetric 3×3 tensor."""
+    if shape == ():
+        return sp.Symbol(name, real=True)
+    if shape == (3,):
+        return np.array([sp.Symbol(f"{name}_{c}", real=True) for c in "xyz"],
+                        dtype=object)
+    if shape == (3, 3):
+        return np.array([[sp.Symbol(f"{name}_{''.join(sorted(a + b))}",
+                                    real=True) for b in "xyz"] for a in "xyz"],
+                        dtype=object)
+    raise ValueError(f"parameter {name!r} is a number, a 3-vector or a 3×3 "
+                     f"tensor; got shape {shape}")
 
 
 def _coordinate(name):

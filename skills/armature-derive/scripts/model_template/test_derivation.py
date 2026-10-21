@@ -7,12 +7,13 @@ pass on one milestone reads two small files rather than one large one. This
 file only makes pytest run them: pytest collects `test_*.py`, and neither
 `kinematics.py` nor `kinematics_checks.py` matches.
 
-*Which* checks those are is `run_all.py`'s discovery, imported rather than
-repeated. So `pytest` and `run_all.py` cannot disagree about what the
-model's self-tests are, and a module added later is collected by both without
-either file being edited. A margin a milestone declares is one of those
-checks, `margin[<name>]`: searched, held to passing, and confirmed in its
-truth model, the same check `run_all.py` runs.
+The ledger's check, `run_all.ledger_check`, runs first here as it does in
+`run_all.py`. *Which* checks follow is `run_all.py`'s discovery, imported
+rather than repeated. So `pytest` and `run_all.py` cannot disagree about
+what the model's self-tests are, and a module added later is collected by
+both without either file being edited. A margin a milestone declares is one
+of those checks, `margin[<name>]`: searched, held to passing, and confirmed
+in its truth model, the same check `run_all.py` runs.
 """
 
 import sys
@@ -25,8 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import run_all  # noqa: E402  (needs the sys.path line above)
 
 MILESTONES = run_all.discover_milestones()
+LEDGER_CHECK = run_all.ledger_check()
 
-CHECKS = [
+CHECKS = ([pytest.param(LEDGER_CHECK, id="ledger")] if LEDGER_CHECK
+          else []) + [
     pytest.param(check, id=f"{module.__name__}.{check.__name__}")
     for _title, module, checks in MILESTONES
     for check in checks

@@ -242,7 +242,10 @@ SECTIONS = (  # (title, the Description's attribute, its row from (element, d))
 
 
 def _n(value):
-    """A number as a float; a symbol as itself."""
+    """A number as a float; a symbol as itself; a vector or a tensor as
+    tuples of either."""
+    if np.ndim(value) > 0:
+        return tuple(_n(v) for v in value)
     try:
         return float(value)
     except (TypeError, ValueError):

@@ -29,7 +29,6 @@ from missions import (PRESSING, REST, SHORTED, STOP_STEP, STOP_TIME,
 from drive import DRIVE_BANDS, DRIVE_MARGINS, MOTORS, drive, motor
 from run_all import HERE, UNCHECKED_EXEMPT, checks_for, searched
 
-RPM = 2 * math.pi / 60   # rad/s per rpm
 DQ_PER_PEAK = math.sqrt(1.5)  # a wye's d-q amperes per peak line ampere
 MARGINS = {margin.name: margin for margin in DRIVE_MARGINS}
 # The bus's peak, against the lowest trip on it: each driver's v_max, since
@@ -43,12 +42,12 @@ MIDPOINTS = (np.arange(20) + 0.5) / 20
 def by_hand(k):
     """Motor `k`'s (Kt [N m/A], Ke [V s/rad], R_phase [ohm]) from
     params.DRIVE, in the power-invariant d-q convention on its own shaft:
-    Kt = (sqrt(3)/2)(60/2pi)/Kv per peak line ampere, the sinusoidal reading;
-    Ke in V_rms/krpm line to line, which in a wye is the d-q magnitude; R
-    line to line, two windings in series."""
-    kt = (math.sqrt(3) / 2) / (DRIVE[f"kv{k}"] * RPM) / DQ_PER_PEAK
-    ke = DRIVE[f"ke{k}"] / (1000 * RPM)
-    return kt, ke, DRIVE[f"r{k}"] / 2
+    Kt = (sqrt(3)/2)/Kv per peak line ampere, Kv in rad/s per line-to-line
+    peak volt, the sinusoidal reading; Ke in V_rms per rad/s line to line,
+    which in a wye is the d-q magnitude; R line to line, two windings in
+    series."""
+    kt = (math.sqrt(3) / 2) / DRIVE[f"kv{k}"] / DQ_PER_PEAK
+    return kt, DRIVE[f"ke{k}"], DRIVE[f"r{k}"] / 2
 
 
 def bus_power(tau, omega, k):
@@ -87,7 +86,7 @@ def test_the_trapezoidal_reading_of_kv_is_refused():
     data must be refused, not used."""
     for a, k in MOTORS.items():
         wrong = replace(motor(DRIVE, k), kt=kt_from_kv(
-            DRIVE[f"kv{k}"], convention="trapezoidal"))
+            DRIVE[f"kv{k}"], per="(rad/s)/V", convention="trapezoidal"))
         try:
             check(wrong, _gear(a))
         except DriveError:

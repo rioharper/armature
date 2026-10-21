@@ -15,6 +15,17 @@
 - **pint ≥ 0.26 and tomlkit** are engine dependencies. pint is imported only when `check` or a budget's `show` needs it, so `load` never imports it.
 - **`kt_from_kv(kv, per="(rad/s)/V", …)`** takes the ledger's SI Kv beside the default rpm/V. `Ke`'s `per="V_rms/(rad/s)"` and its krpm form are both tested against the value in V·s/rad.
 
+### The model template reads the ledger
+
+[#141](https://github.com/rioharper/armature/issues/141). The 2R arm's numbers are unchanged.
+
+- **`ledger.toml`** sits beside the template. It holds the arm's `mechanism` and `drive` sections in SI, each entry with its provenance, and `drive`'s datasheet figures with their `as_written` and basis. The workspace, the rate limits, σ_min, the payload, the base acceleration and the contact force are `req.REQ-001`…`REQ-012`. The coarse arm's link radii are `part.*.radius`. Its three bands (m2, c_bus, v_bus) are on their entries. Spec §9's copy list and derive's copy step leave it behind, and derive's file layout puts the project's at its root.
+- **`params.py` writes no number.** It loads the ledger nearest its own folder. `PARAMS`, `DRIVE` and `REQ` are sections, `mechanism.py` and `drive.py` read their bands with `LEDGER.bands`, and the `params.toml` promise is gone. `params_checks.py` fails any numeric literal but 0 and ±1, and drops its band check, which `ledger check` covers.
+- **Each link's inertia is one 3×3 tensor entry**, read whole by `mechanism(p)`. `drive.py` passes Kv and Ke in their SI forms, and `drive_checks.py` works its hand answers from them.
+- **`run_all.py` runs `ledger check` first**, as Milestone 0, before any milestone module is imported, and stops on an error. `test_derivation.py` runs it as its first check. With no ledger, or no engine, it says so and goes on, so a project still without a ledger runs.
+- **`coarse_2r/` reads the same ledger.** Its copies and `test_spec_stage.py`'s drift test are gone.
+- **The engine's symbolic view takes vector and tensor parameters.** A 3-vector is three symbols, `<name>_x` to `_z`, and a tensor a symmetric array of six, `<name>_xx` to `_zz`. `Symbolic.numbers(values)` substitutes every element, and refuses an asymmetric tensor. The review artifact lists either on one row.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.

@@ -10,8 +10,9 @@ change, and neither do `drive.py` and `missions.py`, which read only
 `mechanism`, `truth`, `TOOL` and `BANDS`.
 
 The template's own tests run it: `test_spec_stage.py` copies it, with this
-directory's `params.py`, beside the drive and the missions, and runs
-`run_all.py` there. Delete this directory when you adapt the template.
+directory's `params.py` and the template's ledger, beside the drive and the
+missions, and runs `run_all.py` there. Delete this directory when you adapt
+the template.
 """
 
 import functools
@@ -21,12 +22,14 @@ import armature
 from armature import actuator, gravity, joint, site
 from armature.coarse import cylinder
 
-from params import BANDS as ALL_BANDS, PARAMS
+from params import LEDGER, PARAMS
 
 TOOL = "tip"
 
-# The mechanism's tolerance bands, those of PARAMS; DRIVE's are drive.py's.
-BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
+# The mechanism's tolerance bands, the ledger's on PARAMS; the drive
+# section's are drive.py's.
+BANDS = {k: band for k, band in LEDGER.bands("mechanism").items()
+         if k in PARAMS}
 
 
 def mechanism(p):

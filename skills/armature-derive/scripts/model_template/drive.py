@@ -2,10 +2,11 @@
 drive.py — the drive: each actuator's motor and driver, the bus they share,
 and the margins that size them over the missions (ADR 0006).
 
-`drive(p)` builds the engine's `Drive` from params.DRIVE, each constant's
-basis a keyword. DRIVE_MARGINS are armature.drive's margins, one per check,
-which `run_all.py` discovers and searches like any other; a margin missing
-its data is UNCHECKED and fails, unless DRIVE_EXEMPT argues it may stand.
+`drive(p)` builds the engine's `Drive` from params.DRIVE, the ledger's drive
+section in SI, each constant's basis a keyword. DRIVE_MARGINS are
+armature.drive's margins, one per check, which `run_all.py` discovers and
+searches like any other; a margin missing its data is UNCHECKED and fails,
+unless DRIVE_EXEMPT argues it may stand.
 Example: the 2R arm's two direct-drive motors. Replace with your machine's.
 Self-tests in drive_checks.py.
 """
@@ -15,7 +16,7 @@ from armature.drive import (Bus, Current, Drive, Driver, Ke, Motor,
                             Resistance, Source, Thermal, capacitance_needed,
                             energy, kt_from_kv, margins)
 
-from params import BANDS, DRIVE
+from params import DRIVE, LEDGER
 from missions import MISSIONS, SPACE
 
 # Run order and heading for `run_all.py`: after the derivation's milestones,
@@ -47,11 +48,13 @@ def thermal(p, k):
 
 
 def motor(p, k):
-    """Motor `k`. Kt from its Kv by the sinusoidal convention (8.27/Kv), the
-    one these motors' sinusoidal commutation implies; its datasheet Ke beside
-    it, so the engine holds the two to within 2 %."""
-    return Motor(kt=kt_from_kv(p[f"kv{k}"], convention="sinusoidal"),
-                 ke=Ke(p[f"ke{k}"], per="V_rms/krpm", between="line",
+    """Motor `k`. Kt from its Kv by the sinusoidal convention (8.27/Kv in
+    rpm/V), the one these motors' sinusoidal commutation implies; its
+    datasheet Ke beside it, so the engine holds the two to within 2 %. Both
+    are the ledger's SI forms, with the datasheet's basis."""
+    return Motor(kt=kt_from_kv(p[f"kv{k}"], per="(rad/s)/V",
+                               convention="sinusoidal"),
+                 ke=Ke(p[f"ke{k}"], per="V_rms/(rad/s)", between="line",
                        side="motor"),
                  r=Resistance(p[f"r{k}"], between="line"), wiring="wye",
                  thermal=thermal(p, k))
@@ -80,9 +83,11 @@ def drive(p):
                 capacitance=p["c_bus"], hotel=p["hotel"]))
 
 
-# The drive's own bands, each a DRIVE number drive(p) reads at its band value:
-# searched beside the missions' axes, by every margin, peak and duty alike.
-DRIVE_BANDS = {k: Band(k, BANDS, of="drive") for k in BANDS if k in DRIVE}
+# The drive's own bands, the ledger's on its drive section, each a number
+# drive(p) reads at its band value: searched beside the missions' axes, by
+# every margin, peak and duty alike.
+DRIVE_BANDS = {k: Band(k, LEDGER.bands("drive"), of="drive")
+               for k in LEDGER.bands("drive")}
 OVER = Space(**SPACE.axes, **DRIVE_BANDS)
 
 DRIVE_MARGINS = margins(drive, MISSIONS, OVER, params=DRIVE, budget=BUDGET)

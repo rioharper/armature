@@ -3,26 +3,31 @@ params_checks.py — self-tests for the parameter block, 00_setup.md.
 
 The block is data, so its checks are about the shape of that data rather than
 about physics: that the load-case table has not lost a sign, that every row
-names a direction set, and that every tolerance band is a parameter's and holds
-its nominal. Each of those is a whole class of downstream result quietly sized
-against the wrong thing. The workspace and the rate envelope are
-held against the description's coordinates in mechanism_checks.py, which owns
-the joint envelope they sit inside.
+names a direction set, and that the block writes no number of its own. Each of
+those is a whole class of downstream result quietly sized against the wrong
+thing. The numbers themselves, their units and bands among them, are
+`ledger check`'s, which `run_all.py` runs first. The workspace and the rate
+envelope are held against the description's coordinates in
+mechanism_checks.py, which owns the joint envelope they sit inside.
 
 It carries no truth check and says why below: the block's constants are held
 against the truth model where they are *used*, and there is nothing in a shape
 for a simulator to be asked about.
 """
 
-from params import BANDS, DRIVE, LOAD_CASES, PARAMS, PLANE_XY
+import ast
+from pathlib import Path
 
-# The parameter block is data. Every constant in it reaches the truth model
-# through mechanism(p), which the engine validates when it compiles — a value
-# defined and never read fails there, naming it, as does one read and never
-# defined — and each is then checked where a milestone uses it; the load-case
-# table is confirmed at the posture Milestone 3's search finds. What is left
-# here is the *shape* of the data, and a shape has nothing a simulator can be
-# asked about.
+import params
+from params import LOAD_CASES, PLANE_XY
+
+# The parameter block is data, the ledger's. Every mechanism entry reaches
+# the truth model through mechanism(p), which the engine validates when it
+# compiles — a value defined and never read fails there, naming it, as does
+# one read and never defined — and each is then checked where a milestone
+# uses it; the load-case table is confirmed at the posture Milestone 3's
+# search finds. What is left here is the *shape* of the data, and a shape has
+# nothing a simulator can be asked about.
 #
 # This is the argued exemption the truth gate takes, and it is written out
 # rather than waved at because the red team challenges every one of them. If
@@ -73,23 +78,29 @@ def test_every_load_case_names_a_direction_set():
     print(f"  [PASS] {len(LOAD_CASES)} load cases each name a direction set")
 
 
-def test_every_band_is_a_parameter_and_holds_its_nominal():
-    """A band names a parameter of the block and contains its nominal.
+def numeric_literals(source):
+    """Each number written into `source` other than 0 and 1 (and so −1), as
+    (line, value): a number that belongs in the ledger. A sign, an index, a
+    count of rows is structure, and these three cover them."""
+    return sorted((node.lineno, node.value)
+                  for node in ast.walk(ast.parse(source))
+                  if isinstance(node, ast.Constant)
+                  and isinstance(node.value, (int, float, complex))
+                  and not isinstance(node.value, bool)
+                  and node.value not in (0, 1))
 
-    A band on a name the description never reads widens nothing, and a band
-    that excludes its nominal is a typo whose search never visits the design
-    as drawn. The engine refuses both where a margin's space compiles the
-    mechanism, at import; this check holds every band, searched or not, and
-    runs where that import never happens (`run_all.py params`).
-    """
-    known = {**PARAMS, **DRIVE}
-    unknown = sorted(set(BANDS) - set(known))
-    assert not unknown, (f"bands {unknown} name no parameter of PARAMS or "
-                         f"DRIVE; the parameters are {sorted(known)}")
-    for name, (lo, hi) in BANDS.items():
-        assert lo < hi, f"band {name!r} = ({lo}, {hi}) has its low above its high"
-        assert lo <= known[name] <= hi, (
-            f"band {name!r} = ({lo}, {hi}) leaves its nominal {known[name]} "
-            f"outside; a band is a tolerance around the value the design uses")
-    print(f"  [PASS] {len(BANDS)} tolerance band(s), each a parameter's and "
-          f"holding its nominal: {sorted(BANDS)}")
+
+def test_the_parameter_block_writes_no_number():
+    """Every number params.py uses is a ledger entry's (ADR 0010), so it is
+    written once, with its unit, band and source, and `ledger check` holds
+    it. A literal here is a number nobody checks, and a copy of the ledger's
+    the moment it agrees with one. Its teeth first: a literal is found and
+    a sign is not."""
+    assert numeric_literals("x = (0, 1.0, -1, +1)\ny = -0.5\n") == [(2, 0.5)]
+    source = Path(params.__file__).read_text(encoding="utf-8")
+    found = numeric_literals(source)
+    assert not found, (
+        f"params.py writes numbers {found} (line, value); each belongs in "
+        f"ledger.toml as an entry, read here by its name")
+    print("  [PASS] params.py writes no number but 0 and +-1; the rest are "
+          "ledger.toml's")

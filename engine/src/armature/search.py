@@ -206,8 +206,9 @@ class Band(Interval):
     """A parameter's tolerance band: `Band("m2", BANDS)` spans
     `BANDS["m2"]`, a (low, high) pair, and its corners are both ends. The
     mapping is an argument, so the engine reads no project file; the
-    template passes `params.BANDS`. In a space with `Coordinates`, each
-    band's value overrides its parameter before the state is compiled, and
+    template passes the ledger's, `LEDGER.bands("mechanism")`. In a space
+    with `Coordinates`, each band's value overrides its parameter before
+    the state is compiled, and
     the space checks, before anything compiles, that the parameter is one
     of the mechanism's and that its nominal lies within its band. `fn`
     reads the value by axis name, as `p.m2`.

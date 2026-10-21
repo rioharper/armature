@@ -28,12 +28,12 @@ from sympy.physics.mechanics import dynamicsymbols
 import armature
 from armature import actuator, body, gravity, joint, site
 
-from params import BANDS as ALL_BANDS, PARAMS
+from params import LEDGER, PARAMS
 
-# The mechanism's tolerance bands: those of PARAMS' parameters, which compile
-# into the truth model. A band on a DRIVE number is the drive margins' own
+# The mechanism's tolerance bands: its ledger section's, which compile into
+# the truth model. A band on a drive number is the drive margins' own
 # (`drive.py`), and the derivation never sees it.
-BANDS = {k: band for k, band in ALL_BANDS.items() if k in PARAMS}
+BANDS = LEDGER.bands("mechanism")
 # Run order and heading for `run_all.py`. Milestone 0, beside the parameter
 # block it reads.
 MILESTONE = (0, "Milestone 0: the mechanism description")
@@ -45,11 +45,12 @@ TOOL = "tip"
 def mechanism(p):
     """The 2R arm. Gravity along -y, so the arm swings in the xy plane.
 
-    Each link's inertia is a slender rod's, about its COM and **on every axis**,
-    even the ones a planar arm cannot turn about: diag(0, 0, Izz) gives a planar
-    derivation the same M, C and g, but that zero is the planar assumption
-    written into the description, and the truth model, which does not make it,
-    refuses a body with no inertia about an axis.
+    Each link's inertia is one tensor, about its COM in base axes, as the
+    ledger states it and CAD writes it back. It is a slender rod's **on every
+    axis**, even the ones a planar arm cannot turn about: diag(0, 0, Izz)
+    gives a planar derivation the same M, C and g, but that zero is the
+    planar assumption written into the description, and the truth model,
+    which does not make it, refuses a body with no inertia about an axis.
 
     The joint ranges are the envelope: the configurations every claim is checked
     over, and what the truth model carries as its joint limits. The elbow's is
@@ -57,10 +58,9 @@ def mechanism(p):
     sweep is what finds where they belong, and then this range narrows.
     """
     return [
-        body("upper", mass=p["m1"], com=(p["lc1"], 0, 0),
-             inertia=np.diag([p["Ix1"], p["I1"], p["I1"]])),
+        body("upper", mass=p["m1"], com=(p["lc1"], 0, 0), inertia=p["I1"]),
         body("fore", mass=p["m2"], com=(p["l1"] + p["lc2"], 0, 0),
-             inertia=np.diag([p["Ix2"], p["I2"], p["I2"]])),
+             inertia=p["I2"]),
         joint("shoulder", "hinge", parent="world", child="upper",
               axis=(0, 0, 1), point=(0, 0, 0), range=(-math.pi, math.pi)),
         joint("elbow", "hinge", parent="upper", child="fore", axis=(0, 0, 1),
@@ -136,8 +136,7 @@ def numeric(expr, rates=False):
     # the derivative of a plain symbol, which is zero.
     swap = ([(c.diff(t), s) for c, s in zip(v.q.values(), vs)]
             + [(c, s) for c, s in zip(v.q.values(), qs)])
-    values = [(v.params[k], value) for k, value in PARAMS.items()
-              if k not in BANDS]
+    values = v.numbers({k: x for k, x in PARAMS.items() if k not in BANDS})
     f = sp.lambdify(list(qs + vs if rates else qs)
                     + [v.params[k] for k in BANDS],
                     sp.sympify(expr).subs(swap).subs(values), "numpy")

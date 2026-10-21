@@ -470,6 +470,68 @@ def test_symbolic_view_agrees_with_the_compiled_model(view):
             pytest.approx(s.pose("tip").rotation, abs=1e-12)
 
 
+# The same arm as a ledger states it (ADR 0010): each link's inertia one
+# tensor parameter, and the tool's seat one vector parameter, in place of l2.
+TENSOR_PARAMS = {
+    **{k: v for k, v in PARAMS.items()
+       if k not in ("I1", "I2", "Ix1", "Ix2", "l2")},
+    "I_upper": np.diag([P["Ix1"], P["I1"], P["I1"]]),
+    "I_fore": np.diag([P["Ix2"], P["I2"], P["I2"]]),
+    "tip_at": np.array([P["l1"] + P["l2"], 0.0, 0.0])}
+
+
+def tensor_arm(p):
+    return [
+        armature.body("upper", mass=p["m1"], com=(p["lc1"], 0, 0),
+                      inertia=p["I_upper"]),
+        armature.body("fore", mass=p["m2"], com=(p["l1"] + p["lc2"], 0, 0),
+                      inertia=p["I_fore"]),
+        joint("shoulder", "hinge", parent="world", child="upper",
+              axis=(0, 0, 1), point=(0, 0, 0), range=(-math.pi, math.pi)),
+        joint("elbow", "hinge", parent="upper", child="fore", axis=(0, 0, 1),
+              point=(p["l1"], 0, 0), range=(-2.6, 2.6)),
+        armature.site("tip", body="fore", pos=p["tip_at"]),
+        armature.actuator("shoulder_motor", joint="shoulder", gear=p["N1"],
+                          rotor_inertia=p["J1"], torque_limit=p["limit"]),
+        armature.actuator("elbow_motor", joint="elbow", gear=p["N2"],
+                          rotor_inertia=p["J2"], torque_limit=p["limit"]),
+        armature.gravity((0, -p["g"], 0)),
+    ]
+
+
+def test_symbolic_view_of_tensor_and_vector_parameters():
+    """A tensor parameter is a symmetric 3×3 of symbols, a vector one a
+    3-vector, and `numbers` substitutes each element: the view then gives
+    the closed-form M and tip, as the scalar arm's does."""
+    view = armature.symbolic(tensor_arm, TENSOR_PARAMS)
+    tensor = view.params["I_upper"]
+    assert tensor.shape == (3, 3) and len({*tensor.ravel()}) == 6
+    assert all(tensor[i, j] == tensor[j, i] for i in range(3)
+               for j in range(3))
+    assert view.params["tip_at"].shape == (3,)
+    assert isinstance(view.params["m1"], sp.Symbol)
+
+    q2 = 0.9
+    numbers = {**view.numbers(TENSOR_PARAMS), view.q["shoulder"]: 0.4,
+               view.q["elbow"]: q2}
+    rates = [sp.Symbol(f"v{i}") for i in range(2)]
+    swap = dict(zip([c.diff() for c in view.q.values()], rates))
+    energy = sum((view.mass[name] * view.com[name].vel(view.world).dot(
+        view.com[name].vel(view.world)) + frame.ang_vel_in(view.world).dot(
+        view.inertia[name].dot(frame.ang_vel_in(view.world)))) / 2
+        for name, frame in view.frames.items()).subs(swap)
+    got = np.array(sp.hessian(energy, rates).subs(numbers), dtype=float)
+    assert got == pytest.approx(mass_matrix(q2, rotors=False), rel=1e-12)
+    point = view.sites["tip"].pos_from(view.origin).to_matrix(view.world)
+    assert np.array(point.subs(numbers), dtype=float).ravel() == \
+        pytest.approx(tip(0.4, q2), abs=1e-12)
+
+    skew = TENSOR_PARAMS["I_upper"] + np.array([[0, 1e-3, 0], [0, 0, 0],
+                                                [0, 0, 0]])
+    with pytest.raises(ValueError, match="I_upper.*not symmetric"):
+        view.numbers({"I_upper": skew})
+
+
 def test_symbolic_variant_drops_the_locked_coordinate():
     locked = armature.reduce(arm, lock("elbow", 0.7, assumption="A3"))
     view = armature.symbolic(locked, PARAMS)

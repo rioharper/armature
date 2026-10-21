@@ -34,6 +34,7 @@ analysis/derivation/
   01_kinematics.md     <- Milestone 1
   02_dynamics.md       <- Milestone 2
   03_results.md        <- Milestone 3
+ledger.toml                <- every input number, once (ADR 0010), at the project root; never the template's
 analysis/model/
   pyproject.toml           <- the model's environment: the engine pinned by git tag (Step 0), with uv.lock
   params.py                <- Milestone 0 (parameter values, workspace, rate envelope, load cases)
@@ -61,7 +62,7 @@ analysis/model/
   test_derivation.py       <- the same checks, exposed to pytest
 ```
 
-Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: it hangs its own `RigidBody`s on the symbolic view's frames rather than reusing `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
+Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none, never its `ledger.toml`, which is the template's own. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: it hangs its own `RigidBody`s on the symbolic view's frames rather than reusing `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
 
 **Outline the note before writing its module.** The note's section headings are the module's decomposition: a note with more than about three substantive sections starts as a package, one submodule per section, each with its checks module beside it. Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it.
 

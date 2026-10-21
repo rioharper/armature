@@ -160,7 +160,8 @@ Checks that the physics closes.
 **Actuators and the bus are run, not worked** (ADR 0007). Create
 `analysis/model/`, the project's one model directory, from armature-derive's
 `scripts/model_template/`: copy `pyproject.toml`, `run_all.py`, `layout.py`,
-`layout_checks.py`, `drive.py`, `drive_checks.py` and `missions.py`, pin
+`layout_checks.py`, `drive.py`, `drive_checks.py` and `missions.py`, but
+never its `ledger.toml`, which is the template's own, pin
 the engine as armature-derive's Step 0 says, and leave the derivation's
 milestones for derive. Then write them for this
 machine: `params.py`, a coarse `mechanism.py` from `armature.coarse`

@@ -7,11 +7,11 @@ runs `run_all.py` before derive exists. This test does the same with
 `coarse_2r/`, the 2R arm as §9 would describe it: it copies what §9 keeps —
 the runner, the gates, the drive and the missions — beside the coarse
 description into a temporary directory and runs `run_all.py` there, which
-must search the same drive margins and pass. Delete it, and `coarse_2r/`,
+must search the same drive margins and pass. The project's ledger is the
+template's own, which the coarse arm reads too. Delete it, and `coarse_2r/`,
 when you adapt the template.
 """
 
-import importlib.util
 import os
 import shutil
 import subprocess
@@ -24,8 +24,6 @@ COARSE = HERE / "coarse_2r"
 # derivation's milestones are derive's to write, and are left behind.
 SPEC_STAGE = ("run_all.py", "layout.py", "layout_checks.py", "drive.py",
               "drive_checks.py", "missions.py")
-SHARED = ("DRIVE", "BANDS", "WORKSPACE", "QD_LIMITS", "QDD_LIMITS",
-          "F_CONTACT")
 # Every drive margin's name on this 2R arm, as drive.py's margins name them.
 DRIVE_MARGINS = [
     f"{a}: {check}" for a in ("shoulder_motor", "elbow_motor")
@@ -35,24 +33,10 @@ DRIVE_MARGINS = [
     for check in ("winding temperature", "driver RMS current")]
 
 
-def _module(path, name):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_the_coarse_arm_reads_the_templates_drive_data():
-    """The same drive.py and missions.py run on both, so the numbers they
-    read must be the same."""
-    coarse = _module(COARSE / "params.py", "coarse_params")
-    template = _module(HERE / "params.py", "template_params")
-    differ = [n for n in SHARED if getattr(coarse, n) != getattr(template, n)]
-    assert not differ, f"coarse_2r/params.py differs from params.py in {differ}"
-
-
 def test_the_drive_margins_run_on_a_coarse_description(tmp_path):
-    for name in SPEC_STAGE:
+    # The ledger stands at the project's root, which here is the model's
+    # folder, as the template's stands beside its files.
+    for name in (*SPEC_STAGE, "ledger.toml"):
         shutil.copy(HERE / name, tmp_path / name)
     for path in COARSE.glob("*.py"):
         shutil.copy(path, tmp_path / path.name)

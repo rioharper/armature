@@ -140,6 +140,16 @@ def test_the_markdown_carries_every_element():
     assert "| — |" in text            # and its axis, which it has none of
 
 
+def test_a_tensor_parameter_is_one_row_of_the_markdown():
+    """A ledger's tensor or vector parameter lists on its own row, as
+    nested tuples, not as an array's lines breaking the table."""
+    from test_fixture_2r_arm import TENSOR_PARAMS, tensor_arm
+    text = armature.frames(tensor_arm, TENSOR_PARAMS).markdown()
+    assert "| I_upper | ((0.00024, 0, 0), (0, 0.012, 0), (0, 0, 0.012)) |" \
+        in text
+    assert "| tip_at | (0.55, 0, 0) |" in text
+
+
 def test_frames_read_symbols_too():
     import sympy as sp
     symbols = {k: sp.Symbol(k, real=True) for k in ARM_PARAMS}

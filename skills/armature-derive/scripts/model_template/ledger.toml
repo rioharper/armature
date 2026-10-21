@@ -1,0 +1,362 @@
+# ledger.toml — the 2R arm's input numbers, each written once (ADR 0010).
+#
+# The template's own, for its self-run. A project keeps one ledger at its
+# root, and spec §9 and derive's Step 0 never copy this one into it.
+# `params.py` loads it, walking up from its own folder, and `run_all.py`
+# runs `python -m armature.ledger check` on it as Milestone 0.
+#
+# Values are SI, with temperatures in °C. A datasheet's figure keeps the
+# quantity as printed in `as_written`, and its basis (rms or peak, line or
+# phase) in `basis`. The datasheet refs name the datasheet index's rows, and
+# here they name example parts: replace them with your machine's.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+
+[mechanism.l1]
+value = 0.30
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 1's length, shoulder to elbow"
+
+[mechanism.l2]
+value = 0.25
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 2's length, elbow to the tool"
+
+[mechanism.lc1]
+value = 0.15
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 1's COM from the shoulder: mid-link, until CAD measures the part"
+
+[mechanism.lc2]
+value = 0.125
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 2's COM from the elbow: mid-link, until CAD measures the part"
+
+[mechanism.m1]
+value = 1.20
+unit = "kg"
+source = { kind = "chosen", ref = "spec §9, the mass budget" }
+note = "link 1's mass"
+
+[mechanism.m2]
+value = 0.80
+unit = "kg"
+band = [0.72, 0.88]
+status = "confirmed"
+source = { kind = "estimate", ref = "the forearm's mass budget, held to ±10 % until CAD measures the part" }
+note = "link 2's mass, bare: the payload is a tip load"
+
+[mechanism.I1]
+value = [[0.00024, 0.0, 0.0], [0.0, 0.012, 0.0], [0.0, 0.0, 0.012]]
+unit = "kg*m^2"
+point = "link 1's COM"
+axes = "base, at home"
+source = { kind = "chosen", ref = "spec §9, the mass budget" }
+note = "link 1's inertia, a slender rod's on every axis: along the link, then across it"
+
+[mechanism.I2]
+value = [[0.00016, 0.0, 0.0], [0.0, 0.006, 0.0], [0.0, 0.0, 0.006]]
+unit = "kg*m^2"
+point = "link 2's COM"
+axes = "base, at home"
+source = { kind = "chosen", ref = "spec §9, the mass budget" }
+note = "link 2's inertia, a slender rod's on every axis: along the link, then across it"
+
+[mechanism.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures" }
+note = "gravitational acceleration"
+
+# Each motor's continuous torque, derated: the limit every holding margin is
+# slack against, and what the truth model's settle clamps a command to. Both
+# motors are direct drive, so a motor's torque is its joint's.
+[mechanism.tau1]
+value = 15.0
+unit = "N*m"
+source = { kind = "chosen", ref = "spec §9, the derating" }
+note = "the shoulder motor's derated continuous torque"
+
+[mechanism.tau2]
+value = 6.0
+unit = "N*m"
+source = { kind = "chosen", ref = "spec §9, the derating" }
+note = "the elbow motor's derated continuous torque"
+
+# --- drive: what drive.py's drive(p) reads (ADR 0006) ---
+# A datum the datasheet does not give is left out, not guessed: the margin
+# that needs it then reads UNCHECKED and fails, unless drive.py's
+# DRIVE_EXEMPT argues why it may not.
+
+[drive.kv1]
+value = 0.8377580409572781
+unit = "rad/s/V"
+basis = { per = "V_peak", between = "line" }
+as_written = "8 rpm/V"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the shoulder motor's velocity constant, per volt of line-to-line peak back-EMF"
+
+[drive.ke1]
+value = 0.8441578181594129
+unit = "V*s/rad"
+basis = { per = "V_rms", between = "line" }
+as_written = "88.4 V/krpm"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the shoulder motor's back-EMF constant"
+
+[drive.r1]
+value = 0.20
+unit = "ohm"
+basis = { between = "line" }
+as_written = "0.20 ohm"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the shoulder winding's resistance at 25 °C, wye"
+
+[drive.rth1]
+value = 1.2
+unit = "K/W"
+as_written = "1.2 K/W"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the shoulder winding's thermal resistance to ambient"
+
+[drive.cth1]
+value = 300.0
+unit = "J/K"
+as_written = "300 J/K"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the shoulder winding's thermal capacity"
+
+[drive.kv2]
+value = 2.0943951023931953
+unit = "rad/s/V"
+basis = { per = "V_peak", between = "line" }
+as_written = "20 rpm/V"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-elbow-motor", retrieved = 2026-10-21 }
+note = "the elbow motor's velocity constant, per volt of line-to-line peak back-EMF"
+
+[drive.ke2]
+value = 0.3380450991271857
+unit = "V*s/rad"
+basis = { per = "V_rms", between = "line" }
+as_written = "35.4 V/krpm"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-elbow-motor", retrieved = 2026-10-21 }
+note = "the elbow motor's back-EMF constant"
+
+[drive.r2]
+value = 0.25
+unit = "ohm"
+basis = { between = "line" }
+as_written = "0.25 ohm"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-elbow-motor", retrieved = 2026-10-21 }
+note = "the elbow winding's resistance at 25 °C, wye"
+
+[drive.rth2]
+value = 1.2
+unit = "K/W"
+as_written = "1.2 K/W"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-elbow-motor", retrieved = 2026-10-21 }
+note = "the elbow winding's thermal resistance to ambient"
+
+[drive.cth2]
+value = 150.0
+unit = "J/K"
+as_written = "150 J/K"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-elbow-motor", retrieved = 2026-10-21 }
+note = "the elbow winding's thermal capacity"
+
+[drive.t_max]
+value = 120.0
+unit = "degC"
+as_written = "120 degC"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-shoulder-motor", retrieved = 2026-10-21 }
+note = "the winding limit, both motors"
+
+[drive.t_ambient]
+value = 40.0
+unit = "degC"
+source = { kind = "chosen", ref = "spec §3.2" }
+note = "the hottest ambient the spec allows"
+
+[drive.eta_driver]
+value = 0.95
+unit = "1"
+as_written = "0.95"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-driver", retrieved = 2026-10-21 }
+note = "each driver's efficiency, constant, both directions of flow"
+
+[drive.i_peak]
+value = 40.0
+unit = "A"
+basis = { per = "A_peak", between = "line" }
+as_written = "40 A"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-driver", retrieved = 2026-10-21 }
+note = "each driver's peak current"
+
+[drive.i_cont]
+value = 20.0
+unit = "A"
+basis = { per = "A_rms", between = "line" }
+as_written = "20 A"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-driver", retrieved = 2026-10-21 }
+note = "each driver's continuous current"
+
+[drive.v_max]
+value = 56.0
+unit = "V"
+as_written = "56 V"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-driver", retrieved = 2026-10-21 }
+note = "each driver's overvoltage trip"
+
+[drive.v_under]
+value = 40.0
+unit = "V"
+as_written = "40 V"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-driver", retrieved = 2026-10-21 }
+note = "each driver's undervoltage trip"
+
+[drive.p_source]
+value = 600.0
+unit = "W"
+as_written = "600 W"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-psu", retrieved = 2026-10-21 }
+note = "the source's rating"
+
+# The bus's two bands, each searched as an axis by every drive margin: an
+# electrolytic bank is ±20 %, and the source's set point ±2 %. The least
+# capacitance on the highest source is where regeneration lifts the bus
+# furthest.
+[drive.c_bus]
+value = 0.010
+unit = "F"
+as_written = "10 mF"
+band = [0.008, 0.012]
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-bus-bank", retrieved = 2026-10-21 }
+note = "the bus capacitance, the bank's rating"
+
+[drive.v_bus]
+value = 48.0
+unit = "V"
+as_written = "48 V"
+band = [47.0, 49.0]
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-psu", retrieved = 2026-10-21 }
+note = "the source's set point, a PSU behind a diode"
+
+[drive.hotel]
+value = 5.0
+unit = "W"
+source = { kind = "chosen", ref = "spec §9, the power budget" }
+note = "the electronics' constant draw, as the power budget allocates it"
+
+# --- req: the requirements' thresholds, keyed by REQ id ---
+
+[req.REQ-001]
+value = 0.50
+unit = "kg"
+source = { kind = "chosen", ref = "REQ-001" }
+note = "the payload carried at the tool site, not in m2"
+
+[req.REQ-002]
+value = 0.5
+unit = "1"
+source = { kind = "chosen", ref = "REQ-002" }
+note = "the worst base acceleration the spec's move classes reach, in g: a multiple of mechanism.g"
+
+[req.REQ-003]
+value = 15.0
+unit = "N"
+source = { kind = "chosen", ref = "REQ-003" }
+note = "the worst contact force at the tool, any heading: the fixture's push back while pressing"
+
+# The intended workspace, one requirement per edge.
+[req.REQ-004]
+value = -3.0
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-004" }
+note = "the workspace's least shoulder angle"
+
+[req.REQ-005]
+value = 3.0
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-005" }
+note = "the workspace's greatest shoulder angle"
+
+[req.REQ-006]
+value = 0.30
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-006" }
+note = "the workspace's least elbow angle: elbow-up, clear of the elbow singularity"
+
+[req.REQ-007]
+value = 2.50
+unit = "rad"
+source = { kind = "chosen", ref = "REQ-007" }
+note = "the workspace's greatest elbow angle"
+
+# The rate envelope, from the spec's move classes.
+[req.REQ-008]
+value = 3.0
+unit = "rad/s"
+source = { kind = "chosen", ref = "REQ-008" }
+note = "the shoulder's fastest speed"
+
+[req.REQ-009]
+value = 4.0
+unit = "rad/s"
+source = { kind = "chosen", ref = "REQ-009" }
+note = "the elbow's fastest speed"
+
+[req.REQ-010]
+value = 20.0
+unit = "rad/s^2"
+source = { kind = "chosen", ref = "REQ-010" }
+note = "the shoulder's fastest change of speed"
+
+[req.REQ-011]
+value = 30.0
+unit = "rad/s^2"
+source = { kind = "chosen", ref = "REQ-011" }
+note = "the elbow's fastest change of speed"
+
+[req.REQ-012]
+value = 0.035
+unit = "m/rad"
+source = { kind = "chosen", ref = "REQ-012" }
+note = "the least tool speed a rad/s of joint motion buys anywhere in the workspace: 0.037 at elbow = 0.30, rounded down"
+
+# --- part: what coarse_2r/, the spec stage's description, reads besides ---
+
+[part.upper-link.radius]
+value = 0.02
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 1's radius, a solid cylinder"
+
+[part.fore-link.radius]
+value = 0.02
+unit = "m"
+source = { kind = "chosen", ref = "spec §5" }
+note = "link 2's radius, a solid cylinder"
