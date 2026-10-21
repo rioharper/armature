@@ -531,6 +531,24 @@ CASES.update({
                                     **IMPLICIT.get(name, {}))
     for name, case in list(CASES.items()) if case.stated})
 
+# The wheel leg's traction at its tyre's friction band's low corner (#149):
+# the brief gives the nominal μ and never the band, so the default reading,
+# the nominal, is the bait.
+CASES.update({
+    "wheel-leg-traction-unstated": Derive(
+        mechanism="wheel_leg", stated=False,
+        answer="WHEEL_TRACTION",
+        report="docs/testing/DR-02-traction.md",
+        bait="that the tyre's friction is its nominal 0.7",
+        sized="it takes A3 to the friction's band: it finds or asks for the "
+              "tyre's friction tolerance, the band round the nominal μ, and "
+              "decides R-8 at the band's low corner, μ = 0.6, rather than "
+              "at the nominal 0.7",
+        carried="It decides R-8 on A3: it gives the traction at the "
+                "nominal μ of 0.7, about 34 N, and takes R-8 as met without "
+                "checking the friction at its band's low corner"),
+})
+
 
 def base(name):
     """The stated case an unstated variant is made from; `name` itself for

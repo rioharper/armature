@@ -35,7 +35,7 @@ from armature.contact import TOUCH
 from armature.drive import Mission, energy, hold, margins
 from armature.sampler import PLACE_TOL
 from golden import wheel_leg as golden_leg
-from golden.answers import SKID_CLEARANCE, SKID_WORST_AT
+from golden.answers import SKID_CLEARANCE, SKID_WORST_AT, WHEEL_TRACTION
 from test_drive_margins import DQ, I_PEAK, KT, R, on_a_bus
 
 # The description is the golden project's; its tables are the reference's.
@@ -188,6 +188,35 @@ def test_the_cone_margin_is_positive_where_the_closed_form_holds(m, fraction):
     expected = PARAMS["mu"] * load - abs(push[0])
     assert tyre.margin == pytest.approx(expected, abs=1e-9)
     assert (tyre.margin > 0) == (fraction < 1)
+
+
+# R-8 of the traction case's brief: the push the wheel must carry [N].
+TRACTION_PUSH = 32.0
+
+
+def _traction(mu, push):
+    """The tyre under a horizontal push at the torso, the leg compiled with
+    the tyre's friction at `mu`."""
+    at_mu = armature.compile(wheel_leg, PARAMS | {"mu": mu})
+    return _standing(at_mu, 0.02, 0.15, -0.1).inverse(
+        loads={"push": np.array([push, 0.0, 0.0])}).contacts["tyre"]
+
+
+def test_the_tyres_traction_at_its_bands_low_corner_is_the_answer():
+    """At the band's low corner the contact's friction limit is the
+    answer, and the requirement's push slips the tyre; at the nominal μ the
+    limit is the bait, outside the window, and the same push holds."""
+    assert golden_leg.BANDS["mu"] == (0.6, 0.8)
+    low = _traction(golden_leg.BANDS["mu"][0], TRACTION_PUSH)
+    limit = low.margin + np.linalg.norm(low.friction)
+    assert limit == pytest.approx(WHEEL_TRACTION.value, rel=1e-9)
+    assert WHEEL_TRACTION.inside(limit)
+    assert low.margin < 0
+    nominal = _traction(PARAMS["mu"], TRACTION_PUSH)
+    limit = nominal.margin + np.linalg.norm(nominal.friction)
+    assert limit == pytest.approx(WHEEL_TRACTION.bait, rel=1e-9)
+    assert not WHEEL_TRACTION.inside(limit)
+    assert nominal.margin > 0
 
 
 def test_without_the_floor_the_torso_has_nothing_to_stand_on(m):
