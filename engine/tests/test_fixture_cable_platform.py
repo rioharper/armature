@@ -29,10 +29,12 @@ from golden.answers import PLATFORM_TILT
 
 # The description is the golden project's, hung at HOME, the room centre; its
 # own PARAMS are the law's rest lengths at its POSE. Every other pose here
-# takes `params(point, m)`.
+# takes `params(point, m)`. The platform's inertia is a tensor, one of
+# PARAMS, which every pose's parameters carry.
 RIG = cable_platform.params
-G, EA, I_P, ANCHORS, ATTACH, COM, HOME = (RIG.G, RIG.EA, RIG.I_P, RIG.ANCHORS,
-                                          RIG.ATTACH, RIG.COM, RIG.HOME)
+G, EA, ANCHORS, ATTACH, COM, HOME = (RIG.G, RIG.EA, RIG.ANCHORS, RIG.ATTACH,
+                                     RIG.COM, RIG.HOME)
+I_P = cable_platform.PARAMS["I_P"]
 platform = cable_platform.mechanism
 T_HARD, T_PREF, T_CEIL = 3.0, 10.0, 60.0
 
@@ -88,7 +90,7 @@ def law(point, m):
 
 def params(point, m):
     _, rest = law(np.asarray(point, float), m)
-    return {"m": m, **{f"l0_{i + 1}": rest[i] for i in range(4)}}
+    return {"m": m, **{f"l0_{i + 1}": rest[i] for i in range(4)}, "I_P": I_P}
 
 
 def potential(point, m, rest, turn=None):
@@ -196,8 +198,11 @@ def test_level_start_is_balanced_only_at_the_centre():
 
 def test_the_golden_rest_lengths_are_the_law_at_its_pose():
     m = cable_platform.PARAMS["m"]
-    assert cable_platform.PARAMS == pytest.approx(params(RIG.POSE, m),
-                                                  rel=1e-12)
+    want = params(RIG.POSE, m)
+    assert cable_platform.PARAMS.keys() == want.keys()
+    rest = [f"l0_{i + 1}" for i in range(4)]
+    assert [cable_platform.PARAMS[k] for k in rest] == pytest.approx(
+        [want[k] for k in rest], rel=1e-12)
 
 
 def test_settle_tilts_to_the_answer_at_the_stated_pose():
@@ -326,7 +331,7 @@ def test_hanging_platform_stiffness_and_modes():
 
     lever = np.array([[0, 0.1, 0], [-0.1, 0, 0], [0, 0, 0]])  # [COM]×, COM 0.1 below
     mass = np.block([[2.0 * np.eye(3), -2.0 * lever],
-                     [2.0 * lever, I_P * np.eye(3) - 2.0 * lever @ lever]])
+                     [2.0 * lever, I_P - 2.0 * lever @ lever]])
     assert lin.mass == pytest.approx(mass, abs=1e-12)
     assert np.all(lin.frequencies > 0)
     # yaw 2.49 Hz and vertical 11.0 Hz as the review has them; tilt-sway

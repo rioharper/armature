@@ -5,27 +5,30 @@ The anchor square (4 m, at 2.4 m) is a scaled copy of the attachment square
 (0.15 m). The platform is described hung at HOME, the room centre; PARAMS'
 rest lengths are those the level-platform tension law of Plumb's Milestone 1
 Rev 1.0 (01_kinematics.md §3) gives at POSE, the edge midpoint, carrying m.
+Every number is a `ledger.toml` entry's (ADR 0010), the ledger nearest this
+file's folder.
 """
+
+from pathlib import Path
 
 import numpy as np
 
-G = 9.81          # gravitational acceleration, the engine's default [m/s^2]
-EA = 44_000.0     # each cable's axial stiffness [N]
-I_P = 0.02        # the platform's inertia about its COM, every axis [kg m^2]
-ANCHORS = np.array([[0, 0, 2.4], [4, 0, 2.4], [4, 4, 2.4], [0, 4, 2.4]],
-                   float)  # [m]
-ATTACH = np.array([[-0.075, -0.075, 0], [0.075, -0.075, 0],
-                   [0.075, 0.075, 0], [-0.075, 0.075, 0]])  # about the point
-COM = np.array([0.0, 0.0, -0.10])  # below the point [m]
-HOME = np.array([2.0, 2.0, 1.2])   # the room centre [m]
-POSE = np.array([0.5, 2.0, 1.2])   # the edge midpoint [m]
+from armature.ledger import load
 
-PARAMS = {
-    "m": 2.0,                     # the platform's mass [kg]
-    "l0_1": 2.306986964007753,    # each cable's rest length at POSE [m]
-    "l0_2": 4.10772522279266,
-    "l0_3": 4.10772522279266,
-    "l0_4": 2.306986964007753,
-}
+LEDGER = load(path=Path(__file__).resolve().parent)
+RIG = LEDGER.section("part.rig")
+PLATFORM = LEDGER.section("part.platform")
 
-BANDS = {}
+G = RIG["g"]                         # the engine's default gravity [m/s^2]
+EA = LEDGER.section("part.cable")["ea"]  # each cable's axial stiffness [N]
+# One row per cable, c1 first, in the ledger's order [m].
+ANCHORS = np.array([v for k, v in RIG.items() if k.startswith("anchor-")])
+ATTACH = np.array([v for k, v in PLATFORM.items()
+                   if k.startswith("attach-")])  # about the point
+COM = PLATFORM["com"]                # below the point [m]
+HOME = RIG["home"]                   # the room centre [m]
+POSE = RIG["pose"]                   # the edge midpoint [m]
+
+# Exactly what mechanism(p) reads, in SI: the platform's mass, each cable's
+# rest length at POSE, and its inertia, one tensor about its COM.
+PARAMS = LEDGER.section("mechanism")

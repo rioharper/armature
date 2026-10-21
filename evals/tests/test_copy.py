@@ -11,6 +11,7 @@ is what is tested.
 """
 
 import os
+import re
 import subprocess
 
 import pytest
@@ -62,10 +63,15 @@ def test_the_copy_holds_no_progress_log(plugin_copy):
     assert not (plugin_copy / "PROGRESS.md").exists()
 
 
+def _project(name):
+    """The golden project `name`'s files: its modules and its ledger."""
+    return [*(GOLDEN / name).glob("*.py"), GOLDEN / name / "ledger.toml"]
+
+
 def test_the_copy_holds_every_golden_project_under_evals(plugin_copy):
     assert MECHANISMS
     for name in MECHANISMS:
-        for source in (GOLDEN / name).glob("*.py"):
+        for source in _project(name):
             copied = plugin_copy / "evals" / "golden" / name / source.name
             assert copied.read_bytes() == source.read_bytes(), copied
 
@@ -90,7 +96,9 @@ def test_a_scaffold_in_the_copy_lays_down_the_golden_project(
         plugin_copy, tmp_path, case, mechanism):
     """The scaffold reads the golden project from the copy, and points the
     project's engine at the copy's engine, which holds no tests; the
-    project's `run_all.py` then passes on it. The hold-out's scaffold is
+    project's `run_all.py` then passes on it, its ledger check first. The
+    ledger lands at the project's root, where `load` finds it walking up
+    from analysis/model/, and nowhere else. The hold-out's scaffold is
     checked here too, since no tuned check reaches it."""
     cache = run(["uv", "cache", "dir"], tmp_path).stdout.strip()
     scaffold = (plugin_copy / "evals" / case / "scaffold.sh").as_posix()
@@ -100,9 +108,14 @@ def test_a_scaffold_in_the_copy_lays_down_the_golden_project(
     model = tmp_path / "analysis" / "model"
     for source in (GOLDEN / mechanism).glob("*.py"):
         assert (model / source.name).read_bytes() == source.read_bytes()
+    ledger = GOLDEN / mechanism / "ledger.toml"
+    assert (tmp_path / "ledger.toml").read_bytes() == ledger.read_bytes()
+    assert not (model / "ledger.toml").exists()
     engine = (plugin_copy / "engine").resolve().as_posix()
     pyproject = (model / "pyproject.toml").read_text(encoding="utf-8")
     assert f'path = "{engine}"' in pyproject.replace("\\", "/")
     checked = run(["uv", "run", "--offline", "python", "run_all.py"], model,
                   UV_CACHE_DIR=cache)
     assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert re.search(r"\[PASS\] ledger check on \.\.[\\/]\.\.[\\/]ledger\.toml"
+                     r": no error", checked.stdout), checked.stdout[:2000]
