@@ -6,7 +6,7 @@ run_all.py — every self-test in cad/parts/, in order, end to end.
 Exits nonzero on the first failing check, which is what makes it a
 pre-commit hook or CI step. `--project analysis/model` runs it in the
 model's environment, which has the engine the sweep poses its envelopes
-with; the part files need only build123d and analysis/model/params.py.
+with; the part files need only build123d and the ledger.
 
 Discovery is by shape, not by name. A module in this directory, or one level
 down in a package, is collected when its sibling checks module

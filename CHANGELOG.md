@@ -26,6 +26,15 @@
 - **`coarse_2r/` reads the same ledger.** Its copies and `test_spec_stage.py`'s drift test are gone.
 - **The engine's symbolic view takes vector and tensor parameters.** A 3-vector is three symbols, `<name>_x` to `_z`, and a tensor a symmetric array of six, `<name>_xx` to `_zz`. `Symbolic.numbers(values)` substitutes every element, and refuses an asymmetric tensor. The review artifact lists either on one row.
 
+### CAD reads the ledger and writes its measurement back
+
+[#145](https://github.com/rioharper/armature/issues/145). The worked bracket's numbers are unchanged.
+
+- **`part.py` reads the ledger with `tomllib`.** It reads the nearest `ledger.toml` at or above its own folder, through `check/ledger.py`, which is standard library only. A part file still needs build123d and nothing else. `DENSITY` is the stock's entry, `part.al-6061-t6.density`. The target is the body's mass, COM and inertia entries named in `BODY`, each read through any `of` chain, and the tensor is refused without its `point` and `axes`. `_resolve_target` returns all three, and its provenance line names the file, each entry and its kind, and the tensor's frame. While `BODY` is still the placeholder, at sketch grade, the target falls back to the budget line `budget.mass.<PART-ID>`. A renamed entry, a missing budget line or a half-pointed `BODY` raises.
+- **The template's own `ledger.toml`** holds the bracket's density and its budget line, for its self-run. It is never copied into a project, where it would shadow the root's.
+- **`py -m armature.ledger set part.<pn> --from-part <file>`** runs the part file's `--mass-properties` export, one JSON line, and writes `.mass`, `.com` and `.inertia`. Each has `kind = "cad"`, `ref = "<file>@<rev>"` (the file's last commit, `+dirty` if it has changed since, or `uncommitted`) and `status = "candidate"`. The tensor carries its `point` and `axes`, and the COM its origin as `point` and its `axes`. The write goes through tomlkit, so comments, order and every field `set` doesn't own survive, and new entries go at the end of the file. A re-run with the same measurement and rev changes nothing, a user's confirmation included. A moved measurement is a candidate again. `set` refuses an export without its frame, and leaves the ledger as it was on any refusal.
+- **`sweep/`** reads its link lengths and compiles the truth model from the ledger's `mechanism` section nearest `analysis/model/`, the one the model reads, and imports no `params.py`. With no ledger it stops, as it did with no `params.py`.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.

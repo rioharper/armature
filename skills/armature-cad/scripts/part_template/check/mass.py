@@ -16,7 +16,7 @@ def mass_properties(part, density: float, about=None) -> dict:
     Args:
         part: any build123d shape with volume.
         density: kg/m^3 of the chosen stock (Al 6061 = 2700, PLA = 1240,
-            steel = 7850). From the BOM, not from memory.
+            steel = 7850). From the ledger, not from memory.
         about: optional (x, y, z) point IN MM to report inertia about.
             Default None = about the part's own centre of mass.
             The dynamics may have used a joint origin instead — if so,
