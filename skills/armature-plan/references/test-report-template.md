@@ -17,5 +17,5 @@ Pass/fail against the criterion, stated with the number.
 
 ## Feeds
 - traceability row updated: <REQ-xxx → status>
-- params.py value updated: <symbol, old → measured> (or n/a)
-- budgets.md row updated: <line item> (or n/a)
+- ledger entry updated: <entry, old → measured, source kind measured> (or n/a)
+- render and check run, budgets re-rendered: <budget.kind> (or n/a)

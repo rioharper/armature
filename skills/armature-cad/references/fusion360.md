@@ -19,7 +19,7 @@ For the dimensions SKILL.md's rule marks driven:
 
 - **Modify → Change Parameters**: add a **User Parameter** per driven dimension (`link_len = 200 mm`, `bolt_circle = 45 mm`) with units and an optional comment.
 - In any sketch dimension or feature input, type the parameter name (or an expression like `bolt_circle/2`) instead of a raw number.
-- Editing a User Parameter updates every reference on the next compute — the model-side echo of `params.py`. One parameter per real design driver, referenced everywhere, rather than the same number typed in three sketches.
+- Editing a User Parameter updates every reference on the next compute — the model-side echo of the project's ledger. One parameter per real design driver, referenced everywhere, rather than the same number typed in three sketches.
 - For size families, drive a **Configuration** from the parameters rather than saving copies.
 
 ## 4. Insert the COTS model and joint to it

@@ -1,13 +1,14 @@
 """
 dynamics/lagrangian_checks.py — self-tests for lagrangian.py, 02_dynamics.md §1–2.
 
-Every check here but two is **self-consistency**: it holds M, C, g and V
+Every check here but three is **self-consistency**: it holds M, C, g and V
 against each other and against properties any correct Lagrangian has, using no
 model but this one. That is exactly what a wrong assumption survives, since the
 assumption sits on both sides of the comparison. The two truth checks — the
-inverse dynamics and the modes — hold the equations against the truth model;
-keep the rest for what they are good at, which is catching an arithmetic slip
-the moment it lands.
+inverse dynamics and the modes — hold the equations against the truth model,
+and the closed form holds them against a book's, computed from the same ledger
+entries; keep the rest for what they are good at, which is catching an
+arithmetic slip the moment it lands.
 """
 
 import numpy as np
@@ -20,7 +21,7 @@ from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, N, g_num,
                                  V_num, q, small_oscillation_modes, t,
                                  total_energy)
 from mechanism import derived, named, truth, vector
-from params import QDD_LIMITS, QD_LIMITS
+from params import PARAMS, QDD_LIMITS, QD_LIMITS
 
 # The configuration whose modes 02_dynamics.md quotes, and the rank the note
 # claims the gravity stiffness has there. Both are claims; both are checked.
@@ -38,22 +39,35 @@ MODES_ASSUME = (
     "of g moves the mechanism instead of restoring it, and a large-amplitude "
     "swing is a different frequency")
 
-# One state, and what M, C, g and V read there. Hand-checked for the shipped
-# 2R arm and pinned so a rebuild of the symbolic construction — the move onto
-# sympy.physics.mechanics was one, the move onto the description's symbolic
-# view another — has to produce the same equations, not merely equations with
-# the same properties. Replace these with your own mechanism's numbers, from a
-# source that is not this file.
-PINNED_Q = (0.3, -0.4)
-PINNED_QD = (0.7, 1.1)
-PINNED = {
-    "M": [[0.1847636596401731, 0.04613182982008655],
-          [0.04613182982008655, 0.0185]],
-    "C": [[0.012850805296185468, 0.02102859048466713],
-          [-0.00817778518848166, 0.0]],
-    "g": [4.912276488633065, 0.9760990861377432],
-    "V": 1.1196657737555127,
-}
+# What the closed form below is a theorem about, named once so its check can
+# hand it over when the comparison fails.
+ELBOW_ASSUME = (
+    "a planar two-link chain, both joints about base z, the elbow angle "
+    "measured from link 1, each COM on its link's line, and gravity along -y")
+
+
+def closed_form(qv, qdv, p=PARAMS):
+    """M, C, g and V of the planar elbow manipulator, from the ledger's
+    numbers by the textbook route (Spong, Hutchinson and Vidyasagar, *Robot
+    Modeling and Control*, 1st ed., ch. 7, the planar elbow manipulator), in
+    the Christoffel form of C. It shares nothing with lagrangian.py but the
+    ledger, so a rebuild of the symbolic construction has to produce the same
+    equations, and an edit to an entry moves both sides at once."""
+    l1, lc1, lc2 = p["l1"], p["lc1"], p["lc2"]
+    m1, m2, grav = p["m1"], p["m2"], p["g"]
+    i1, i2 = np.asarray(p["I1"])[2, 2], np.asarray(p["I2"])[2, 2]
+    c2, s2 = np.cos(qv[1]), np.sin(qv[1])
+    m12 = m2 * (lc2 ** 2 + l1 * lc2 * c2) + i2
+    M = np.array([[m1 * lc1 ** 2 + i1 + m2 * (l1 ** 2 + lc2 ** 2
+                                              + 2 * l1 * lc2 * c2) + i2, m12],
+                  [m12, m2 * lc2 ** 2 + i2]])
+    h = -m2 * l1 * lc2 * s2
+    C = np.array([[h * qdv[1], h * (qdv[0] + qdv[1])], [-h * qdv[0], 0]])
+    arm1, arm2 = (m1 * lc1 + m2 * l1) * grav, m2 * lc2 * grav
+    g = np.array([arm1 * np.cos(qv[0]) + arm2 * np.cos(qv[0] + qv[1]),
+                  arm2 * np.cos(qv[0] + qv[1])])
+    V = arm1 * np.sin(qv[0]) + arm2 * np.sin(qv[0] + qv[1])
+    return {"M": M, "C": C, "g": g, "V": np.array([V])}
 
 
 def test_coordinates_match_the_variant():
@@ -66,19 +80,26 @@ def test_coordinates_match_the_variant():
           f"{list(derived().coordinates)}")
 
 
-def test_pinned_sample(tol=1e-12):
-    """M, C, g and V at one state, against the values pinned above."""
-    got = {
-        "M": np.asarray(M_num(*PINNED_Q), dtype=float),
-        "C": np.asarray(C_num(*PINNED_Q, *PINNED_QD), dtype=float),
-        "g": np.asarray(g_num(*PINNED_Q), dtype=float).flatten(),
-        "V": np.asarray(V_num(*PINNED_Q), dtype=float).flatten(),
-    }
-    for name, want in PINNED.items():
-        expected = np.asarray(want, dtype=float).flatten()
-        assert np.allclose(got[name].flatten(), expected, atol=tol), \
-            f"{name} at q={PINNED_Q} is {got[name]}, pinned value {want}"
-    print("  [PASS] M, C, g and V match the pinned sample")
+def test_closed_form(n=8, seed=DEFAULT_SEED, tol=1e-12, p=PARAMS):
+    """M, C, g and V at sampled states, against `closed_form`: the expected
+    values are computed from the ledger by a second route, never pinned from
+    this model's output (the standards, *A check's expected value*)."""
+    samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
+                                     qdd_limits=QDD_LIMITS)
+    for s in samples:
+        qv, qdv = vector(s.q), vector(s.qd)
+        got = {
+            "M": np.asarray(M_num(*qv), dtype=float),
+            "C": np.asarray(C_num(*qv, *qdv), dtype=float),
+            "g": np.asarray(g_num(*qv), dtype=float).flatten(),
+            "V": np.asarray(V_num(*qv), dtype=float).flatten(),
+        }
+        for name, want in closed_form(qv, qdv, p).items():
+            assert np.allclose(got[name], want, atol=tol), (
+                f"{name} at q={qv}, qd={qdv} is {got[name]}, the closed form "
+                f"{want}. The form assumes {ELBOW_ASSUME}")
+    print(f"  [PASS] M, C, g and V match the planar elbow's closed form over "
+          f"{samples}")
 
 
 def test_mass_matrix_properties(trials=5, seed=DEFAULT_SEED, tol=1e-9):
