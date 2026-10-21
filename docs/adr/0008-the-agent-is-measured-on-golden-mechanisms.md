@@ -88,3 +88,17 @@ case's own, its brief, catch graders, scaffold, golden project and answer, is
 written once and frozen by a pinned hash, and what ships with the plugin says
 only that it exists. Rejected: gating on it, since a gate is what gets tuned
 against.
+
+**Amended 2026-10-21 (#137):** the 2.0.0 release run's baseline caught every
+case 3/3, the unstated variants and the hold-out included. The scaffold gives
+both arms the engine and the golden description, so every trap fell to a verb
+on the truth model, and Δ measured the skills on top of the engine. A tuned
+trap must now survive a passing `run_all.py`: the scaffolded run exposes
+nothing of it, and only a question a skill rule makes the agent ask finds it.
+Three such cases, a band corner, a one-signed load and a requirement read
+against the wrong measured quantity, are **unstated-only**: no stated twin,
+since stating the bait states the question the trap tests. They gate on the
+same 2/3. Rejected: a bare baseline arm, since `claude plugin eval` gives a
+scaffold nothing that names its arm (a separate issue), and red-team cases
+for the new traps, until #138 makes the dispatch consistent. A release now
+costs about $117 of plan usage and 4.3 h of wall time.

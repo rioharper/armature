@@ -74,21 +74,68 @@ def _scaffolded(kind, laid):
                           .read_text(encoding="utf-8"), re.M)]
 
 
-def _a_case_and_its_unstated_variant(mechanism, names):
+def _a_case_and_its_unstated_variant(mechanism, names, cases=None):
     """Each golden mechanism's case of a family comes twice: once with its
-    bait stated, and once as `<case>-unstated`, the bait only implied.
-    Returns the stated case's name."""
-    stated = [n for n in names if generate.CASES[n].stated]
+    bait stated, and once as `<case>-unstated`, the bait only implied. Any
+    number of unstated-only trap cases (#137) may sit beside them. Returns
+    the stated case's name."""
+    cases = generate.CASES if cases is None else cases
+    only = set(generate.unstated_only(cases))
+    stated = [n for n in names if cases[n].stated]
     assert len(stated) == 1, (mechanism, names)
-    assert sorted(names) == [stated[0],
-                             stated[0] + generate.UNSTATED_SUFFIX], (
-        mechanism, names)
+    assert sorted(n for n in names if n not in only) == [
+        stated[0], stated[0] + generate.UNSTATED_SUFFIX], (mechanism, names)
     for name in names:
-        assert generate.CASES[name].mechanism == mechanism, name
+        assert cases[name].mechanism == mechanism, name
+    return stated[0]
+
+
+def _named_in_its_case_yaml(names):
+    for name in names:
         case = (generate.EVALS / name / "case.yaml").read_text(
             encoding="utf-8")
         assert f"name: {name}\n" in case
-    return stated[0]
+
+
+WHEEL_LEG = generate.CASES["wheel-leg-derive"]
+"""A fixture's template: the entries made from it are never written or
+generated."""
+
+
+def _wheel_leg_derives(cases):
+    return [n for n, c in cases.items()
+            if isinstance(c, generate.Derive) and c.mechanism == "wheel_leg"]
+
+
+def test_an_unstated_only_trap_case_passes_the_per_golden_rule():
+    """#137: a tuned trap that survives a passing run_all.py comes unstated
+    only, with no stated twin, beside its golden's case and variant."""
+    cases = {**generate.CASES, "wheel-leg-throwaway-unstated": replace(
+        WHEEL_LEG, stated=False, bait="that the nominal friction holds")}
+    names = _wheel_leg_derives(cases)
+    assert "wheel-leg-throwaway-unstated" in names
+    assert _a_case_and_its_unstated_variant(
+        "wheel_leg", names, cases) == "wheel-leg-derive"
+
+
+def test_a_second_stated_case_on_one_golden_fails_the_per_golden_rule():
+    cases = {**generate.CASES, "wheel-leg-second-derive": WHEEL_LEG}
+    with pytest.raises(AssertionError):
+        _a_case_and_its_unstated_variant(
+            "wheel_leg", _wheel_leg_derives(cases), cases)
+
+
+@pytest.mark.parametrize("name, case", [
+    ("wheel-leg-throwaway", replace(WHEEL_LEG, stated=False)),
+    ("wheel-leg-derive-unstated-unstated", replace(WHEEL_LEG, stated=False)),
+    ("wheel-leg-throwaway-unstated",
+     replace(generate.CASES["wheel-leg-review"], stated=False))])
+def test_an_unstated_case_neither_variant_nor_unstated_only_is_refused(
+        name, case):
+    """Unstated only is a derive case named `-unstated` with no stated twin:
+    one with no suffix, an unstated twin, or a red-team case is an error."""
+    with pytest.raises(ValueError, match=name):
+        generate.unstated_only({**generate.CASES, name: case})
 
 
 def test_the_golden_mechanisms_are_read_from_the_golden_source():
@@ -102,6 +149,7 @@ def test_every_golden_mechanism_but_the_2r_arm_has_a_derive_case(mechanism):
     names = _scaffolded(generate.Derive,
                         rf'scaffold\.sh" {mechanism}\s*$')
     _a_case_and_its_unstated_variant(mechanism, names)
+    _named_in_its_case_yaml(names)
 
 
 @pytest.mark.parametrize("name", generate.CASES)
@@ -147,6 +195,7 @@ def test_every_golden_mechanism_but_the_2r_arm_has_a_red_team_case(
                         r'"\$here/(?:\.\./[\w-]+-review/)?planted"'
                         r'(?: "\$here/implicit\.patch")?\s*$')
     stated = _a_case_and_its_unstated_variant(mechanism, names)
+    _named_in_its_case_yaml(names)
     assert (generate.EVALS / stated / "planted").is_dir()
 
 
@@ -236,7 +285,10 @@ def test_a_window_across_a_power_of_ten_reads_both_sides():
     assert not any(found(answer, f"{x}°") for x in ("9.7", "10.3", "1.0"))
 
 
-UNSTATED = [n for n, c in generate.CASES.items() if not c.stated]
+UNSTATED = [n for n, c in generate.CASES.items()
+            if not c.stated and n not in generate.UNSTATED_ONLY]
+"""The unstated variants, each made from its stated case; an unstated-only
+case has no stated case to be held against."""
 NUMBERED_BAIT = re.compile(r"^- A3\. ", re.M)
 
 
