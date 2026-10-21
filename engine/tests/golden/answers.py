@@ -49,33 +49,42 @@ def _rotation(v):
             + (1 - mp.cos(theta)) / theta ** 2 * k * k)
 
 
-def _platform_rest(params):
+def _platform_rest(params, force=(0, 0, 0)):
     """The platform's rest at its POSE: where the cables, unilateral springs
-    of stiffness EA / l0, balance its weight in force and in moment about
-    its point. Returns the rotation.
+    of stiffness EA / l0, balance its weight and `force`, an extra load at
+    its COM in base axes, in force and in moment about its point. Returns
+    the rotation and the cables' tensions, c1 first.
 
     Newton from level overshoots the soft tilt, so the pitch is bracketed
     first, the stiff translation solved inside it, and the rest then
-    polished in all six coordinates from there."""
+    polished in all six coordinates from there, unless that already
+    balances to 1e-20 N and N m: from such a root, mpmath's damped Newton
+    finds no step that lowers the residual at the precision it raises to,
+    and halves its step forever."""
     p, m = params.PARAMS, mp.mpf(params.PARAMS["m"])
     anchors = [mp.matrix([mp.mpf(float(c)) for c in a]) for a in params.ANCHORS]
     attach = [mp.matrix([mp.mpf(float(c)) for c in a]) for a in params.ATTACH]
     com = mp.matrix([mp.mpf(float(c)) for c in params.COM])
-    weight = mp.matrix([0, 0, -m * params.G])
+    load = (mp.matrix([0, 0, -m * params.G])
+            + mp.matrix([mp.mpf(float(c)) for c in force]))
 
-    def balance(*x):
+    def pulls(x):
+        """Each cable's arm about the point and its pull on the platform."""
         point, turn = mp.matrix(x[:3]), _rotation(x[3:])
-        force, moment = mp.matrix(weight), mp.matrix(3, 1)
         for i in range(4):
             arm = turn * attach[i]
             span = anchors[i] - (point + arm)
             length = mp.norm(span)
             rest = mp.mpf(p[f"l0_{i + 1}"])
-            pull = params.EA / rest * max(length - rest, 0) * span / length
-            force += pull
+            yield arm, params.EA / rest * max(length - rest, 0) * span / length
+
+    def balance(*x):
+        total, moment = mp.matrix(load), mp.matrix(3, 1)
+        for arm, pull in pulls(x):
+            total += pull
             moment += _cross(arm, pull)
-        moment += _cross(turn * com, weight)
-        return [*force, *moment]
+        moment += _cross(_rotation(x[3:]) * com, load)
+        return [*total, *moment]
 
     pose = [mp.mpf(float(c)) for c in params.POSE]
 
@@ -86,8 +95,10 @@ def _platform_rest(params):
         return balance(*placed(pitch), 0, pitch, 0)[4]
 
     pitch = mp.findroot(pitching, (-1, 1), solver="anderson")
-    rest = mp.findroot(balance, placed(pitch) + [0, pitch, 0])
-    return _rotation(list(rest)[3:])
+    rest = placed(pitch) + [0, pitch, 0]
+    if max(abs(r) for r in balance(*rest)) > 1e-20:
+        rest = list(mp.findroot(balance, rest))
+    return _rotation(rest[3:]), [mp.norm(pull) for _, pull in pulls(rest)]
 
 
 def _cross(a, b):
@@ -96,7 +107,7 @@ def _cross(a, b):
 
 
 with mp.workdps(30):
-    _rest = _platform_rest(cable_platform.params)
+    _rest, _ = _platform_rest(cable_platform.params)
     _tilt = float(mp.degrees(mp.acos(_rest[2, 2])))
 
 PLATFORM_TILT = Answer(
@@ -107,6 +118,35 @@ PLATFORM_TILT = Answer(
         "(|span_i| − l0_i) while taut, hung at "
         f"{tuple(float(c) for c in cable_platform.params.POSE)} m on the "
         "level-platform law's rest lengths")
+
+
+# --- the cable platform: its least tension braking along x -------------------
+
+BRAKING = 2.5  # m/s², the brief's braking along x at the edge midpoint
+
+with mp.workdps(30):
+    _m = mp.mpf(cable_platform.PARAMS["m"])
+    _braked = {sign: [float(t) for t in _platform_rest(
+                   cable_platform.params, (sign * _m * BRAKING, 0, 0))[1]]
+               for sign in (+1, -1)}
+_worst = min(_braked, key=lambda sign: min(_braked[sign]))
+
+
+def _row(sign):
+    tensions = ", ".join(f"{t:.2f}" for t in _braked[sign])
+    return (f"{'+' if sign > 0 else '−'}x: T = ({tensions}) N, "
+            f"least {min(_braked[sign]):.2f} N")
+
+
+BRAKING_TENSION = Answer(
+    value=min(_braked[_worst]), unit="N", bait=min(_braked[-_worst]),
+    how="the least cable tension over both signs of the braking load: the "
+        f"d'Alembert load ±m·a x̂ = ±{float(_m) * BRAKING:g} N at the COM of "
+        "the free platform, which rests where Σ T_i u_i = m g ẑ ∓ m a x̂ and "
+        "Σ (R a_i) × T_i u_i + (R c) × (−m g ẑ ± m a x̂) = 0, each T_i = "
+        "EA/l0_i · (|span_i| − l0_i) while taut, hung at "
+        f"{tuple(float(c) for c in cable_platform.params.POSE)} m, tilt "
+        f"included; per sign, c1 to c4: {_row(+1)}; {_row(-1)}")
 
 
 # --- the wheel leg: its skid pad's worst clearance ---------------------------

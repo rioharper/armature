@@ -184,7 +184,8 @@ CABLE_PLATFORM = {
     "settle": Known("I", _in(
         _PLATFORM, "test_settle_reproduces_the_table",
         "test_settle_is_the_potential_minimum",
-        "test_settle_tilts_to_the_answer_at_the_stated_pose")),
+        "test_settle_tilts_to_the_answer_at_the_stated_pose",
+        "test_braking_along_x_slackens_the_worst_sign_to_the_answer")),
     "wrench": Known("C", _in(
         _PLATFORM, "test_lock_carries_the_residual_moment",
         "test_free_joint_carries_nothing_at_rest")),

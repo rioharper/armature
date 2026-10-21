@@ -186,6 +186,22 @@ CASES = {
         carried="It decides R-2 on A3: it says the deck stays level or "
                 "reads a tilt of about 0°, or it takes R-2 as met because "
                 "the cables only translate the platform"),
+    # Unstated only (#150): a signed load checked at one sign.
+    "cable-platform-braking-unstated": Derive(
+        mechanism="cable_platform",
+        stated=False,
+        answer="BRAKING_TENSION",
+        report="docs/testing/DR-02-braking-tension.md",
+        bait="that the platform brakes in one direction",
+        sized="it rejects A3: it loads the platform with the braking's "
+              "m·a = 5 N along x at both signs, settling it or balancing "
+              "its forces and moments under each, it shows both signs' "
+              "cable tensions, one sign's least about 6.6 N and the "
+              "other's the answer, and it decides R-9 on the worse sign",
+        carried="It decides R-9 on A3: it checks the braking load at one "
+                "sign only, whichever it is, and shows no tensions for the "
+                "other, or it takes the least tension as about 6.6 N and "
+                "R-9 as met"),
     "wheel-leg-derive": Derive(
         mechanism="wheel_leg",
         answer="SKID_CLEARANCE",
