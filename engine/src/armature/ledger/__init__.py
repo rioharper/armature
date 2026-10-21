@@ -7,9 +7,11 @@ provenance.
     ledger.bands("mechanism")      # {"m2": (0.72, 0.88)}
     check()                        # [Finding(code, level, entry, message)]
     print(show("budget.mass"))     # its lines, total, allocation and margin
+    render()                       # rewrite the markdown's marked sections
 
-From a shell, `py -m armature.ledger check [--json]` and
-`py -m armature.ledger show <prefix>`; `check` exits 1 on any error.
+From a shell, `py -m armature.ledger check [--json]`,
+`py -m armature.ledger show <prefix>` and `py -m armature.ledger render`;
+`check` exits 1 on any error.
 
 An entry is the table `[<section>.<name>]`, in a section `mechanism`
 (exactly what `mechanism(p)` reads), `drive`, `req` (keyed by REQ id),
@@ -42,14 +44,23 @@ An entry is the table `[<section>.<name>]`, in a section `mechanism`
   any chain of `of`s. A budget line is one. Its status defaults to
   confirmed, so a line citing a candidate says `status = "candidate"`.
 - A budget `budget.<kind>` holds its lines and one `allocation` entry, the
-  most its lines may sum to.
+  most its lines may sum to. Lines past it are a breach, which fails each
+  REQ the budget answers to: a `req.*` entry one of its entries' `of`
+  chains reaches, or a REQ id one of its entries' `source.ref` names. A
+  reserve is a line holding the headroom its REQ demands.
+- A view is a whole markdown table `render` writes between
+  `<!-- ledger:<view> -->` and `<!-- /ledger -->`: `budget.<kind>`, `bom`,
+  `req` or `symbols` (see `views`). `check` fails a section that is not
+  what `render` writes, a breach, and a breached REQ whose row in
+  `docs/01-spec/traceability.md` is not `failed`.
 """
 
 from .check import Finding, check
 from .entries import (ALLOCATION, KINDS, SECTIONS, STATUSES, Entry, Ledger,
                       LedgerError, OfError, find, load, parse)
 from .show import show
+from .views import render
 
 __all__ = ["ALLOCATION", "Entry", "Finding", "KINDS", "Ledger",
            "LedgerError", "OfError", "SECTIONS", "STATUSES", "check", "find",
-           "load", "parse", "show"]
+           "load", "parse", "render", "show"]

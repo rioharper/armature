@@ -1,63 +1,85 @@
 # Budgets — <project>
 
 Living document. Debit at every phase gate: math and CAD update estimates
-as they harden; any change to a mass, power draw, or cost updates its row.
+as they harden; any change to a mass, power draw, or cost updates its
+ledger entry. Each table below is a view of `ledger.toml` (ADR 0010): edit
+the entries, then run `py -m armature.ledger render`, which rewrites every
+table between its `<!-- ledger:budget.<kind> -->` and `<!-- /ledger -->`
+markers, and `py -m armature.ledger check`, which fails a table edited by
+hand. The prose around the tables is yours.
 
-**Margin is slack** — how far the estimate can still move the wrong way
-before the row fails. A line item that consumes the budget fails from above,
-so its slack is budget − estimate; a **reserve** fails from below, so its
-slack is estimate − budget. Negative either way means failed.
+A budget is the section `budget.<kind>`: one entry named `allocation`, the
+most its lines may sum to, citing its REQ (`of = "req.REQ-xxx"`, or
+`source = { kind = "chosen", ref = "REQ-xxx" }`), and one entry per line
+item. A line that is a part's number is `of = "part.<pn>.<field>"` with a
+`qty`, never a copy of it. A row's prose is its entry's `note`. The total
+and the margin are worked out on every render and stored nowhere.
+
+**Margin is slack**: the allocation less the lines' total, how far the
+estimates can still move the wrong way before the budget fails. Negative
+means breached.
 
 ## Source
 
-Increasing trust: `guess` → `datasheet` → `model` → `measured`. A `datasheet`
-value cites its row in `docs/datasheets/index.md`.
+Every entry carries one of the ledger's six kinds, with the citation the
+kind requires: `chosen` (the spec section or REQ id), `standard` (the
+reference), `estimate` (what it rests on, and a band), `datasheet` (the
+`docs/datasheets/index.md` row's P/N, and `retrieved`), `cad` (the part
+file and its rev), `measured` (the test report). Trust rises estimate →
+datasheet → cad → measured. Separately, a `status` says whether the user
+has confirmed the number: `candidate` or `confirmed`.
 
-A **cost** row reads one more rung, `list price`, where `datasheet` sits: cite
-the `docs/datasheets/index.md` row whose `Price` cell you read, and take that
-row's `Retrieved` as the price's date. The price goes stale on its own and
-that date is the only thing that says so. A row reading `quote only` publishes
-no price, so a cost resting on it is a `guess` and says `guess`, however
-carefully the number was arrived at; it climbs the ladder when a human asks a
-vendor, not before.
+A **cost** line is a `datasheet` entry in USD when a vendor publishes the
+price: its `retrieved` is the price's date, the only thing that says the
+price has gone stale, and `check` warns (`price.old`) once it is more than
+90 days old. A part whose index row reads `quote only` publishes no price,
+so a cost resting on it is an `estimate`, with a band, however carefully
+the number was arrived at; it becomes a `datasheet` entry when a human asks
+a vendor, not before.
 
 ## Reserves
 
-A reserve — headroom held back for a named future change — is a line item in
-whichever table holds it, with one difference: **nothing debits it directly**.
-Its current estimate is the ceiling minus every other line's current estimate,
-so a debit anywhere else debits the reserve in the same edit. Its budget is
-the number its requirement demands; name that REQ in the Source cell.
+A reserve, headroom held back for a named future change, is a line of its
+own: a `chosen` entry holding the headroom its requirement demands, citing
+that REQ in `source.ref`. Nothing debits it directly. A debit anywhere else
+shrinks the margin it sits in, so the reserve is spent the moment the lines
+around it outgrow the allocation.
 
-When that arithmetic drives the margin negative the reserve is **breached**,
-and a Must requirement has failed. It fails where a failure is read — the
-row's margin, and the requirement's row in `docs/01-spec/traceability.md` —
-and stays failed until the recovery lands or a decision in `docs/decisions.md`
-relaxes the requirement. A sentence above the table saying so instead leaves
-the row reading healthy, which is how a breach survives a review.
+When the lines, the reserve among them, sum past the allocation the budget
+is **breached**, and `check` reports `budget.breach`. Each requirement the
+budget answers to has failed: the REQ its allocation reads or cites, and
+the REQ each of its lines cites, a reserve's among them. Each reads
+`failed` in `docs/01-spec/traceability.md`, where `check` fails it as
+`trace.unfailed` until it does, and stays failed until the recovery lands
+or a decision in `docs/decisions.md` relaxes the requirement. A sentence
+above the table saying so instead leaves the row reading healthy, which is
+how a breach survives a review.
 
 ## Mass
 
-| Line item | Budget (g) | Current estimate (g) | Margin | Source |
-| --- | --- | --- | --- | --- |
-| Reserve for <named future change> | | | | REQ-xxx |
-| System total | | | | |
+<!-- ledger:budget.mass -->
+| Line item | Entry | Budget | Current estimate | Margin | Source | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+<!-- /ledger -->
 
 ## Power
 
-An actuator's or the bus's power row is a drive margin's worst-case row, not
-arithmetic (armature-derive's `references/derivation-standards.md`, *Actuators
-and the bus*): its Source reads `model` and names the row `run_all.py` prints
-(`bus: source power`, `bus: brake power`). The other lines
-(compute, sensors, the hotel load `drive.py` carries) are debited as usual.
+An actuator's or the bus's power is a drive margin's worst-case row, not a
+budget line (armature-derive's `references/derivation-standards.md`,
+*Actuators and the bus*): `run_all.py` prints it (`bus: source power`,
+`bus: brake power`) against the source's `drive.p_source`, and a derived
+number is never a ledger entry. The other lines (compute, sensors) are
+debited as usual, and the hotel load `drive.py` carries is the line
+`of = "drive.hotel"`.
 
-| Line item | Budget (W) | Current estimate (W) | Margin | Source |
-| --- | --- | --- | --- | --- |
-| System peak | | | | |
-| System continuous | | | | |
+<!-- ledger:budget.power -->
+| Line item | Entry | Budget | Current estimate | Margin | Source | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+<!-- /ledger -->
 
 ## Cost
 
-| Line item | Budget | Current estimate | Margin | Source |
-| --- | --- | --- | --- | --- |
-| Total | | | | |
+<!-- ledger:budget.cost -->
+| Line item | Entry | Budget | Current estimate | Margin | Source | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+<!-- /ledger -->

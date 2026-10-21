@@ -8,14 +8,17 @@ to trip it and silent on the same entry put right.
 
 import datetime
 import json
+import re
 import subprocess
 import sys
 import textwrap
+from pathlib import Path
 
 import numpy as np
 import pytest
 
-from armature.ledger import Finding, LedgerError, check, load, show
+from armature.ledger import (Finding, LedgerError, check, load, render,
+                              show)
 
 
 def write(tmp_path, text, name="ledger.toml"):
@@ -212,7 +215,9 @@ ESTIMATE = '{ kind = "estimate", ref = "a hand sum" }'
 
 
 def test_a_clean_ledger_has_no_findings(tmp_path):
-    assert codes(tmp_path, ARM + "\n" + PART) == []
+    # PART's lines, 113.6 g, sum past its 100 g; 120 g holds them.
+    within = PART.replace("value = 0.10\n", "value = 0.12\n")
+    assert codes(tmp_path, ARM + "\n" + within) == []
 
 
 # The template's own entries' units, each as its datasheet prints it, worked
@@ -514,3 +519,362 @@ def test_show_reads_a_unit_spelled_another_way_as_the_same(tmp_path):
                         '[budget.mass.allocation]\nvalue = 0.10\n'
                         'unit = "kilogram"')
     assert "margin" in show("budget.mass", path=write(tmp_path, text))
+
+
+# --- render and the views -------------------------------------------------------
+BUDGETS = "docs/01-spec/budgets.md"
+TRACE = "docs/01-spec/traceability.md"
+
+
+def project(tmp_path, ledger_text, files):
+    """A project at `tmp_path`: its ledger, and each markdown file in
+    `files`, {path below the root: text}."""
+    write(tmp_path, ledger_text)
+    for name, text in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def marked(view, body=""):
+    """A file holding one marked section, `body` inside it."""
+    return (f"Prose above.\n\n<!-- ledger:{view} -->\n{body}"
+            f"<!-- /ledger -->\n\nProse below.\n")
+
+
+def found(root, code):
+    """The entries `check` finds `code` on."""
+    return [f.entry for f in check(root, today=TODAY) if f.code == code]
+
+
+def table(text):
+    """Each row of the markdown tables in `text`, as stripped cells, the
+    separator rows left out."""
+    rows = [[c.strip() for c in line.strip()[1:-1].split("|")]
+            for line in text.splitlines() if line.startswith("|")]
+    return [r for r in rows if set("".join(r)) - set("-: ")]
+
+
+def test_render_writes_a_budget_whole_and_check_is_then_clean(tmp_path):
+    root = project(tmp_path, PART, {BUDGETS: marked("budget.mass")})
+    assert found(root, "view.stale") == ["budget.mass"]
+    render(path=root)
+    text = (root / BUDGETS).read_text(encoding="utf-8")
+    assert text.startswith("Prose above.\n\n<!-- ledger:budget.mass -->\n|")
+    assert text.endswith("|\n<!-- /ledger -->\n\nProse below.\n")
+    rows = table(text)
+    assert rows[0] == ["Line item", "Entry", "Budget (kg)",
+                       "Current estimate (kg)", "Margin (kg)", "Source",
+                       "Status"]
+    # 2 × 14.2 g, 3 × that, and 113.6 g against 100 g: 13.6 g over.
+    assert [r[3] for r in rows[1:]] == ["0.0284", "0.0852", "0.1136"]
+    assert rows[-1][2] == "0.1" and rows[-1][4].startswith("-0.0136")
+    assert found(root, "view.stale") == []
+
+
+PROJECT = PART + """
+[part."moteus-r4.11".kt]
+of = "part.moteus-r4.11.ke"
+note = "shoulder driver's torque constant, read off its Ke"
+
+[part."moteus-r4.11".ke]
+value = 0.8441578181594128
+unit = "V*s/rad"
+basis = { per = "V_rms", between = "line" }
+as_written = "88.4 V/krpm"
+status = "candidate"
+source = { kind = "datasheet", ref = "moteus-r4.11", retrieved = 2026-10-01 }
+note = "the shoulder winding"
+
+[req.REQ-04]
+value = 0.10
+unit = "kg"
+source = { kind = "chosen", ref = "REQ-04" }
+note = "Must, by inspection: the drivers weigh no more than this"
+
+[mechanism.l1]
+value = 0.30
+unit = "m"
+as_written = "300 mm"
+source = { kind = "measured", ref = "docs/testing/arm.md" }
+status = "confirmed"
+note = "upper link length | shoulder to elbow"
+
+[drive.m2]
+of = "mechanism.m2"
+qty = 2
+
+[mechanism.m2]
+value = 0.80
+unit = "kg"
+band = [0.72, 0.88]
+status = "candidate"
+source = { kind = "estimate", ref = "aluminium tube, 1.6 mm wall" }
+"""
+
+VIEWS = {"budget.mass": BUDGETS, "bom": "docs/01-spec/bom.md",
+         "req": "docs/01-spec/spec.md", "symbols": "CONTEXT.md"}
+
+
+@pytest.mark.parametrize("view", VIEWS)
+def test_render_round_trips_each_view_and_check_finds_a_hand_edit(tmp_path,
+                                                                  view):
+    root = project(tmp_path, PROJECT, {VIEWS[view]: marked(view)})
+    assert found(root, "view.stale") == [view]
+    assert render(path=root) == [root / VIEWS[view]]
+    assert found(root, "view.stale") == []
+    assert render(path=root) == []
+    file = root / VIEWS[view]
+    text = file.read_text(encoding="utf-8")
+    edited = text.replace(" |\n<!-- /ledger -->",
+                          " (edited) |\n<!-- /ledger -->")
+    assert edited != text
+    file.write_text(edited, encoding="utf-8")
+    assert found(root, "view.stale") == [view]
+    message = next(f.message for f in check(root, today=TODAY)
+                   if f.code == "view.stale")
+    assert message.startswith(f"{VIEWS[view]}:3: ")
+    render(path=root)
+    assert found(root, "view.stale") == []
+    assert file.read_text(encoding="utf-8") == text
+
+
+def test_a_budget_row_reads_its_note_and_cites_what_it_reads(tmp_path):
+    text = PART.replace('qty = 2\n', 'qty = 2\nnote = "two motor drivers"\n')
+    root = project(tmp_path, text, {BUDGETS: marked("budget.mass")})
+    render(path=root)
+    rows = table((root / BUDGETS).read_text(encoding="utf-8"))
+    assert rows[1][:2] == ["two motor drivers", "`budget.mass.drivers`"]
+    assert rows[1][5] == ("2 × `part.moteus-r4.11.mass` → datasheet: "
+                          "moteus-r4.11, retrieved 2026-10-01")
+    assert rows[2][0] == "spares"     # no note: the line's own name
+    assert rows[3] == ["Total", "`budget.mass.allocation`", "0.1", "0.1136",
+                       "-0.0136, breached", "chosen: REQ-04", "confirmed"]
+
+
+def test_the_bom_has_a_row_per_part_entry_and_names_what_it_drives(
+        tmp_path):
+    root = project(tmp_path, PROJECT, {"docs/01-spec/bom.md": marked("bom")})
+    render(path=root)
+    rows = table((root / "docs/01-spec/bom.md").read_text(encoding="utf-8"))
+    assert rows[0] == ["Item", "Part / spec", "Parameter", "Value",
+                       "As written", "Source", "Status", "Drives"]
+    by = {r[2]: r for r in rows[1:]}
+    assert list(by) == ["mass", "price", "kt", "ke"]
+    assert by["mass"][3:5] == ["0.0142 kg", "14.2 g"]
+    assert by["mass"][7] == ("REQ-04, `budget.mass.drivers`, "
+                             "`budget.mass.spares`")
+    assert by["ke"] == [
+        "the shoulder winding", "moteus-r4.11", "ke", "0.844158 V*s/rad",
+        "88.4 V/krpm (per V_rms, between line)",
+        "datasheet: moteus-r4.11, retrieved 2026-10-01", "candidate",
+        "`part.moteus-r4.11.kt`"]
+    # An of line in the BOM reads its entry: the value and the source.
+    assert by["kt"][3] == "0.844158 V*s/rad"
+    assert by["kt"][5].startswith("`part.moteus-r4.11.ke` → datasheet")
+
+
+def test_the_req_view_takes_its_value_column_from_the_ledger(tmp_path):
+    root = project(tmp_path, PROJECT, {"docs/01-spec/spec.md": marked("req")})
+    render(path=root)
+    rows = table((root / "docs/01-spec/spec.md").read_text(encoding="utf-8"))
+    assert rows == [
+        ["ID", "Requirement", "Value / Threshold", "Source", "Status"],
+        ["REQ-04", "Must, by inspection: the drivers weigh no more than "
+         "this", "0.1 kg", "chosen: REQ-04", "confirmed"]]
+
+
+def test_the_symbols_view_is_the_mechanism_and_drive_entries(tmp_path):
+    root = project(tmp_path, PROJECT, {"CONTEXT.md": marked("symbols")})
+    render(path=root)
+    text = (root / "CONTEXT.md").read_text(encoding="utf-8")
+    assert "upper link length \\| shoulder to elbow" in text  # | escaped
+    rows = table(text.replace("\\|", "/"))
+    assert rows[0] == ["Symbol", "Meaning", "Value", "Unit", "Band",
+                       "Source", "Status"]
+    assert [r[0] for r in rows[1:]] == ["`l1`", "`m2`", "`m2`"]
+    assert rows[1][2:5] == ["0.3", "m", ""]
+    # In the ledger's order, a section's entries together: mechanism.m2,
+    # then drive.m2, which reads 2 × it, and so does its band.
+    assert rows[2][2:5] == ["0.8", "kg", "[0.72, 0.88]"]
+    assert rows[3][2:5] == ["1.6", "kg", "[1.44, 1.76]"]
+    assert rows[3][5] == ("2 × `mechanism.m2` → estimate: aluminium tube, "
+                          "1.6 mm wall")
+
+
+def test_a_tensor_names_the_point_and_axes_it_is_about(tmp_path):
+    root = project(tmp_path, entry(
+        "mechanism.I2", value="[[1e-4, 0, 0], [0, 6e-3, 0], [0, 0, 6e-3]]",
+        unit='"kg*m^2"', point='"com2"', axes='"base"', status='"candidate"',
+        source='{ kind = "cad", ref = "cad/forearm.py@3" }'),
+        {"CONTEXT.md": marked("symbols")})
+    render(path=root)
+    rows = table((root / "CONTEXT.md").read_text(encoding="utf-8"))
+    assert rows[1][2] == ("[[0.0001, 0, 0], [0, 0.006, 0], [0, 0, 0.006]], "
+                          "about com2 in base axes")
+
+
+def test_render_leaves_the_prose_a_fence_and_crlf_alone(tmp_path):
+    fenced = ("```markdown\n<!-- ledger:budget.mass -->\nan example\n"
+              "<!-- /ledger -->\n```\n")
+    root = project(tmp_path, PART, {})
+    file = root / BUDGETS
+    file.parent.mkdir(parents=True)
+    file.write_bytes((fenced + marked("budget.mass")).replace(
+        "\n", "\r\n").encode("utf-8"))
+    render(path=root)
+    raw = file.read_bytes().decode("utf-8")
+    assert "\n" not in raw.replace("\r\n", "")
+    assert raw.startswith(fenced.replace("\n", "\r\n") + "Prose above.")
+    assert raw.endswith("<!-- /ledger -->\r\n\r\nProse below.\r\n")
+    assert found(root, "view.stale") == []
+
+
+def test_a_budget_with_no_entries_renders_an_empty_table(tmp_path):
+    root = project(tmp_path, ARM, {BUDGETS: marked("budget.power")})
+    render(path=root)
+    rows = table((root / BUDGETS).read_text(encoding="utf-8"))
+    assert rows == [["Line item", "Entry", "Budget", "Current estimate",
+                     "Margin", "Source", "Status"]]
+
+
+def test_render_skips_a_folder_with_a_ledger_of_its_own(tmp_path):
+    root = project(tmp_path, PART, {"vendor/kit/notes.md":
+                                    marked("budget.mass")})
+    write(root / "vendor" / "kit", ARM)
+    assert render(path=root) == []
+    assert found(root, "view.stale") == []
+
+
+@pytest.mark.parametrize("text, words", [
+    (marked("budgets"), ["a.md:3", "ledger:budgets is not a view"]),
+    ("<!-- ledger:bom -->\n", ["a.md:1", "never closed"]),
+    ("<!-- /ledger -->\n", ["a.md:1", "closes nothing"]),
+    ("<!-- ledger:bom -->\n<!-- ledger:req -->\n<!-- /ledger -->\n",
+     ["a.md:2", "opens inside"]),
+])
+def test_a_marker_that_cannot_be_read_is_refused(tmp_path, text, words):
+    root = project(tmp_path, PART, {"a.md": text})
+    with pytest.raises(LedgerError) as raised:
+        render(path=root)
+    for word in words:
+        assert word in str(raised.value)
+    findings = [f for f in check(root, today=TODAY)
+                if f.code == "view.stale"]
+    assert len(findings) == 1 and words[1] in findings[0].message
+
+
+# --- budget.breach and trace.unfailed -------------------------------------------
+OVER = """\
+[budget.mass.allocation]
+of = "req.REQ-004"
+
+[budget.mass.arm]
+value = 0.90
+unit = "kg"
+band = [0.85, 0.95]
+status = "candidate"
+source = { kind = "estimate", ref = "the arm's CAD at rev 2, by hand" }
+
+[budget.mass.reserve]
+value = 0.15
+unit = "kg"
+source = { kind = "chosen", ref = "REQ-012" }
+note = "held for the wrist, which REQ-012 wants room for"
+
+[req.REQ-004]
+value = 1.0
+unit = "kg"
+source = { kind = "chosen", ref = "REQ-004" }
+"""
+
+
+def trace(**statuses):
+    """A traceability table with a row for each REQ, at its status."""
+    rows = "".join(f"| {req} | | | | | {status} |\n"
+                   for req, status in statuses.items())
+    return ("# Requirements traceability\n\n| REQ | Requirement (short) | "
+            "Design element | Analysis | Test | Status |\n| --- | --- | --- "
+            "| --- | --- | --- |\n" + rows)
+
+
+def test_a_budget_over_its_allocation_is_a_breach(tmp_path):
+    # 0.90 kg + 0.15 kg = 1.05 kg against 1.0 kg: 0.05 kg over.
+    findings = check(project(tmp_path, OVER, {}), today=TODAY)
+    assert [(f.code, f.entry) for f in findings] == [
+        ("budget.breach", "budget.mass")]
+    assert findings[0].message == (
+        "its lines sum to 1.05 kg, past its allocation of 1 kg by 0.05 kg; "
+        "it fails REQ-004, REQ-012")
+
+
+@pytest.mark.parametrize("arm, breached", [("0.85", False), ("0.849", False),
+                                           ("0.851", True)])
+def test_a_budget_level_with_its_allocation_holds(tmp_path, arm, breached):
+    text = OVER.replace("value = 0.90\n", f"value = {arm}\n")
+    root = project(tmp_path, text, {})
+    assert bool(found(root, "budget.breach")) == breached
+
+
+def test_a_breached_req_is_unfailed_until_its_row_reads_failed(tmp_path):
+    root = project(tmp_path, OVER, {TRACE: trace(**{
+        "REQ-004": "open", "REQ-012": "open (budget row failed)"})})
+    assert found(root, "trace.unfailed") == ["REQ-004", "REQ-012"]
+    (root / TRACE).write_text(trace(**{"REQ-004": "**failed**: the arm",
+                                       "REQ-012": "failed"}),
+                              encoding="utf-8")
+    assert found(root, "trace.unfailed") == []
+    assert found(root, "budget.breach") == ["budget.mass"]
+
+
+def test_a_breached_req_with_no_traceability_row_is_unfailed(tmp_path):
+    root = project(tmp_path, OVER, {TRACE: trace(**{"REQ-004": "failed"})})
+    findings = [f for f in check(root, today=TODAY)
+                if f.code == "trace.unfailed"]
+    assert [f.entry for f in findings] == ["REQ-012"]
+    assert "is missing" in findings[0].message
+
+
+def test_trace_unfailed_is_skipped_without_a_traceability_file(tmp_path):
+    root = project(tmp_path, OVER, {})
+    assert found(root, "trace.unfailed") == []
+
+
+def test_a_budget_within_its_allocation_fails_no_req(tmp_path):
+    text = OVER.replace("value = 0.15\n", "value = 0.10\n")
+    root = project(tmp_path, text, {TRACE: trace(**{"REQ-004": "open"})})
+    assert [f.code for f in check(root, today=TODAY)] == []
+
+
+SPEC = Path(__file__).resolve().parents[2] / "skills" / "armature-spec" \
+    / "references"
+
+
+@pytest.mark.parametrize("name, views", [
+    ("budgets-template.md", ["budget.mass", "budget.power", "budget.cost"]),
+    ("bom-template.md", ["bom"]),
+    ("spec-template.md", ["req"]),
+])
+def test_each_template_carries_its_views_as_render_writes_them(
+        tmp_path, name, views):
+    # A project's copy is the template's fenced structure, unfenced, beside
+    # a ledger with nothing in it yet.
+    text = (SPEC / name).read_text(encoding="utf-8")
+    copied = "\n".join(line for line in text.splitlines()
+                       if not line.startswith("```"))
+    root = project(tmp_path, "", {"docs/01-spec/copy.md": copied})
+    assert [f for f in check(root, today=TODAY)] == []
+    assert render(path=root) == []
+    assert re.findall(r"^<!-- ledger:(\S+) -->$", copied, re.M) == views
+
+
+def test_render_from_the_shell_rewrites_the_views(tmp_path):
+    root = project(tmp_path, PART, {BUDGETS: marked("budget.mass")})
+    run = ledger("render", cwd=root)
+    assert run.returncode == 0
+    assert run.stdout.strip() == "rendered docs/01-spec/budgets.md"
+    assert ledger("render", cwd=root).stdout == ""
+    run = ledger("check", cwd=root)
+    assert "view.stale" not in run.stdout
+    assert "error budget.breach budget.mass: " in run.stdout
