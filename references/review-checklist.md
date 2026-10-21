@@ -83,3 +83,20 @@ Run last; it needs every artifact in view at once.
 - Does the **plan's BOM match the spec's chosen parts**, or has one been revised without the other?
 - Do **frames, symbols, and naming agree** across spec, derivation, and plan? The derivation consumes the spec's symbol table verbatim.
 - Are the documents at **revs that reference each other correctly**, or is the derivation validating a spec two revisions old?
+
+## 8. Closures, waivers, and confirmations
+
+These probe the record the gate reads, not the design. Each entry in it was written by the session that wanted the gate to pass.
+
+- **Closures**: read the block of every review in `docs/reviews/` whose `reviewed` SHA is on this branch since it left `main` (`git merge-base main HEAD`), and judge each closed BLOCKER and MAJOR by how it closed.
+  - **`check`**: open the test it names and run it. Does it test what the finding said, at the finding's point: the quantity the finding recomputed, at its posture, load case and sign, band corner or seed, against an expected value the standards allow (*A check's expected value*)? A check that tests a neighbour of the finding, the nominal where the finding was a worst case, or a literal copied from the fixed model's output closes nothing. Raise it again as a new finding at the old one's severity, its **Where** naming the check.
+  - **`recheck`**: the file exists, its `rechecks` names this review, it marks this id `holds`, and its `reviewed` SHA is at or after the fix.
+  - **`moves`**: the gate checks that every ledger number moved after the review is named; it cannot check that the move was the one the finding asked for. A number moved further than the finding asked, or one the finding never named, is a change no review has read: judge it as a fresh claim.
+  - **`accepted`**: the user's call, and not yours to overrule. An accepted risk that this artifact now designs past, or that a purchase now rests on, is a finding against this artifact.
+- **Waivers**: every `[[waiver]]` in `waivers.toml` whose `scope` is this branch or `standing`. A waiver claims that the evidence its `item` demands cannot apply here, not that it is costly to produce. Does the `reason` say why the item cannot apply, with the number it waives and the margin it accepts ("the thin wheel-torque margin is accepted" names neither)? Is the item the narrowest one the reason covers? Does a `standing` waiver still hold for the design as it stands, rather than as it stood on its `confirmed` date? A reason that fails is a MAJOR finding routed to the user. A waiver with no `confirmed` date, which the gate ignores, is a MINOR, so it is confirmed or deleted.
+- **Confirmed entries**: `confirmed` is the user's decision. The plugin asks before an Edit or Write sets it, but it never sees the shell and leaves no mark in the repo, so the commit is the evidence. For each `confirmed` entry the artifact rests on, read its history in `ledger.toml` (`git log -L '/^\[<entry>\]/,+8:ledger.toml'`) and the commit that confirmed it:
+  - an entry that reached the ledger already `confirmed`, with no commit ever holding it as a `candidate`;
+  - a confirmation in the commit that merged a librarian's staging file, or one of a batch confirmed together under a message that names no decision;
+  - an `as_written` that disagrees with the clause its index row names, a number outside that row's **Clauses read**, or one its survey record marks in conflict with another source.
+
+  Each is a confirmation nobody may have made: a MAJOR finding, and a BLOCKER where a purchase or a part's sizing rests on it, routed to the user, who confirms it again or sends it back to `candidate`.
