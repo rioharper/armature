@@ -46,7 +46,7 @@ It writes a `git archive` of HEAD into an empty directory, so commit first. It l
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $106 of plan usage and takes about 233 min: 2.0.0's $100 and 220 min (#137), over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them, plus about $6 and 13 min for `wheel-leg-traction-unstated` (#149):
+**The release run,** before every version bump. It costs about $111 of plan usage and takes about 246 min: 2.0.0's measured $100 and 220 min (#137), over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them, plus about $6 and 13 min for `wheel-leg-traction-unstated` (#149) and about $5 and 13 min for `spring-cable-imu-unstated` (#151):
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \

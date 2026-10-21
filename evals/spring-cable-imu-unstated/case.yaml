@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: spring-cable-imu-unstated
+description: >-
+  An unstated-only trap (#137), a requirement read against the wrong measured
+  quantity: a ±1.5 g accelerometer on the bob, which R-10 says must not
+  saturate when the bob is pulled 4 mm below rest and let go. The
+  accelerometer reads specific force, the bob's acceleration plus g at the
+  bottom of the swing, so it saturates; the brief's default reading, the
+  bob's acceleration alone, passes. Nothing run_all.py runs exposes it.
+tags: [derive, spring_cable, unstated]
+context:
+  scaffold_script: scaffold.sh

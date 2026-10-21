@@ -14,7 +14,7 @@ import pytest
 
 import armature
 from golden import spring_cable
-from golden.answers import CABLE_FREQUENCY
+from golden.answers import CABLE_FREQUENCY, IMU_PEAK
 
 # The description is the golden project's, the mass on a cable. The spring is
 # its control, built from the same bob and slide.
@@ -142,3 +142,38 @@ def test_at_rest_the_cable_carries_the_weight_and_the_slide_nothing():
     out = s.settle()
     assert out.stable and abs(out.moved["z"]) < 1e-9
     assert out.tension["hang"] == pytest.approx(WEIGHT, rel=1e-9)
+
+
+# --- an accelerometer on the bob (#151) ----------------------------------------
+PULL = 0.004  # the brief's pull below rest, the bob let go from there [m]
+RANGE = 1.5 * G  # the accelerometer's ±1.5 g full scale [m/s^2]
+
+
+def test_the_pull_stays_inside_the_sag_so_the_cable_never_slackens():
+    """4 mm against a 4.905 mm sag: at the top of the swing the cable still
+    stretches, so the bob swings on the elastic cable throughout."""
+    assert PULL < WEIGHT / PARAMS["k"]
+    assert stretch(REST + PULL) > 0.0
+
+
+@pytest.mark.parametrize("z", [REST - PULL, REST, REST + PULL],
+                         ids=["bottom", "rest", "top"])
+def test_the_linearised_swing_read_as_specific_force_is_the_imu_peak(z):
+    """At the bottom of the swing the bob accelerates up at ω²·δ, and an
+    accelerometer on it reads that plus g, the specific force. The bob's
+    acceleration alone is the bait: outside the window, inside the range."""
+    lin = armature.compile(on_cable, PARAMS).at(q={"z": z}).linearise()
+    omega2 = (2 * np.pi * lin.frequencies[0]) ** 2
+    acceleration = omega2 * PULL
+    reading = acceleration + G
+    assert IMU_PEAK.inside(reading)
+    assert acceleration == pytest.approx(IMU_PEAK.bait, rel=1e-6)
+    assert not IMU_PEAK.inside(acceleration)
+    assert reading > RANGE > acceleration  # it saturates; the bait passes
+
+
+def test_the_imu_peak_is_the_closed_form():
+    """k/m = 2000 s⁻², so ω²·δ = 8.0 m/s² and the reading 17.81 m/s²."""
+    assert IMU_PEAK.value == pytest.approx(17.81, abs=1e-9)
+    assert IMU_PEAK.bait == pytest.approx(8.0, abs=1e-9)
+    assert IMU_PEAK.unit == "m/s²"

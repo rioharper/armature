@@ -11,7 +11,7 @@ import pytest
 import generate
 from conftest import unsourced_figures
 from golden.answers import (ANSWERS, BEARING_MOMENT, CABLE_FREQUENCY,
-                            PLATFORM_TILT, SKID_CLEARANCE, Answer)
+                            IMU_PEAK, PLATFORM_TILT, SKID_CLEARANCE, Answer)
 
 
 def found(answer, text):
@@ -279,6 +279,20 @@ def test_a_moments_window_reads_no_other_unit(text):
     assert not found(BEARING_MOMENT, text)
 
 
+@pytest.mark.parametrize("text", [
+    "17.81 m/s²", "17.8 m/s^2", "17.81 m/s2", "17.8 m·s⁻²", "17.8 m⋅s⁻²",
+    "17.8 m s⁻²", "17.8 m s^-2", "reads 17.81m/s², saturating"])
+def test_an_accelerations_window_reads_its_unit_written_any_way(text):
+    assert found(IMU_PEAK, text)
+
+
+@pytest.mark.parametrize("text", [
+    "17.81 m/s", "17.81 m", "17.81 m/s^3", "17.81 m/s³", "17.81 mm/s²",
+    "8.0 m/s²", "8.0 m/s^2", "1.816 g"])
+def test_an_accelerations_window_reads_no_other_unit(text):
+    assert not found(IMU_PEAK, text)
+
+
 def test_a_window_across_a_power_of_ten_reads_both_sides():
     answer = Answer(value=10.0, unit="°", how="", bait=0.0)
     assert all(found(answer, f"{x} °") for x in ("9.81", "10", "10.19"))
@@ -326,6 +340,19 @@ def test_an_unstated_variants_brief_never_numbers_its_bait(name):
     assert NUMBERED_BAIT.search(brief(generate.base(name)))
     assert not NUMBERED_BAIT.search(brief(name))
     assert "- A1. " in brief(name)
+
+
+def test_the_imu_trap_brief_never_says_what_an_accelerometer_measures():
+    """#151: the brief names the range, the pull and R-10, and leaves the
+    measured quantity, a one-g difference, for a skill rule to raise. It
+    holds no rigid-cable assumption either, so the case has no other trap."""
+    brief = (generate.EVALS / "spring-cable-imu-unstated" / "prompt.md"
+             ).read_text(encoding="utf-8")
+    assert all(s in brief for s in ("±1.5 g", "4 mm", "R-10", "- A1. "))
+    assert not NUMBERED_BAIT.search(brief)
+    told = ("specific force", "proper acceleration", "gravity", "measures",
+            "inextensible", "rigid cable", "cable's length below")
+    assert not [s for s in told if s in brief.lower()]
 
 
 @pytest.mark.parametrize("name", UNSTATED)

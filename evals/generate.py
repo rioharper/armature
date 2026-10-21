@@ -78,7 +78,8 @@ def _escape(text):
 # A unit a report may spell out instead of its symbol, or write another way,
 # longest first.
 SPELLED = {"°": ("degrees", "degree", "deg"),
-           "N m": ("N·m", "N⋅m", "N-m", "Nm")}
+           "N m": ("N·m", "N⋅m", "N-m", "Nm"),
+           "m/s²": ("m s^-2", "m/s^2", "m·s⁻²", "m⋅s⁻²", "m s⁻²", "m/s2")}
 
 
 def _unit(unit):
@@ -159,6 +160,20 @@ CASES = {
                 "it takes R-4 as met because an inextensible cable cannot "
                 "oscillate",
         release="CABLE_SAG"),
+    "spring-cable-imu-unstated": Derive(
+        mechanism="spring_cable",
+        stated=False,
+        answer="IMU_PEAK",
+        report="docs/testing/DR-02-imu-range.md",
+        bait="that the accelerometer reads the bob's acceleration",
+        sized="it rejects A3: it says the accelerometer reads specific "
+              "force, so at the bottom of the swing it reads g on top of the "
+              "bob's upward acceleration, and it decides R-10 on that "
+              "reading against the ±1.5 g range, about 14.7 m/s²",
+        carried="It decides R-10 on A3: it compares the bob's acceleration "
+                "alone, about 8 m/s² or 0.82 g, with the ±1.5 g range, or it "
+                "takes R-10 as met because the swing's acceleration stays "
+                "under 1.5 g"),
     "cable-platform-derive": Derive(
         mechanism="cable_platform",
         answer="PLATFORM_TILT",
