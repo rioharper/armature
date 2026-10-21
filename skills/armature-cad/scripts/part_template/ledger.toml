@@ -1,0 +1,25 @@
+# ledger.toml — the worked bracket's input numbers, each written once (ADR 0010).
+#
+# The part template's own, for its self-run. A project keeps one ledger at
+# its root, and a part file copied into cad/parts/ reads that one, the
+# nearest at or above its folder; never copy this file beside it, where it
+# would be nearer. Values are SI. The datasheet ref names an example row of
+# the datasheet index: replace it with your stock's.
+
+# --- part: what the part file reads ---
+
+[part.al-6061-t6.density]
+value = 2700.0
+unit = "kg/m^3"
+as_written = "2.70 g/cm^3"
+status = "confirmed"
+source = { kind = "datasheet", ref = "example-6061-t6-plate", retrieved = 2026-10-21 }
+note = "Al 6061-T6 plate, the bracket's stock"
+
+# --- budget: the bracket's line, its target until BODY names a body ---
+
+[budget.mass.ARM-BRK-001]
+value = 0.105
+unit = "kg"
+source = { kind = "chosen", ref = "spec §9, the mass budget" }
+note = "ARM-BRK-001, the motor bracket"

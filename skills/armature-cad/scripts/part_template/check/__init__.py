@@ -13,18 +13,20 @@ public names from the package, as part.py does:
     interference.py  interference, sweep_clearance
     views.py         write_views — the picture
     report.py        report — prints one part's result
+    ledger.py        the ledger's numbers, read with the standard library,
+                     and the export `set --from-part` writes back
 
 THE UNIT CONTRACT — read this before touching anything in the package.
 
 build123d is millimetre-native: every length you hand it and every number
-it hands back is mm. `analysis/model/params.py` is SI: metres, kilograms.
+it hands back is mm. The project's `ledger.toml` is SI: metres, kilograms.
 Mixing them silently gives a 1000x length error and a 1e15x inertia error,
 both of which look like plausible numbers. So:
 
-  * geometry is built in mm            -> convert params at the boundary
+  * geometry is built in mm            -> convert ledger values at the boundary
                                           with mm(), never anywhere else
   * everything this package RETURNS is SI (m, kg, kg m^2), because that is
-    what params.py and the derivation are in, and the comparison has to
+    what the ledger and the derivation are in, and the comparison has to
     happen in the derivation's units — except `about`, which is echoed
     back in the MILLIMETRES it was given in. It is a build123d-side point,
     not a result, and a joint origin passed to it in metres gives a
@@ -47,7 +49,7 @@ MM_PER_M = 1000.0
 
 
 def mm(metres: float) -> float:
-    """SI length from params.py -> mm for build123d. The only place a
+    """SI length from the ledger -> mm for build123d. The only place a
     factor of 1000 is allowed to appear."""
     return metres * MM_PER_M
 

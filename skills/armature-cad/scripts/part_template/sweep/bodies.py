@@ -23,44 +23,53 @@ from check import interference, mm  # noqa: E402
 # --- where the mechanism comes from ------------------------------------
 # SI in, mm out. See check/__init__.py's unit contract.
 #
-# The lengths are IMPORTED, never typed: a number restated here drifts the
-# moment the derivation re-runs. Same honest-provenance guard as part.py
-# (see _resolve_lengths below): only a missing `params` MODULE is caught,
-# and even that has no fallback. A part's mass target can fall back to a
-# budget row and stay useful; a link length can't - a guessed L1/L2 could
-# hide a real self-collision or invent one that isn't there, so a missing
-# or renamed source is fatal here, not advisory. The postures are the same:
-# they come from the engine's truth model of analysis/model/mechanism.py,
-# or the sweep does not run.
-PARAMS_DIR = Path(__file__).resolve().parents[3] / "analysis" / "model"
-sys.path.insert(0, str(PARAMS_DIR))
+# The lengths are READ, never typed: a number restated here drifts the
+# moment the derivation re-runs. They are the ledger's `mechanism` section
+# (ADR 0010), from the ledger the model reads: the nearest `ledger.toml` at
+# or above analysis/model/, which in a project is its root. Same
+# honest-provenance guard as part.py (see _resolve_lengths below), with no
+# fallback at all. A part's mass target can fall back to a budget line and
+# stay useful; a link length can't - a guessed L1/L2 could hide a real
+# self-collision or invent one that isn't there, so a missing or renamed
+# source is fatal here, not advisory. The postures are the same: they come
+# from the engine's truth model of analysis/model/mechanism.py, or the
+# sweep does not run.
+MODEL_DIR = Path(__file__).resolve().parents[3] / "analysis" / "model"
+sys.path.insert(0, str(MODEL_DIR))
 
 
-def _resolve_lengths():
-    """(L1, L2) in mm, from analysis/model/params.py's l1/l2 (SI, metres).
-
-    Only a missing `params` MODULE is caught. A `KeyError` (l1/l2 renamed)
-    and an `AttributeError` (no PARAMS table) both mean the derivation is
-    there and the link to it is broken - not a reason to sweep against a
-    different length - so they propagate uncaught, same as part.py.
-    """
+def _mechanism(model_dir):
+    """The ledger's `mechanism` section nearest `model_dir`, SI: exactly
+    what the model's `mechanism(p)` reads. No ledger is fatal; a ledger
+    with no `mechanism` section raises as itself, a broken link."""
+    from armature.ledger import LedgerError, find, load
     try:
-        import params  # analysis/model/params.py -- SI: metres, kilograms
-    except ModuleNotFoundError as exc:
-        if exc.name != "params":
-            raise  # params.py imports something that isn't installed
+        path = find(model_dir)
+    except LedgerError as exc:
         raise RuntimeError(
-            f"sweep: no analysis/model/params.py on sys.path ({PARAMS_DIR}) "
-            "- nothing to build the link envelopes from. Run the "
-            "armature-derive milestone that produces params.py first; there "
-            "is no safe placeholder for a link length."
+            f"sweep: no ledger.toml at or above {model_dir} - nothing to "
+            "build the link envelopes from. Run the armature-derive "
+            "milestone that writes the mechanism's entries first; there is "
+            "no safe placeholder for a link length."
         ) from exc
-    return mm(params.PARAMS["l1"]), mm(params.PARAMS["l2"])
+    return load("mechanism", path=path)
 
 
-def _resolve_truth():
+def _resolve_lengths(model_dir=MODEL_DIR):
+    """(L1, L2) in mm, from the ledger's mechanism.l1 and .l2 (SI, metres).
+
+    No ledger is fatal. A `KeyError` (l1/l2 renamed) and a `LedgerError`
+    (no mechanism section) both mean the derivation is there and the link
+    to it is broken - not a reason to sweep against a different length -
+    so they propagate uncaught, same as part.py.
+    """
+    p = _mechanism(model_dir)
+    return mm(p["l1"]), mm(p["l2"])
+
+
+def _resolve_truth(model_dir=MODEL_DIR):
     """The truth model, compiled by the engine from analysis/model's
-    `mechanism(p)` and its PARAMS.
+    `mechanism(p)` and the ledger's mechanism section.
 
     Only a missing `mechanism` MODULE is turned into a message, and it
     carries no fallback: a pose computed any other way is a second forward
@@ -74,14 +83,13 @@ def _resolve_truth():
         if exc.name != "mechanism":
             raise  # the engine, or something mechanism.py imports, is missing
         raise RuntimeError(
-            f"sweep: no analysis/model/mechanism.py on sys.path ({PARAMS_DIR})"
+            f"sweep: no analysis/model/mechanism.py on sys.path ({model_dir})"
             " - nothing to pose the envelopes with. Write the description at "
             "armature-derive's Milestone 0 first; the sweep keeps no forward "
             "kinematics of its own."
         ) from exc
     import armature
-    import params
-    return armature.compile(mechanism.mechanism, params.PARAMS)
+    return armature.compile(mechanism.mechanism, _mechanism(model_dir))
 
 
 # NOT resolved here. `L1, L2 = _resolve_lengths()` at module scope makes
@@ -231,8 +239,8 @@ def pose(q) -> dict:
 # with the missing 20 mm the same way an `ignore` threshold misses one
 # below its volume - check it explicitly if you add one.
 def ensure_geometry():
-    """Resolve L1/L2 from params.py, the truth model from mechanism.py, and
-    ADJACENT's threshold.
+    """Resolve L1/L2 from the ledger, the truth model from mechanism.py,
+    and ADJACENT's threshold.
 
     Deferred from module scope so the package imports without analysis/model
     (see L1 above). main() and every check call this first; idempotent.

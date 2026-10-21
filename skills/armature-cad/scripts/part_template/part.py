@@ -5,7 +5,8 @@ Copy to `cad/parts/<PART-ID>.py` beside the part's `<PART-ID>.md` and edit,
 and copy `part_checks.py` beside it as `<PART-ID>_checks.py` — its self-tests.
 Copy `check/`, `run_all.py`, and `layout.py` into `cad/parts/` too — this file
 imports `check` from its own directory — and `stubs.py` with `stubs_checks.py`
-if you need COTS placeholders.
+if you need COTS placeholders. Leave the template's `ledger.toml` behind: it
+is the worked example's, and beside the part it would shadow the project's.
 The .md is still the part definition — the contract, the loads, the
 rationale, the thing a human reads. This file is only its Build recipe
 section, written so a machine can run it and answer three questions the
@@ -20,11 +21,20 @@ Run it:  uv run --with 'build123d~=0.11' python cad/parts/<PART-ID>.py
 Exits nonzero when the part misses its target, so it works in a pre-commit
 hook or CI; `python cad/parts/run_all.py` runs its self-tests with every
 other module's. (The version bound is deliberate — see the template README.
-analysis/model/params.py is standard library only, so a part file needs
-nothing else; add what your params.py imports if it grows imports.)
+The ledger is read with the standard library's tomllib, by check/ledger.py,
+so a part file needs build123d and nothing else: not the engine.)
 
-THE ONE RULE: this file must never restate a dimension that already lives
-in `analysis/model/params.py` or in an interface table. It imports those.
+Write the measurement back, once it is worth the dynamics' re-run:
+
+    uv run --project analysis/model --with 'build123d~=0.11' \
+        python -m armature.ledger set part.<PART-ID> --from-part cad/parts/<PART-ID>.py
+
+runs `<PART-ID>.py --mass-properties` and writes its mass, COM and inertia
+into the ledger as `cad` candidates, with ORIGIN and AXES below as their
+frame. A body in the description then reads them with `of`.
+
+THE ONE RULE: this file must never restate a number that already lives in
+the project's `ledger.toml` or in an interface table. It reads those.
 A number typed in two places is a number that will disagree with itself,
 and the .md and .py disagreeing is worse than not having the .py.
 
@@ -35,6 +45,7 @@ boss bored 22 H7. Replace it with your part; keep the shape of the file.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -58,6 +69,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check import (  # noqa: E402
     compare_to_target,
     contained,
+    ledger,
     mass_properties,
     rebuild_sweep,
     report,
@@ -73,7 +85,7 @@ GRADE = "sketch"  # sketch | release — mirror the .md header
 # below is a dimension with two values.
 
 # Geometry is driven by INTERFACES — the datasheet numbers this part has to
-# mate to. params.py drives the mass/inertia TARGET below, not the shape:
+# mate to. The ledger drives the mass/inertia TARGET below, not the shape:
 # a link length in the dynamics does not set a bracket's plate size, and
 # pretending it does means inventing a conversion factor, which is exactly
 # the kind of unsourced number this whole skill exists to prevent.
@@ -122,98 +134,112 @@ BOLT_CLEARANCE = ISO_273_MEDIUM[BOLT_DIA]
 EDGE_DIST = 2.0 * BOLT_DIA
 EDGE_REACH = BOLT_CLEARANCE / 2 + EDGE_DIST
 
-DENSITY = 2700.0  # Al 6061-T6 [kg/m^3] — from docs/01-spec/bom.md
+# --- the ledger ----------------------------------------------------------
+# Every number below the geometry is a ledger entry's (ADR 0010): the
+# project's `ledger.toml`, the nearest one at or above this file's folder.
+# None of them is typed here. No ledger at all raises: without one there is
+# no density to weigh the part with, and no number to put in its place.
+LEDGER = ledger.find(Path(__file__).resolve().parent)
+
+# The stock this part is cut from, by its BOM entry: kg/m^3.
+DENSITY_ENTRY = "part.al-6061-t6.density"
+DENSITY = ledger.value(ledger.entries(LEDGER), DENSITY_ENTRY)[0]
+
+# The frame build() models the part in, in words, which `set --from-part`
+# writes beside the measurement: the COM is measured from ORIGIN, and the
+# COM and the tensor are both in AXES.
+ORIGIN = "the mounting face's centre"
+AXES = "X along the plate's length, Y across it, Z up the boss's axis"
 
 # --- the target the loop closes against --------------------------------
-# What the dynamics ASSUMED for this body, in SI, about the stated point.
-# If the dynamics lumped this part into a larger body there is no per-part
-# tensor to invent: give {"mass": ...} alone and check the lump at batch end.
+# What the dynamics ASSUMED for this body, in SI, about the stated point:
+# its mass, COM and inertia entries. If the dynamics lumped this part into a
+# larger body there is no per-part tensor to invent: name the mass alone,
+# set "com" and "inertia" to None, and check the lump at batch end.
 #
-# THIS is what params.py drives. Point PARAM_KEY at the body this part
-# realizes and the target follows the derivation automatically; when the
-# derivation is re-run the target moves with it, which is the entire reason
-# not to type the number here.
-
-PARAMS_DIR = Path(__file__).resolve().parents[2] / "analysis" / "model"
-sys.path.insert(0, str(PARAMS_DIR))
-
-# Point this at the body this part realizes. The angle brackets mean "not
-# pointed at anything yet", which is NOT the same as a key that has gone
-# missing: an unset placeholder falls back and says so, while a key that
-# was set and no longer resolves raises. A renamed key is the most likely
-# thing a re-derivation does, and it is exactly the event that means the
-# loop is broken — swallowing it substitutes a hand-typed number for a
-# derived one and prints a line claiming the derivation drove it.
-PARAM_KEY = "<params key for this body>"
-BUDGET_MASS = 0.105  # kg — budget row, docs/01-spec/budgets.md
+# Point BODY at the entries of the body this part realizes and the target
+# follows the derivation automatically; when the derivation is re-run the
+# target moves with it, which is the entire reason not to type the number
+# here. The angle brackets mean "not pointed at anything yet", which is NOT
+# the same as an entry that has gone missing: an unset placeholder falls
+# back and says so, while a name that was set and no longer resolves
+# raises. A renamed entry is the most likely thing a re-derivation does,
+# and it is exactly the event that means the loop is broken — swallowing it
+# substitutes another number for a derived one and prints a line claiming
+# the derivation drove it.
+BODY = {
+    "mass": "<ledger entry: this body's mass, such as mechanism.m2>",
+    "com": "<ledger entry: its COM, a 3-vector in AXES from ORIGIN>",
+    "inertia": "<ledger entry: its inertia tensor, about ABOUT in AXES>",
+}
+# The point the target tensor is about, in MM in this part's frame (a
+# build123d-side point, as check/__init__.py's unit contract says), or None
+# for the part's own COM. The entry names its point in words; PROVENANCE
+# prints them, because nothing can check that the two say the same thing.
+ABOUT = None
+# The mass budget's line for this part, the fallback target.
+BUDGET_LINE = f"budget.mass.{PART_ID}"
 
 # The budget fallback is allowed at SKETCH grade only, where the derivation
 # may genuinely not have run yet. A release-grade part whose target cannot
-# be traced to params.py must fail rather than quietly check itself against
-# a number somebody typed.
+# be traced to the derivation must fail rather than quietly check itself
+# against a budget line.
 ALLOW_BUDGET_FALLBACK = GRADE == "sketch"
 
 
-def _resolve_target(param_key: str, allow_fallback: bool = ALLOW_BUDGET_FALLBACK):
-    """(TARGET, PROVENANCE) for `param_key`, or raise saying why not.
+def _resolve_target(body: dict = BODY, allow_fallback: bool = ALLOW_BUDGET_FALLBACK,
+                    ledger_path: Path = LEDGER):
+    """(TARGET, PROVENANCE) for the entries `body` names, or raise saying
+    why not.
 
-    Only a missing `params` MODULE is a fallback. A KeyError (the key was
-    renamed), an AttributeError (no PARAMS table), and a ModuleNotFoundError
-    raised from inside params.py itself (a dependency of the derivation is
-    missing) all propagate: each of those means the derivation is there and
-    the link to it is broken, and a broken link is not a reason to check the
-    part against a different number.
+    Only a BODY still all placeholders is a fallback. A KeyError (an entry
+    renamed, or the budget line gone) and a ValueError (an `of` that loops,
+    a tensor with no point or axes, a BODY half pointed) propagate: each
+    means the ledger is there and the link to it is broken, and a broken
+    link is not a reason to check the part against a different number.
 
-    PROVENANCE says what actually happened, and is printed. It must never
-    claim params.py is absent while params.py is sitting right there — nor
-    name a file it did not read.
+    PROVENANCE says what actually happened, and is printed: the ledger file
+    it read, each entry and that entry's kind, and the frame the tensor is
+    stated in.
     """
-    try:
-        import params  # analysis/model/params.py — SI: metres, kilograms
-    except ModuleNotFoundError as exc:
-        if exc.name != "params":
-            raise  # params.py imports something that isn't installed
-        params = None
-
-    if params is not None and not param_key.startswith("<"):
-        # KeyError / AttributeError deliberately propagate.
-        #
-        # The path comes from params.__file__, not from PARAMS_DIR. `import
-        # params` searches ALL of sys.path — which includes this file's own
-        # directory, where you were told to put check/ and stubs.py — so a
-        # params.py dropped beside the part file resolves fine and naming
-        # PARAMS_DIR would credit a file that was never read.
-        return (
-            {"mass": params.PARAMS[param_key]},
-            f"target driven from {params.__file__}[{param_key}]",
+    found = ledger.entries(ledger_path)
+    named = {key: name for key, name in body.items() if name is not None}
+    unset = [key for key, name in named.items() if name.startswith("<")]
+    if unset and len(unset) < len(named):
+        raise ValueError(
+            f"{PART_ID}: BODY still has placeholders for {unset}; point "
+            f"every target at its entry, or set it to None for a lumped body"
         )
+    if named and not unset:
+        target, read = {}, []
+        for key, name in named.items():
+            value, entry = ledger.value(found, name)  # KeyError propagates
+            target[key] = tuple(value) if key == "com" else value
+            read.append(f"{key} {name} ({entry.get('source', {}).get('kind', '?')})")
+            if key == "inertia":
+                missing = [f for f in ("point", "axes") if f not in entry]
+                if missing:
+                    raise ValueError(
+                        f"{name}: a tensor states the point and axes it is "
+                        f"about, and {missing} is missing"
+                    )
+                target["about"] = ABOUT
+                read[-1] += f" about {entry['point']}, axes {entry['axes']}"
+        return target, f"target driven from {ledger_path}: {', '.join(read)}"
 
-    why = (
-        f"no params.py on sys.path ({PARAMS_DIR})"
-        if params is None
-        else f"PARAM_KEY is still the placeholder {param_key!r}"
-    )
+    why = (f"BODY is still the placeholder for {', '.join(unset)}" if unset
+           else "BODY names no entry")
     if not allow_fallback:
         raise RuntimeError(
             f"{PART_ID}: no target to check against - {why}. At grade "
-            f"'{GRADE}' the budget fallback is off; point PARAM_KEY at the "
+            f"'{GRADE}' the budget fallback is off; point BODY at the "
             f"body this part realizes, or drop the grade back to sketch."
         )
-    return {"mass": BUDGET_MASS}, f"target from budgets.md - FALLBACK, {why}"
+    mass = ledger.value(found, BUDGET_LINE)[0]  # KeyError propagates
+    return {"mass": mass}, f"target from {ledger_path}[{BUDGET_LINE}] - FALLBACK, {why}"
 
 
-TARGET, PROVENANCE = _resolve_target(PARAM_KEY)
-
-# Add these once the dynamics assumes per-body values, not just a mass:
-#   TARGET["com"] = (0.0, 0.0, 0.004)          # m, in the part's own frame
-#   TARGET["inertia"] = [[...], [...], [...]]  # kg m^2, 3x3
-#   TARGET["about"] = None                     # the COM, or (0.0, 0.0, 0.0) mm
-#     — REQUIRED alongside "inertia", and a point, not a label: a tensor
-#       with no stated point gets compared against whatever point the
-#       props were taken about, and "point (0, 0, 0) mm" as a string is
-#       rejected rather than false-failing on formatting. Note that this
-#       one is in MM while everything around it is SI — it is a
-#       build123d-side point, and check/__init__.py's unit contract says so.
+TARGET, PROVENANCE = _resolve_target()
 TOL = 0.10
 
 
@@ -318,10 +344,20 @@ def _assert_pattern_fits(part, bolt_circle: float, bore: float):
     )
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
     part = build()
+    props = mass_properties(part, DENSITY, about=ABOUT)
 
-    props = mass_properties(part, DENSITY, about=None)
+    # The export `set --from-part` runs: the measurement and its frame, one
+    # JSON line and nothing else, whatever the target says of it. One
+    # DENSITY: a multi-material part takes mass_properties per solid and
+    # combines them (masses summed, the COM mass-weighted, each tensor
+    # shifted to one point and summed), since build123d's Compound weights
+    # mass() by density but neither its COM nor its tensor.
+    if argv == [ledger.EXPORT]:
+        print(json.dumps(ledger.export(props, PART_ID, ORIGIN, AXES)))
+        return 0
+
     fails = compare_to_target(props, TARGET, tol=TOL)
 
     # Done when: the recipe rebuilds after changing each driven parameter.
@@ -355,4 +391,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
