@@ -436,22 +436,37 @@ CASES.update({
 
 # --- the unstated variants ---------------------------------------------------
 
-# Each case above has a variant, `<case>-unstated`, whose brief never lists
-# the bait as a numbered spec assumption: the spec's prose only implies it, so
-# the variant measures whether the agent finds the assumption, not only
-# whether it rejects one it was shown. The variant's answer, report and trap
-# are its case's; the brief and `bait`, the assumption the prose implies,
-# differ. A red-team variant reviews its case's planted/ with its own
-# implicit.patch over it, the same derivation using the bait without ever
-# numbering it, so the review must find it too: its `claim`, `where` and
-# `sound` are worded on that derivation (`IMPLICIT`).
+# Each stated case above has a variant, `<case>-unstated`, whose brief never
+# lists the bait as a numbered spec assumption: the spec's prose only implies
+# it, so the variant measures whether the agent finds the assumption, not
+# only whether it rejects one it was shown. The variant's answer, report and
+# trap are its case's; the brief and `bait`, the assumption the prose
+# implies, differ (`IMPLIED`, by its case's name). A red-team variant reviews
+# its case's planted/ with its own implicit.patch over it, the same
+# derivation using the bait without ever numbering it, so the review must
+# find it too: its `claim`, `where` and `sound` are worded on that derivation
+# (`IMPLICIT`).
+#
+# A derive case may instead be unstated only (#137): `stated` false, its name
+# ending `-unstated`, and no stated twin, since stating its bait would state
+# the question its trap tests. It is written in CASES as it is, its `bait`
+# the default reading its brief implies, and has no variant
+# (`unstated_only`).
 UNSTATED_SUFFIX = "-unstated"
+_INEXTENSIBLE = "that the cable is inextensible"
+_LEVEL = "that the platform stays level"
+_AT_ZERO = "that first contact is checked at α = 0"
+_STATIC = ("that the PSU is sized for the static current, with no "
+           "regeneration path")
 IMPLIED = {
-    "spring_cable": "that the cable is inextensible",
-    "cable_platform": "that the platform stays level",
-    "wheel_leg": "that first contact is checked at α = 0",
-    "parallelogram": "that the PSU is sized for the static current, with no "
-                     "regeneration path",
+    "spring-cable-derive": _INEXTENSIBLE,
+    "spring-cable-review": _INEXTENSIBLE,
+    "cable-platform-derive": _LEVEL,
+    "cable-platform-review": _LEVEL,
+    "wheel-leg-derive": _AT_ZERO,
+    "wheel-leg-review": _AT_ZERO,
+    "parallelogram-derive": _STATIC,
+    "parallelogram-review": _STATIC,
 }
 UNNUMBERED = ("which analysis/derivation/00_setup.md never lists among its "
               "assumptions")
@@ -496,15 +511,37 @@ IMPLICIT = {
                *CASES["parallelogram-review"].where[2:])),
 }
 CASES.update({
-    name + UNSTATED_SUFFIX: replace(case, bait=IMPLIED[case.mechanism],
-                                    stated=False, **IMPLICIT.get(name, {}))
-    for name, case in list(CASES.items())})
+    name + UNSTATED_SUFFIX: replace(case, bait=IMPLIED[name], stated=False,
+                                    **IMPLICIT.get(name, {}))
+    for name, case in list(CASES.items()) if case.stated})
 
 
 def base(name):
     """The stated case an unstated variant is made from; `name` itself for
-    a stated case."""
+    a stated case. An unstated-only case has none in CASES."""
     return name.removesuffix(UNSTATED_SUFFIX)
+
+
+def unstated_only(cases):
+    """The names of the unstated-only cases in `cases`. Raises ValueError on
+    an entry with `stated` false that is neither one nor the unstated
+    variant of a stated case."""
+    out = []
+    for name, case in cases.items():
+        named = name.endswith(UNSTATED_SUFFIX)
+        twin = cases.get(base(name)) if named else None
+        if case.stated or (twin is not None and twin.stated):
+            continue
+        if not (named and twin is None and isinstance(case, Derive)):
+            raise ValueError(
+                f"{name}: an unstated case is a stated case's variant, or a "
+                f"derive case named `<case>{UNSTATED_SUFFIX}` with no stated "
+                f"twin")
+        out.append(name)
+    return out
+
+
+UNSTATED_ONLY = unstated_only(CASES)
 
 
 # --- the hold-out ------------------------------------------------------------
