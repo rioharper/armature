@@ -2,6 +2,51 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## Overhaul 07: designed and ticketed — 2026-10-21
+
+**Status:** Grilled in three rounds of 24 questions. All recommendations were accepted, plus ten items settled at confirmation. Recorded as:
+- ADR 0011 (`3da75a3`, committed locally; the push was blocked, so it needs a manual `git push`), which also amends ADR 0010;
+- spec **#154**, labelled `ready-for-agent`;
+- tickets **#155–#160** as its sub-issues, with native blocked-by edges.
+
+No plugin code has changed.
+
+**Decided:**
+- **The Stage line goes.** "Stage" stays a word for a pipeline step.
+- **Two gated actions:**
+  - `merge`, a work branch into `main`;
+  - `buy`, the merge of an `armature/order-<name>` branch that adds `docs/orders/<date>-<name>.toml`. A CAD release is an order with `kind = "release"`.
+- **`armature.gate` is a stateless engine verb.** `run_all` results are cached by content in a gitignored `.armature/`.
+- **Reviews** pin a commit SHA and end in a TOML block of findings. A BLOCKER or MAJOR closes on one of three things:
+  - a kept check, in `review_<date>_<artifact>_checks.py`;
+  - a recheck, which is its own file;
+  - the user's acceptance.
+- **Waivers** live in a root `waivers.toml`.
+- **The plugin hook** is the backstop for the skills:
+  - On `Bash|PowerShell`, it verifies git merges, commits on `main`, `gh pr merge`, and pushes to `main`.
+  - It denies writes under `.armature/`.
+  - It asks the user before an edit writes `accepted`, `confirmed` or a waiver.
+  - It runs the plugin's own engine, with its venv in `${CLAUDE_PLUGIN_DATA}`, and acts only where a root `ledger.toml` exists.
+- **No git hook.** The user's own terminal is never policed.
+- **One release run** after 07 lands replaces the pending one. It covers 06, #147 and 07.
+
+**Order:**
+- #155 (the gate engine) and #156 (the red team) have no blockers.
+- Then #157 (`buy`) and #158 (the hook).
+- Then #159 (the skills).
+- #160 (docs and evals) comes last.
+
+**Flagged:**
+- Ibex needs a one-time hand edit: seed `ledger.toml`, and swap its CLAUDE.md lines.
+- A shell edit to `ledger.toml` gets past the `ask`.
+- `import armature` loads MuJoCo, so the hook path must avoid that.
+- The release is breaking.
+
+**Left before the pre-CAD pipeline is finished** (this replaces item order 1–2 of the entry below):
+1. #155–#160.
+2. The single release run.
+3. The open pipeline-v2 decisions, Overhaul 10, and Ibex's spec, as listed below.
+
 ## What's left before the pre-CAD pipeline is finished — 2026-10-21
 
 **Status:** Overhauls 01–06 are built, merged to `main` and pushed. #147's traps are on `main` (`30d13da`). Of the eleven review candidates, three that sit before CAD (07, 10, 11) are not designed, and three pipeline-v2 decisions are still open. Nothing since 2.0.0 is released, so Ibex's cached plugin has neither the ledger nor the new traps. Ibex restarted on 2026-10-16 (brief Rev 1.0, staged to spec) and has not moved since. Its spec is the acceptance test.
