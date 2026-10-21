@@ -82,9 +82,9 @@ def write(root, k, folder, tip):
             timespec="seconds")}, indent=2) + "\n", encoding="utf-8")
 
 
-def run_all(folder, project):
-    """Run `folder`'s `run_all.py` with uv in `project`'s environment;
-    (passed, output)."""
+def run_all(folder, project, *command):
+    """Run `folder`'s `run_all.py` with uv in `project`'s environment, or
+    `python <command>` where one is given; (passed, output)."""
     uv = shutil.which("uv")
     if uv is None:
         return False, "uv is not on PATH; install uv"
@@ -93,7 +93,8 @@ def run_all(folder, project):
         args += ["--project", str(project), "--with", BUILD123D]
     env = {k: v for k, v in os.environ.items() if k not in FOREIGN_ENV}
     env["PYTHONUTF8"] = "1"
-    run = subprocess.run([*args, "python", RUN_ALL], cwd=folder, env=env,
+    run = subprocess.run([*args, "python", *(command or (RUN_ALL,))],
+                         cwd=folder, env=env,
                          capture_output=True, text=True, encoding="utf-8",
                          errors="replace")
     return run.returncode == 0, run.stdout + run.stderr
