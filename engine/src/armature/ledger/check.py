@@ -1,25 +1,29 @@
-"""`check`: the ledger's entry-level findings, each coded.
+"""`check`: the ledger's findings, each coded: an entry's, then a budget's
+and the project markdown's.
 
-pint is imported here and nowhere a value is read: `load` hands out floats,
+pint is used here and nowhere a value is read: `load` hands out floats,
 and this is the one place a unit is converted, so it is the one place a
 conversion can be wrong and be caught.
 """
 
 import datetime
-import functools
 import json
 import re
 from dataclasses import asdict, dataclass
 
 import numpy as np
 
-from .entries import CONFIRMED_BY_KIND, OfError, load
+from .budgets import budgets, reqs, tally
+from .entries import CONFIRMED_BY_KIND, LedgerError, OfError, load
+from .units import CURRENCY, parse_unit, registry as _registry
+from .views import stale
 
 AS_WRITTEN = 1e-9      # |as_written − value| allowed, relative to the larger
 SI_FACTOR = 1e-12      # |a unit's factor to SI − 1| that still counts as SI
 PRICE_AGE = 90         # days before a datasheet price is old
 NEEDS_AS_WRITTEN = ("datasheet", "standard", "measured")
-CURRENCY = "[currency]"
+TRACE = "docs/01-spec/traceability.md"
+REQ_ROW = re.compile(r"REQ-\d+")
 
 # A quantity as written: a number, or a JSON list of them, then its unit.
 QUANTITY = re.compile(r"\s*(\[.*\]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)"
@@ -54,7 +58,67 @@ def check(path=None, *, today=None):
                  else [*_citation(e), *_band(e), *_unit(e), *_price(e, today)])
         findings += [Finding(code, level, e.name, message)
                      for code, level, message in found]
-    return findings
+    return findings + [Finding(code, "error", entry, message)
+                       for code, entry, message in _project(ledger)]
+
+
+def _project(ledger):
+    """The findings on the budgets as a whole and on the project's
+    markdown: a breach, a breached REQ whose traceability row is not
+    failed (when that file exists), and a stale view."""
+    breached = []
+    for budget in budgets(ledger):
+        try:
+            t = tally(ledger, budget)
+        except LedgerError:   # an of check reports, or a unit show raises
+            continue
+        if t.breached:
+            breached.append(t)
+            failing = reqs(ledger, budget)
+            yield ("budget.breach", budget,
+                   f"its lines sum to {_shown(t.total)} {t.unit}, past its "
+                   f"allocation of {_shown(t.have)} {t.unit} by "
+                   f"{_shown(-t.margin)} {t.unit}"
+                   + (f"; it fails {', '.join(failing)}" if failing else ""))
+    trace = ledger.path.parent / TRACE
+    if breached and trace.is_file():
+        rows = trace_statuses(trace.read_text(encoding="utf-8"))
+        for t in breached:
+            for req in reqs(ledger, t.name):
+                status = rows.get(req)
+                if status is None or _word(status) != "failed":
+                    yield ("trace.unfailed", req,
+                           f"{t.name} is breached, and its row in {TRACE} "
+                           + ("is missing" if status is None
+                              else f"reads {status!r}, not failed"))
+    for view, message in stale(ledger):
+        yield "view.stale", view, message
+
+
+def trace_statuses(text):
+    """Each REQ's Status cell in a traceability table, by REQ id."""
+    rows, status = {}, None
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            status = None
+            continue
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        names = [c.strip("*` ").lower() for c in cells]
+        if status is None:
+            status = names.index("status") if "status" in names else None
+            continue
+        req = cells[0].strip("*` ")
+        if len(cells) > status and REQ_ROW.fullmatch(req):
+            rows[req] = cells[status].strip("*` ")
+    return rows
+
+
+def _word(status):
+    """A status cell's first word, lowercased: `failed` in "failed: the
+    reserve is spent", `open` in "open (budget row failed)"."""
+    words = re.findall(r"[a-z]+", status.lower())
+    return words[0] if words else ""
 
 
 def _citation(e):
@@ -178,20 +242,3 @@ def _shown(x, digits=6):
     if np.ndim(x) == 0:
         return f"{x:.{digits}g}"
     return np.array2string(np.asarray(x), precision=digits)
-
-
-def parse_unit(text):
-    """`text` as a pint unit, or None where pint cannot parse it."""
-    try:
-        return _registry().Unit(text)
-    except Exception:   # pint's parser raises more types than it documents
-        return None
-
-
-@functools.cache
-def _registry():
-    """pint's registry, with a currency, so a price is a quantity too."""
-    import pint
-    ureg = pint.UnitRegistry()
-    ureg.define(f"USD = {CURRENCY}")
-    return ureg

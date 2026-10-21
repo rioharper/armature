@@ -82,7 +82,7 @@ Before deriving anything, pin down — conventions come from `CONTEXT.md` (or `d
 
 If the project has no numbers yet, derive symbolically and leave `params.py` full of clearly-marked placeholders. If the design itself is still open — more undecided architecture than one session can settle — call the Skill tool with "armature-wayfind" to chart the way first.
 
-**When a number has to come from a datasheet, get the datasheet.** Rotor and gearbox inertia, gearbox efficiency and backlash, stall and continuous torque, thermal limits, bearing friction, material modulus and yield: if a needed spec isn't already in the project's materials, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter): a pre-confirmed P/N is cached in the run; a candidate waits in the agent's staging file for your confirmation, then its Merge step. Cite index rows, never memory; until a number is confirmed, carry it as a clearly-marked TBD. A number, a closed form, or a whole method that comes out of a book has no row to cite and its own rules in `references/derivation-standards.md`, *Design data from a book*. A milestone needing several parts sends them in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
+**When a number has to come from a datasheet, get the datasheet.** Rotor and gearbox inertia, gearbox efficiency and backlash, stall and continuous torque, thermal limits, bearing friction, material modulus and yield: if a needed spec isn't already in the project's materials, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter): a pre-confirmed P/N is cached in the run; a candidate waits in the agent's staging file for your confirmation, then its Merge step. Cite index rows, never memory; until the user confirms a number, its ledger entry stays `status = "candidate"`. A number, a closed form, or a whole method that comes out of a book has no row to cite and its own rules in `references/derivation-standards.md`, *Design data from a book*. A milestone needing several parts sends them in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
 
 Write the model into `00_setup.md` (system description, numbered assumptions, home posture and frame table, parameter table), the values into `params.py` and the mechanism description into `mechanism.py`, on the `armature/m0-setup` branch.
 
@@ -170,7 +170,7 @@ Flagging is half the job. When the user approves a change — bigger motor, shor
 2. Update every equation, boxed result, and interpretation in whichever `.md` the change touches. A number-only change usually touches `03_results.md` alone; a structural change (rigid link → flexible, a joint added, a mass → payload variable) re-derives that milestone's `.md` and `.py` together. If that re-derivation is genuinely large, scope it as its own task.
 3. Bump the revision note in every `.md` file that changed, recording what changed and why.
 
-When masses, inertias, or torque results firm up, update the matching rows in `docs/01-spec/budgets.md` (Source column: model).
+When masses or inertias firm up, update their ledger entries, with the source kind that firmed them (`cad`, `measured`), and run `py -m armature.ledger render`, which rewrites the budgets that read them. A torque result is derived and is never an entry; the drive margins carry it.
 
 ## When a plan task lands as a report
 

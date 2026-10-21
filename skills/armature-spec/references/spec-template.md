@@ -18,14 +18,31 @@ A day in the life of the robot: how it's deployed, operated, maintained,
 stored. Who touches it and when.
 
 ## 3. Requirements
-### 3.1 Functional
-| ID | Requirement | Value / Threshold | Priority | Verification |
-|----|-------------|-------------------|----------|--------------|
-| REQ-001 | ... | ... | Must/Should/Could | Test/Analysis/Inspection/Demo |
+Functional requirements, then the non-functional ones (constraints): mass,
+envelope, budget, timeline, power, environment (IP rating, temp), safety,
+noise, maintainability.
 
-### 3.2 Non-functional (constraints)
-Mass, envelope, budget, timeline, power, environment (IP rating, temp),
-safety, noise, maintainability. Same table format.
+### 3.1 Requirements with a number
+Each is the ledger entry `req.REQ-xxx` (ADR 0010): its value and unit are
+the threshold, and its `note` is the requirement, opening with its priority
+(Must/Should/Could), its verification (Test/Analysis/Inspection/Demo) and
+whether it is functional, then what it asks, with the comparison the value
+is held to: "Must, test, functional: reach at least this far from the base
+axis". `py -m armature.ledger render` writes the table; edit the entries,
+never the table.
+
+<!-- ledger:req -->
+| ID | Requirement | Value / Threshold | Source | Status |
+| --- | --- | --- | --- | --- |
+<!-- /ledger -->
+
+### 3.2 Requirements with no number
+A requirement no number holds (an IP rating, a supported OS, one-person
+setup) has no entry and is written here, numbered in the same REQ sequence.
+
+| ID | Requirement | Priority | Verification |
+|----|-------------|----------|--------------|
+| REQ-0xx | ... | Must/Should/Could | Test/Analysis/Inspection/Demo |
 
 ## 4. Builder Capability Assessment
 Honest statement of fabrication access, skills, hours, and prior experience,

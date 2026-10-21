@@ -3,8 +3,8 @@ part of the ledger an artifact cites rather than all of it."""
 
 import numpy as np
 
-from .check import parse_unit
-from .entries import ALLOCATION, LedgerError, load
+from .budgets import tally
+from .entries import LedgerError, load
 
 DASH = "-"   # a column with nothing in it
 
@@ -32,24 +32,13 @@ def show(prefix, *, path=None):
 def _budget(ledger, budget):
     """A budget's rows: each line resolved, the total, the allocation and
     the margin, all in the allocation's unit, or the first line's."""
-    entries = [e for e in ledger if e.section == budget]
-    lines = [e for e in entries if e.key != ALLOCATION]
-    allocation = next((e for e in entries if e.key == ALLOCATION), None)
-    units = {e.name: ledger.unit(e.name) for e in entries}
-    unit = units[allocation.name] if allocation else units[lines[0].name]
-    for name, other in units.items():
-        if parse_unit(other) != parse_unit(unit):
-            raise LedgerError(f"{name}: a {budget} line is in {other}, and "
-                              f"the budget in {unit}")
-    values = {e.key: ledger.resolve(e.name) for e in lines}
-    total = sum(values.values())
-    rows = [[key, _number(v), unit] for key, v in values.items()]
-    rows.append(["total", _number(total), unit])
-    if allocation is None:
+    t = tally(ledger, budget)
+    rows = [[e.key, _number(v), t.unit] for e, v in t.lines]
+    rows.append(["total", _number(t.total), t.unit])
+    if t.allocation is None:
         return rows + [["allocation", DASH, ""]]
-    have = ledger.resolve(allocation.name)
-    return rows + [["allocation", _number(have), unit],
-                   ["margin", _number(have - total), unit]]
+    return rows + [["allocation", _number(t.have), t.unit],
+                   ["margin", _number(t.margin), t.unit]]
 
 
 def _value(e):

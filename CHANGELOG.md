@@ -26,6 +26,21 @@
 - **`coarse_2r/` reads the same ledger.** Its copies and `test_spec_stage.py`'s drift test are gone.
 - **The engine's symbolic view takes vector and tensor parameters.** A 3-vector is three symbols, `<name>_x` to `_z`, and a tensor a symmetric array of six, `<name>_xx` to `_zz`. `Symbolic.numbers(values)` substitutes every element, and refuses an asymmetric tensor. The review artifact lists either on one row.
 
+### The ledger's views: render, and the findings that read markdown
+
+[#143](https://github.com/rioharper/armature/issues/143). The budgets, the BOM, the spec's requirements table and `CONTEXT.md`'s symbol table become tables `render` writes from the ledger.
+
+- **`render(path=None)`**, and `py -m armature.ledger render`, rewrites every `<!-- ledger:<view> -->` … `<!-- /ledger -->` section in the project's markdown: every `.md` below the ledger's folder, except in a dot-folder or a folder with a ledger of its own, and never inside a fenced code block. It keeps the prose around each table and the file's line endings, and returns the files it changed.
+- **The views**, each a whole table with a row's prose from its entry's `note`:
+  - `budget.<kind>`: one row per line, with its resolved value and what it reads, then the total against the allocation and the margin, marked breached when negative;
+  - `bom`: one row per `part.*` entry, `of` entries included, with its value, `as_written` and basis, source, status, and what reads it;
+  - `req`: one row per `req.*` entry, its Value / Threshold column the entry's value;
+  - `symbols`: one row per `mechanism` and `drive` entry, with value, unit and band.
+- **Three findings.** `view.stale` is a marked section that differs from what `render` writes, or a marker that cannot be read. `budget.breach` is a budget whose lines sum past its allocation, read from the ledger alone. `trace.unfailed` is a REQ a breached budget answers to (one its allocation or a line reads or cites) whose Status in `docs/01-spec/traceability.md` doesn't open with `failed`; it is skipped when that file doesn't exist.
+- **The templates carry the views.** The budgets, BOM and spec templates hold marked sections, and the plan's symbol table points at `symbols`. The prose around them stays hand-written. Dropped columns: the BOM's three category tables are one table, its Design-driving parameters cell is a row per number, a budget line has no budget or margin of its own (the total row has), the Power table's System peak and continuous rows (derived, so a drive margin's) are gone, and the requirements table's Priority and Verification columns move into each REQ's `note`. A requirement with no number keeps a hand-written table.
+- **Traceability gains `failed`:** open → analyzed → tested, failed, or waived. The budgets template's breach rule says so. A reserve is a line holding the headroom its REQ demands.
+- **One provenance vocabulary.** The budgets, BOM and derive texts use ADR 0010's six kinds and the `candidate`/`confirmed` status in place of guess / model / list price, Confirmed / TBD / Assumed, and the `standard` tag.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.
