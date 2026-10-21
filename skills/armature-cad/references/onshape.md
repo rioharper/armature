@@ -19,7 +19,7 @@ The part's datum scheme (documentation-standards §5) is its base sketch plane a
 
 For the dimensions SKILL.md's rule marks driven:
 
-- Declare a **Variable** per driven dimension, `#` prefix and units — `#link_len = 200 mm`, `#bolt_circle = 45 mm` — via the Variable feature at the top of the feature list, or a shared **Variable Studio** when several Part Studios need the same values (the cloud-native echo of one `params.py`).
+- Declare a **Variable** per driven dimension, `#` prefix and units — `#link_len = 200 mm`, `#bolt_circle = 45 mm` — via the Variable feature at the top of the feature list, or a shared **Variable Studio** when several Part Studios need the same values (the cloud-native echo of the project's one ledger).
 - Reference the variable in any dimension or field by name or expression (`#bolt_circle / 2`); editing the variable updates every reference on regen.
 - For size families, use **Configurations** driven off variables rather than copies.
 - Onshape has real version control: branch and merge design changes rather than saving alternate files.

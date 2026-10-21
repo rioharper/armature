@@ -181,8 +181,9 @@ Checks that the physics closes.
 never its `ledger.toml`, which is the template's own, pin
 the engine as armature-derive's Step 0 says, and leave the derivation's
 milestones for derive. Then write them for this
-machine: `params.py`, a coarse `mechanism.py` from `armature.coarse`
-bodies, `drive.py` from the candidate parts' datasheet rows, `missions.py`
+machine: the `mechanism` and `drive` entries in the project's ledger,
+`params.py`'s structure over them, a coarse `mechanism.py` from
+`armature.coarse` bodies, `drive.py` from the candidate parts' entries, `missions.py`
 from §6.4, and `drive_checks.py`'s hand-worked answers. The template's
 `test_spec_stage.py` runs this same set. Run
 `uv run python run_all.py` there and table each drive margin's worst-case

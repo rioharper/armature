@@ -20,7 +20,7 @@ For the dimensions SKILL.md's rule marks driven:
 
 - **Tools → Equations**: create **global variables** for them (`"link_len" = 200mm`).
 - Drive sketch dimensions from them: double-click the dimension, enter `= "link_len"`. The dimension shows a Σ and follows the variable.
-- For a table of parameters, **link to an external text/Excel file** (Equations → link to file) so one parameter file feeds several parts — the model-side echo of `params.py`.
+- For a table of parameters, **link to an external text/Excel file** (Equations → link to file) so one parameter file feeds several parts — the model-side echo of the project's ledger.
 - Where a part comes in several sizes, use a **Design Table** (configurations driven by a spreadsheet) rather than saving copies.
 
 Name dimensions and features (not `D1@Sketch3`); a named dimension referenced in an equation is a model someone can read.
@@ -62,9 +62,9 @@ Mass Properties updates live as the model changes, so it doubles as a running ch
 
 ## 9. With the armature SolidWorks MCP connected
 
-If the `solidworks` MCP server is connected (`/armature:init` writes it into a SolidWorks project's `.mcp.json`; needs SolidWorks running on Windows), run the Done-when checks against the live model instead of asking the user to transcribe numbers. The server measures; you judge — pass/fail lives in this conversation, against `params.py` and the part definition.
+If the `solidworks` MCP server is connected (`/armature:init` writes it into a SolidWorks project's `.mcp.json`; needs SolidWorks running on Windows), run the Done-when checks against the live model instead of asking the user to transcribe numbers. The server measures; you judge — pass/fail lives in this conversation, against the ledger and the part definition.
 
-- **Mass loop (§5):** `sw_mass_properties(doc, coord_system=<the frame from 00_setup.md>)` → compare mass/COM/inertia to the `params.py` block, in SI, about the same point and axes. Route divergence per SKILL.md's Close the loop.
+- **Mass loop (§5):** `sw_mass_properties(doc, coord_system=<the frame from 00_setup.md>)` → compare mass/COM/inertia to the body's ledger entries (`py -m armature.ledger show mechanism`), in SI, about the same point and axes. The write-back and any divergence go per SKILL.md's Close the loop.
 - **Perturbation check:** for each driven parameter: `sw_set_params` to a ±10% value → `sw_rebuild` (must return no problems) → `sw_set_params` back → final `sw_rebuild`. Any feature in the problems list fails the check.
 - **Interface verification:** `sw_get_dimensions` on each controlling dimension named in the interface contract table; compare value and tolerance against the table's source column.
 - **Release metadata:** `sw_set_tolerance` for the fits documentation-standards §6 chose; `sw_custom_props` to stamp part number, rev, material before the drawing.

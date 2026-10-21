@@ -89,7 +89,7 @@ If a plain ±dimension fully captures the requirement, use it.
 
 ## 8. Mass & inertia target — closing the loop
 
-Record the **mass budget** row (from the spec's mass rollup) and the **mass, COM, and inertia the dynamics assumed** for this body, with the *point and axes* they were taken about — the derivation's `params.py` and `00_setup.md` state these. An inertia tensor without its point (COM? joint origin?) and frame is not comparable: a CAD mass-properties report taken about a different point disagrees with a correct derivation for a reason that has nothing to do with the part. State point and axes on both sides. Granularity (per-body vs. lump) and the comparison itself are SKILL.md's Close the loop.
+Record the **mass budget** row (from the spec's mass rollup) and the **mass, COM, and inertia the dynamics assumed** for this body, with the *point and axes* they were taken about — the body's `mechanism` entries in the ledger state these, each tensor with its `point` and `axes`, and `00_setup.md` names the frame. An inertia tensor without its point (COM? joint origin?) and frame is not comparable: a CAD mass-properties report taken about a different point disagrees with a correct derivation for a reason that has nothing to do with the part. State point and axes on both sides. Granularity (per-body vs. lump), the comparison and the write-back are SKILL.md's Close the loop.
 
 ## 9. Envelope, clearance, service access
 

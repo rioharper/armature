@@ -15,7 +15,7 @@ Read in this order; during ideation read what exists and carry the rest as TBDs 
 
 - **`CONTEXT.md`** (written by **armature-plan**): coordinate frames, symbol table, part-numbering scheme, CAD-file naming, revision scheme, units policy. Reuse verbatim — part IDs, datum names, and filenames all come from here.
 - **`docs/01-spec/spec.md` and `docs/01-spec/bom.md`**: the chosen actuators, bearings, materials, and their datasheet numbers.
-- **`analysis/derivation/03_results.md`, `analysis/model/mechanism.py` and `analysis/model/params.py`**: the worst-case joint torques and reaction forces each part carries, and the mass, COM, and inertia the dynamics *assumed* per body — the target the loop closes against. The mechanism description's bodies hold them, and the frames table `report_truth.py` writes prints each one. Where the project emits an `analysis/model/params.toml`, read values there; open `params.py` only for a value's provenance.
+- **`analysis/derivation/03_results.md`, `analysis/model/mechanism.py` and `ledger.toml`**: the worst-case joint torques and reaction forces each part carries, and the mass, COM, and inertia the dynamics *assumed* per body — the target the loop closes against. The mechanism description's bodies hold them, and the frames table `report_truth.py` writes prints each one. Read a number with `py -m armature.ledger show <prefix>` (`show mechanism`, `show part.<PART-ID>`), which prints its unit, band, source and status beside it.
 
 Without `CONTEXT.md`, reuse the frames and symbols from `analysis/derivation/00_setup.md` or the spec's Section 6, establish a minimal glossary inline (part-numbering, file naming, rev scheme), and note that the definitions rest on it; for a substantial project, suggest **armature-plan** write one first. If the design itself is still open — more undecided architecture than one session settles — call the Skill tool with "armature-wayfind" to chart the way first; a sketch-grade definition can serve one of its prototype tickets.
 
@@ -104,7 +104,7 @@ checks in documentation-standards §11, each written concretely for this
 part with the numbers to measure.
 ```
 
-**Skeleton and driven dimensions.** Model a part standalone off its own origin. A skeleton/layout earns its existence when three or more parts share kinematic dimensions or a driving length is still expected to change. Driven dimensions are only those traced to `params.py` or an interface contract; everything else is a typed number. When a skeleton exists, its stage ledger and re-freeze procedure live in the skeleton's own document; a part definition says at most "derives: A, B_r, stop points".
+**Skeleton and driven dimensions.** Model a part standalone off its own origin. A skeleton/layout earns its existence when three or more parts share kinematic dimensions or a driving length is still expected to change. Driven dimensions are only those traced to a ledger entry or an interface contract; everything else is a typed number. When a skeleton exists, its stage ledger and re-freeze procedure live in the skeleton's own document; a part definition says at most "derives: A, B_r, stop points".
 
 **One walkthrough per project at most.** The build recipe plus the software reference is the whole *how*; a click-by-click walkthrough is written once, for the first part, as calibration. A later part that seems to need one gets a more concrete recipe instead.
 
@@ -122,12 +122,14 @@ Once a subassembly's parts are defined, write `cad/assemblies/<ASM-ID>.md` per `
 
 ## Close the loop — realized against assumed
 
-Close at the granularity the dynamics modeled: where it assumed per-body values, the part realizes them; where it lumped several parts into one body, the target is each part's budget row plus one re-check of the lump at batch end — say so in a line. Once the geometry exists, extract its mass properties **about the same point and axes the description uses**: the COM as a position and the inertia about it in base axes, both at the home posture. Three sources, earliest first: the executable recipe (`check`'s `mass_properties` does the parallel-axis shift), the SolidWorks MCP server against the live model, or the CAD package's own mass-properties dialog. Compare to the body in the description:
+Close at the granularity the dynamics modeled: where it assumed per-body values, the part realizes them; where it lumped several parts into one body, the target is each part's budget row plus one re-check of the lump at batch end — say so in a line. Once the geometry exists, extract its mass properties **about the same point and axes the description uses**: the COM as a position and the inertia about it in base axes, both at the home posture. Three sources, earliest first: the executable recipe (`check`'s `mass_properties` does the parallel-axis shift), the SolidWorks MCP server against the live model, or the CAD package's own mass-properties dialog.
 
-- Within tolerance → update the body in `analysis/model/mechanism.py` and its values in `params.py` with the realized mass, COM, and inertia (mark the source) and run `uv run python run_all.py` in `analysis/model/` via Bash: the self-tests must pass with the realized values in place.
-- Beyond it → call the Skill tool with "armature-derive", handing off the measured mass, COM, and inertia, so the dynamics and any actuator sizing that rode on them re-run against reality.
+**Write the measurement back** as `cad` entries, `part.<PART-ID>.mass`, `.com` and `.inertia`, at `status = "candidate"`. An executable recipe writes them with `py -m armature.ledger set part.<PART-ID> --from-part <PART-ID>.py` (the part template's README, *Writing the measurement back*); a measurement from the MCP server or the dialog goes in by hand in the same shape, `source = { kind = "cad", ref = "<file>@<rev>" }`, with the tensor's and the COM's `point` and `axes`. Point the part's mass budget line at its `cad` entry with `of`, then `render` and `check`, as the project's standing rule on a changed number says. Then compare to the body in the description:
 
-Either way, update the part's mass rows in `docs/01-spec/budgets.md` (Source: model or measured). Done when every part definition's inertia claim matches the model.
+- Within tolerance → point the body's `mechanism` entries at the `cad` entries with `of`, confirm them with the user, and run `uv run python run_all.py` in `analysis/model/` via Bash: the self-tests must pass with the realized values in place.
+- Beyond it → call the Skill tool with "armature-derive", handing off the `cad` entries, so the dynamics and any actuator sizing that rode on them re-run against reality.
+
+Done when every part definition's inertia claim matches the model.
 
 ## Red-team before the money moves
 

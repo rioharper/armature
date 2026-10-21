@@ -36,9 +36,12 @@ silence.
 ## The write-back
 | Number | was | now | where it changed |
 
-Every constant this report moves and every file that carries it — `params.py`
-first, then the milestone notes, spec, `CONTEXT.md`. This table is the
-propagation checklist.
+Every number this report moves and every file that carries it. An input is its
+ledger entry, edited once, then `render` and `check`, which carry it into the
+budgets, the BOM, the requirements table and `CONTEXT.md`'s symbols; the
+rows after it are the prose that quotes it, the milestone notes and the spec's
+text. A derived number, such as a margin, has no entry, and its row names the
+note that quotes it. This table is the propagation checklist.
 
 ## Assumptions under strain
 Each assumption one number away from moving a result, with the **direction and
@@ -55,9 +58,9 @@ resolution or the reason it stays open. An item with no row is an item lost.
 ## Feeds
 | Target | Update |
 
-Where each number goes: `params.py`, the milestone notes, `docs/01-spec/`
-(spec, traceability, budgets, BOM), `CONTEXT.md`, `docs/decisions.md`, and any
-skill this report hands work to.
+Where each number goes: its ledger entry, the milestone notes, the spec's
+prose and `docs/01-spec/traceability.md`, `docs/decisions.md`, and any skill
+this report hands work to.
 
 ## Revision History
 | Rev | Date | Notes |

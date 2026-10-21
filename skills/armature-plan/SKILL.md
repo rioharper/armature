@@ -148,7 +148,7 @@ Typical arc (adapt, don't copy):
 1. **Analysis & sizing** — the mechanism description, its parameter values and its envelope first; then **the truth model compiled from it**, before any analytic milestone, so every later claim has something independent to be checked against on the day it is written; then the kinematic model, workspace check, the drive margins spec §9 ran re-run on the full description, DOF/reachability verification. Derivation tasks say "derive FK/IK/Jacobian/dynamics" and carry `armature-derive` as Executor, and so does the truth-model leaf. A project's **later simulation tasks consume the truth model** rather than starting from nothing — a bench model for a bring-up procedure, a rig model for controller work, a sim for a prototype's kill criterion all compile `analysis/model/mechanism.py` with the engine.
 2. **Concept CAD & layout** — master sketch / skeleton model driving all subassemblies, envelope check, interference and service-access check, mass rollup vs. budget.
 3. **Prototype the risky bits** — each prototype task carries the question it must answer and a kill criterion.
-4. **Detail design & DFM** — part-by-part CAD, tolerance decisions, COTS selection with actual part numbers, drawings for anything outsourced, BOM with costs against budget. If the spec came with a **design-driver BOM** (from armature-spec), expand it into the full procurement BOM — the design drivers and their datasheets are settled; add quantities, fasteners, costs, and lead times. Any part still carrying a TBD or assumed spec gets a task to source and confirm its datasheet *before* its drawing is released.
+4. **Detail design & DFM** — part-by-part CAD, tolerance decisions, COTS selection with actual part numbers, drawings for anything outsourced, BOM with costs against budget. If the spec came with a **design-driver BOM** (from armature-spec), expand it into the full procurement BOM — the design drivers and their datasheets are settled; add quantities, fasteners, costs, and lead times. Any part whose ledger entries are still an `estimate` or a `candidate` gets a task to source and confirm its datasheet *before* its drawing is released.
 5. **Fabrication & subsystem bring-up** — build order chosen so subsystems are testable standalone; electrical/wiring as first-class tasks.
 6. **Integration & verification** — trace every Must requirement (REQ-xxx) to a test task and fill the Test column of `docs/01-spec/traceability.md`; a Must REQ with no test row is the gap this phase exists to catch.
 7. **Iteration reserve** — an explicit phase: budget for revising the worst mechanism.
@@ -205,7 +205,7 @@ A leaf that runs somewhere other than the plan's default machine names it too, w
 Three cuts a planner makes before a session discovers them:
 
 - a review and its rework are separate leaves (the **armature-red-team** agent runs in its own context; resolving its findings costs a session);
-- a report (re-run the model, tabulate the sweep, write back to the spec, `params.py`, `budgets.md`) is its own leaf;
+- a report (re-run the model, tabulate the sweep, write back to the ledger and the notes) is its own leaf;
 - a change of executor is a cut.
 
 User-executed leaves keep the older bound: under a day of hands-on work.

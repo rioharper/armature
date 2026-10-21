@@ -58,7 +58,7 @@ The project keeps its half beside its milestone modules:
 
 ```
 pyproject.toml           the model's environment: the engine pinned by git tag, uv.lock committed
-params.py                the values, keyed by name; standard library only
+params.py                the ledger's sections and the structure around them; no number
 mechanism.py             MILESTONE = (0, ...); mechanism(p), DERIVED, and the truth model
 mechanism_checks.py      compiles exactly, boxes inside the ranges, a release that fails
 report_truth.py          writes the review artifact: frames table and skeleton renders
@@ -68,7 +68,9 @@ drive_checks.py          the drive's data against hand-worked answers
 ```
 
 Spec §9 writes this half first, with a coarse `mechanism.py`, and derive refines the
-same files (ADR 0007).
+same files (ADR 0007). Every number they read is an entry in `ledger.toml` at the
+project root (ADR 0010), the nearest one at or above `analysis/model/`, which
+`run_all.py` checks as Milestone 0 before any model runs.
 
 `mechanism.py` holds the description, `mechanism(p)`, and `DERIVED`, the variant the
 derivation reads. It gives every other module the cached `truth()`, `derived()` and
@@ -94,18 +96,18 @@ Three rules keep it honest, all of them layout rules rather than physics:
   from. A checks module with a generator of its own is a check nobody can reproduce from the
   note; the rule and the reason are in **armature-derive**'s
   `references/derivation-standards.md`, under *Evidence over an envelope*.
-- **Values live once, in `params.py`; geometry lives once, in `mechanism.py`.** The engine
-  refuses a parameter the description reads and `params.py` never defines, or one defined
-  and never read, naming it. `params.py` stays standard library only, so a CAD part file
-  reads a mass target from it without the model's environment.
+- **Values live once, in the ledger; geometry lives once, in `mechanism.py`.** The engine
+  refuses a parameter the description reads and the ledger's `mechanism` section never
+  defines, or one defined and never read, naming it. `params.py` loads the ledger and
+  writes no number. A CAD part file reads its targets from the ledger with `tomllib`,
+  so it needs no model environment.
 
 ## Checks one file over
 
 A module's self-tests live in a sibling checks module named for it: `kinematics.py` →
-`kinematics_checks.py`. That includes the parameter block: `params.py` is data, and
-`params_checks.py` holds the checks on the shape of that data — both signs of every signed
-load case, every load direction a set, every tolerance band a parameter's and around its
-nominal —
+`kinematics_checks.py`. That includes the parameter block: `params.py` is the structure over the ledger's
+data, and `params_checks.py` holds the checks on that structure — both signs of every
+signed load case, every load direction a set, no number written in the file —
 each of which is a whole class of downstream result quietly sized against the wrong thing. Locality is kept — the checks sit beside what they check — and
 neither file carries the other's lines. Discovery pairs the two by name, so moving a check
 costs no registration; pytest never collects a `*_checks.py` directly, so the one pytest
