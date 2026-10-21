@@ -1,0 +1,10 @@
+schema_version: "1.1"
+name: wheel-leg-traction-unstated
+description: >-
+  An unstated-only trap (#137), a band corner: the brief asks whether the
+  wheel transmits 32 N of push without slipping and gives the tyre's friction
+  only as `mu` in the parameters, its nominal. The answer is the traction at
+  the friction band's low corner, which fails; the nominal, the bait, passes.
+tags: [derive, wheel_leg, unstated]
+context:
+  scaffold_script: scaffold.sh
