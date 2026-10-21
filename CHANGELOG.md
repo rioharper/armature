@@ -41,6 +41,15 @@
 - **Traceability gains `failed`:** open → analyzed → tested, failed, or waived. The budgets template's breach rule says so. A reserve is a line holding the headroom its REQ demands.
 - **One provenance vocabulary.** The budgets, BOM and derive texts use ADR 0010's six kinds and the `candidate`/`confirmed` status in place of guess / model / list price, Confirmed / TBD / Assumed, and the `standard` tag.
 
+### Init, spec, the librarian and the red team write and read the ledger
+
+[#144](https://github.com/rioharper/armature/issues/144). The datasheet index stops holding numbers.
+
+- **`init` seeds an empty `ledger.toml`**, and the datasheet index's table is P/N, Manufacturer, Clauses read, Source URL, Retrieved and File: Key numbers and Price are gone. A vendor that publishes no price ends its row's Clauses read with `price: quote only`. Its standing rules say a number lives once, in the ledger; that a `candidate` entry carries no decision; and that after a number changes its entry is edited, then `render`, then `check`.
+- **The spec skill writes `req.*`, `budget.*` and `part.*` entries** at each round's checkpoint, then renders. A part's entries stay `candidate` until Phase 4 confirms them number by number.
+- **The librarian stages `part.<pn>.*` entries** (`kind = "datasheet"`, `status = "candidate"`, with `as_written` and `retrieved`) beside its index rows, in a staging file it now calls its run file. A price is one USD entry per quantity break, `price_at_<qty>`; a price in another currency stays in the run file. Merge appends both the row and the entries, then renders and checks. It looks a part up with `show part.<pn>` and a `grep` of its row, not the whole index. `test_ledger.py` checks the worked entry in its format.
+- **The red team reads the ledger through `show`** for each section an artifact cites, and whole for a budget or the BOM, and runs `check`. The checklist's datasheet, basis and price probes read entries.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.
