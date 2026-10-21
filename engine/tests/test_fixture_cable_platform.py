@@ -25,7 +25,7 @@ from scipy.spatial.transform import Rotation
 import armature
 from armature import body, joint, lock, site
 from golden import cable_platform
-from golden.answers import PLATFORM_TILT
+from golden.answers import BRAKING, BRAKING_TENSION, PLATFORM_TILT
 
 # The description is the golden project's, hung at HOME, the room centre; its
 # own PARAMS are the law's rest lengths at its POSE. Every other pose here
@@ -213,6 +213,39 @@ def test_settle_tilts_to_the_answer_at_the_stated_pose():
     assert out.stable
     assert tilt(out.q["hang"].rotation) == pytest.approx(PLATFORM_TILT.value,
                                                          abs=1e-3)
+
+
+# --- braking along x at the stated pose -------------------------------------------
+def _braking(p):
+    """The golden description with a site at the platform's COM, where the
+    braking's d'Alembert load acts."""
+    return [*platform(p), site("com", body="platform", pos=HOME + COM)]
+
+
+def braked(sign):
+    """The golden project hung at its POSE, settled under m·a along ±x."""
+    load = (sign * cable_platform.PARAMS["m"] * BRAKING, 0.0, 0.0)
+    out = armature.compile(_braking, cable_platform.PARAMS).at(
+        q={"hang": (RIG.POSE, np.eye(3))}).settle(loads={"com": load})
+    assert out.stable
+    return out.tension
+
+
+def test_braking_along_x_slackens_the_worst_sign_to_the_answer():
+    """The least tension braking along +x is the answer, on cables 2 and 3;
+    along -x it is the bait, outside the window."""
+    plus, minus = braked(+1), braked(-1)
+    assert plus["c2"] == pytest.approx(plus["c3"], abs=1e-6)
+    assert min(plus, key=plus.get) in ("c2", "c3")
+    assert BRAKING_TENSION.inside(min(plus.values()))
+    assert min(minus.values()) == pytest.approx(BRAKING_TENSION.bait, abs=1e-3)
+    assert not BRAKING_TENSION.inside(min(minus.values()))
+
+
+def test_the_answer_fails_the_winch_floor_and_the_bait_passes_it():
+    floor = 2.0  # N, the brief's winch floor
+    assert BRAKING_TENSION.value < floor < BRAKING_TENSION.bait
+    assert BRAKING_TENSION.bounds[1] < floor
 
 
 # --- the level-platform variant and its release ----------------------------------
