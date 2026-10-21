@@ -378,7 +378,8 @@ SPRING_CABLE = {
         _SPRING, "test_spring_reads_its_stiffness",
         "test_taut_cable_reads_its_stiffness", "test_slack_cable_reads_zero",
         "test_a_bias_only_linearisation_reads_zero",
-        "test_the_bias_only_trap_reads_the_cables_stiffness")),
+        "test_the_bias_only_trap_reads_the_cables_stiffness",
+        "test_the_linearised_swing_read_as_specific_force_is_the_imu_peak")),
     "release": Known("C", _in(
         "test_rigid", "test_rigid_cable_releases_with_the_sag_the_elastic_"
                       "one_shows")),

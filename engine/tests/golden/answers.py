@@ -210,6 +210,18 @@ CABLE_SAG = Answer(
     how="m g / k, the cable's stretch under the bob's weight; an "
         "inextensible cable does not stretch")
 
+# An accelerometer on the bob, which is pulled 4 mm below its rest and let go:
+# inside the sag, so the cable stays taut through the swing. At the bottom
+# the bob accelerates up at (k/m)·δ, and the accelerometer reads that plus g.
+_PULL = 0.004  # [m]
+
+IMU_PEAK = Answer(
+    value=_k / _m * _PULL + G, unit="m/s²", bait=_k / _m * _PULL,
+    how="(k/m)·δ + g, the specific force an accelerometer on the bob reads "
+        "at the bottom of its swing, δ = 4 mm the pull below rest, inside "
+        "the cable's m g / k sag so the cable stays taut; the bob's own "
+        "acceleration there, (k/m)·δ, is that reading less g")
+
 # --- the parallelogram: its stop's peak bus voltage --------------------------
 
 def _stop():
