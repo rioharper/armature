@@ -480,6 +480,36 @@ def test_the_red_teams_examples_close_f1_and_leave_f2_open(project):
     assert "F2 (MAJOR)" in detail
 
 
+# --- a review's checks, collected by run_all.py ---------------------------------
+SKILLS = Path(__file__).resolve().parents[2] / "skills"
+RUN_ALLS = [SKILLS / "armature-derive/scripts/model_template/run_all.py",
+            SKILLS / "armature-cad/scripts/part_template/run_all.py"]
+
+
+@pytest.mark.parametrize("template", RUN_ALLS, ids=["model", "part"])
+def test_run_all_runs_a_reviews_checks_file(tmp_path, template):
+    """A `check` closure's pass is its folder's stamp, so the folder's
+    `run_all.py` must run the review's checks file, which has no module of
+    its own beside it; and the layout gates, which pair every checks module
+    with a module and hold one beside a mechanism description to a truth
+    check, must let it stand."""
+    for name in ("run_all.py", "layout.py", "layout_checks.py"):
+        (tmp_path / name).write_bytes((template.parent / name).read_bytes())
+    (tmp_path / "mechanism.py").write_text("")
+    (tmp_path / "arm.py").write_text("def test_reach():\n    pass\n")
+    checks = tmp_path / "review_2026-10-21_spec_checks.py"
+    checks.write_text("def test_F2_payload():\n    print('F2 recomputed')\n")
+    run = subprocess.run([sys.executable, "run_all.py"], cwd=tmp_path,
+                         capture_output=True, text=True, encoding="utf-8")
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert run.stdout.count("F2 recomputed") == 1
+    checks.write_text("def test_F2_payload():\n    assert 2.9 >= 3\n")
+    run = subprocess.run([sys.executable, "run_all.py"], cwd=tmp_path,
+                         capture_output=True, text=True, encoding="utf-8")
+    assert run.returncode != 0
+    assert "test_F2_payload" in run.stderr
+
+
 # --- 3. green stamps for every run_all.py ---------------------------------------
 PASSING = "print('All self-tests passed across all milestones.')\n"
 FAILING = "raise AssertionError('F2: payload 2.9 kg < 3 kg')\n"
@@ -559,13 +589,16 @@ def test_a_stamp_misses_on_a_new_lock_ledger_or_folder(project, path, text):
     assert project.gate(verify=True)["stamps"].state == "fail"
 
 
-def test_a_dirty_tree_is_run_and_never_stamped(project):
+@pytest.mark.parametrize("path", ["analysis/model/scratch.py",
+                                  "analysis/model/run_all.py"])
+def test_a_dirty_tree_is_never_run_or_stamped(project, path):
     model(project)
-    project.write("analysis/model/scratch.py", "x = 1\n")
-    verdict = project.gate(runner=Runner())
+    project.write(path, "x = 1\n")
+    runner = Runner()
+    verdict = project.gate(runner=runner)
     assert verdict["stamps"].state == "fail"
-    assert "uncommitted" in verdict["stamps"].detail
-    assert stamps(project) == []
+    assert f"uncommitted changes ({path})" in verdict["stamps"].detail
+    assert stamps(project) == [] and runner.runs == []
 
 
 def test_a_cad_folder_runs_in_the_models_environment_and_keys_its_lock(
