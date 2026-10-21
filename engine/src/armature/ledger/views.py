@@ -143,6 +143,18 @@ def _marked(file, lines):
                           f"never closed with <!-- /ledger -->")
 
 
+def unrendered(file, text):
+    """`text`'s lines with each marked section's table cut out, its markers
+    kept: what an author wrote, which `render` never rewrites. Raises
+    `LedgerError` on markers that cannot be read."""
+    lines = text.splitlines()
+    out, last = [], 0
+    for _view, start, end in _marked(file, lines):
+        out += lines[last:start + 1]
+        last = end
+    return out + lines[last:]
+
+
 def _rewrite(ledger, file, text):
     lines = text.split("\n")
     out, last = [], 0

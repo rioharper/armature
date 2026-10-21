@@ -59,13 +59,13 @@ An entry is the table `[<section>.<name>]`, in a section `mechanism`
 
 from .check import Finding, check
 from .entries import (ALLOCATION, KINDS, SECTIONS, STATUSES, Entry, Ledger,
-                      LedgerError, OfError, find, load, parse)
+                      LedgerError, OfError, find, load, loads, parse)
 from .show import show
 from .views import render
 
 __all__ = ["ALLOCATION", "Entry", "Finding", "KINDS", "Ledger",
            "LedgerError", "OfError", "SECTIONS", "STATUSES", "check", "find",
-           "load", "parse", "render", "show"]
+           "load", "loads", "parse", "render", "show"]
 
 # CAD's write-back: `set_from_part("part.<pn>", <file>)`, or from a shell
 # `py -m armature.ledger set part.<pn> --from-part <file>`, writes the part

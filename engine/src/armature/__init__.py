@@ -62,7 +62,9 @@ input number lives once with its unit, band, status and provenance:
 `ledger.load("mechanism")` is a plain SI dict for `compile`, and
 `py -m armature.ledger check` reports each entry whose `as_written`
 disagrees with its value, whose unit is not SI, or whose citation is
-missing. It is imported on its own, never from here.
+missing. It is imported on its own, never from here, and so is
+`armature.gate` (ADR 0011). Every name here is imported the first time it
+is read, so neither of them loads MuJoCo.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
@@ -70,25 +72,65 @@ PARAMS, directory, states)` writes the Milestone 0 review artifact: the
 frames table and skeleton renders.
 """
 
-from . import drive
-from .assembly import ClosureError
-from .coarse import box, compose, cylinder, point, rod, sphere
-from .compiler import Compiled, compile
-from .contact import ContactForce
-from .description import Description, describe
-from .elements import (DescriptionError, actuator, body, cable, contact,
-                       gravity, joint, loop, shape, site)
-from .review import Frames, Review, frames, render, review
-from .sampler import (PoseEnvelope, Rejected, Samples, clearance,
-                      pose_envelope, sample, sample_states)
-from .search import (Band, Budget, Case, Choice, Confirmed, Coordinates,
-                     Direction, Infeasible, Interval, Margin, Point, Space,
-                     Worst, search)
-from .state import (Inverse, Jacobian, Linearised, Placement, Pose, Released,
-                    Settled, State, Wrench)
-from .symbolic import Symbolic, symbolic
-from .variants import (AccountingError, Variant, account, couple, lock, lump,
-                       massless, planar, reduce, rigid)
+import importlib
+import sys
+import types
+
+# Each public name, by the submodule it comes from. A name is imported the
+# first time it is read, so `import armature.ledger` or `armature.gate`
+# loads neither MuJoCo nor SymPy, and the hook that calls the gate stays
+# fast (#155). `drive` is a subpackage, bound by its own name.
+_FROM = {
+    "drive": ["drive"],
+    "assembly": ["ClosureError"],
+    "coarse": ["box", "compose", "cylinder", "point", "rod", "sphere"],
+    "compiler": ["Compiled", "compile"],
+    "contact": ["ContactForce"],
+    "description": ["Description", "describe"],
+    "elements": ["DescriptionError", "actuator", "body", "cable", "contact",
+                 "gravity", "joint", "loop", "shape", "site"],
+    "review": ["Frames", "Review", "frames", "render", "review"],
+    "sampler": ["PoseEnvelope", "Rejected", "Samples", "clearance",
+                "pose_envelope", "sample", "sample_states"],
+    "search": ["Band", "Budget", "Case", "Choice", "Confirmed",
+               "Coordinates", "Direction", "Infeasible", "Interval",
+               "Margin", "Point", "Space", "Worst", "search"],
+    "state": ["Inverse", "Jacobian", "Linearised", "Placement", "Pose",
+              "Released", "Settled", "State", "Wrench"],
+    "symbolic": ["Symbolic", "symbolic"],
+    "variants": ["AccountingError", "Variant", "account", "couple", "lock",
+                 "lump", "massless", "planar", "reduce", "rigid"],
+}
+_SOURCE = {name: module for module, names in _FROM.items() for name in names}
+# Submodules sharing a name with a function: `armature.search` and
+# `armature.contact` are functions, as they were when this file imported
+# every name, so the module the import system binds here on loading one is
+# dropped.
+_SHADOWED = (_FROM.keys() & _SOURCE.keys()) - {"drive"}
+
+
+class _Package(types.ModuleType):
+    """This package, its names imported as they are first read."""
+
+    def __getattr__(self, name):
+        if name not in _SOURCE:
+            raise AttributeError(f"module {__name__!r} has no attribute "
+                                 f"{name!r}")
+        module = importlib.import_module(f".{_SOURCE[name]}", __name__)
+        value = module if name == "drive" else getattr(module, name)
+        self.__dict__[name] = value
+        return value
+
+    def __setattr__(self, name, value):
+        if name in _SHADOWED and isinstance(value, types.ModuleType):
+            return
+        super().__setattr__(name, value)
+
+    def __dir__(self):
+        return sorted({*self.__dict__, *_SOURCE})
+
+
+sys.modules[__name__].__class__ = _Package
 
 __all__ = ["Compiled", "Description", "DescriptionError", "Inverse",
            "Jacobian", "Linearised", "Placement", "Pose", "Released",

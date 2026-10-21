@@ -13,7 +13,9 @@ down in a package, is collected when its sibling checks module
 (`part.py` -> `part_checks.py`, `check/mass.py` -> `check/mass_checks.py`)
 defines callables named `test_*`; each of those callables is one check.
 Nothing in this file lists modules or tests, so a part file added later is
-collected the moment its `<PART-ID>_checks.py` lands. A module-level
+collected the moment its `<PART-ID>_checks.py` lands. A review's checks
+file, `review_<date>_<artifact>_checks.py`, has no module beside it and is
+collected by itself, last (ADR 0011). A module-level
 `armature.Margin`, or a tuple of them, is collected too, searched and held
 to passing as in the model template, an UNCHECKED one failing unless
 DRIVE_EXEMPT argues it; run without the engine, as a part file is, there are
@@ -59,6 +61,20 @@ def is_model_module(stem):
                 or stem.startswith(("_", "test_", "report_"))
                 or stem.endswith("_checks")
                 or stem == "report")
+
+
+def is_review_checks(path):
+    """
+    Whether `path` is a review's checks file,
+    `review_<date>_<artifact>_checks.py`: one review's recomputations, a
+    `test_F<n>_*` per finding it closes (ADR 0011). It has no module of its
+    own beside it, so it is collected as a module by itself, and a
+    `fixed` closure's `check` passes when this run does.
+    """
+    stem = path.stem
+    return (path.suffix == ".py" and stem.startswith("review_")
+            and stem.endswith("_checks")
+            and not path.with_name(stem[:-len("_checks")] + ".py").is_file())
 
 
 def checks_in(module):
@@ -225,7 +241,8 @@ def discover_milestones(names=None):
                     module = importlib.import_module(f"{name}.{sub.stem}")
                     found.append(((order, title, sub.stem),
                                   f"{title} / {sub.stem}", module))
-        elif path.suffix == ".py" and is_model_module(name):
+        elif path.suffix == ".py" and (is_model_module(name)
+                                       or is_review_checks(path)):
             module = importlib.import_module(name)
             order, title = getattr(module, "MILESTONE", (DEFAULT_ORDER, name))
             found.append(((order, title, ""), title, module))

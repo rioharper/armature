@@ -227,7 +227,19 @@ def gated(path, root):
     not landed yet — is outside the gate entirely, which is what lets this
     file ship in both templates.
     """
-    return (root / DESCRIPTION).is_file() and path.stem.endswith("_checks")
+    return ((root / DESCRIPTION).is_file() and path.stem.endswith("_checks")
+            and not is_review_checks(path))
+
+
+def is_review_checks(path):
+    """
+    Whether this file is a review's checks file,
+    `review_<date>_<artifact>_checks.py`: one review's recomputations, a
+    `test_F<n>_*` per finding it closes (ADR 0011). It pairs with no module
+    and makes no claim of its own for a truth check to test, so neither gate
+    holds it; `run_all.py` collects it by itself.
+    """
+    return path.stem.startswith("review_") and path.stem.endswith("_checks")
 
 
 def size_table(root=HERE):

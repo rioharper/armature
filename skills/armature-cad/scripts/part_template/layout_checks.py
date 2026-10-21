@@ -10,8 +10,8 @@ import tempfile
 from pathlib import Path
 
 from layout import (BUDGET, DESCRIPTION, EXEMPT, HERE, TRUTH_PREFIX,
-                    model_files, size_table, unchecked_claims,
-                    unconfirmed_margins)
+                    is_review_checks, model_files, size_table,
+                    unchecked_claims, unconfirmed_margins)
 from layout import TRUTH_EXEMPT as TRUTH_GATE
 
 # The gates read source files and nothing else, so there is no claim about the
@@ -32,10 +32,11 @@ def test_modules_within_budget():
 
 def test_checks_modules_are_paired():
     """A checks module whose module was renamed away — or is a report
-    renderer, which discovery never collects — never runs; say so."""
+    renderer, which discovery never collects — never runs; say so. A
+    review's checks file pairs with nothing, and runs on its own."""
     orphans = []
     for path in model_files():
-        if path.stem.endswith("_checks"):
+        if path.stem.endswith("_checks") and not is_review_checks(path):
             stem = path.stem[:-len("_checks")]
             if (stem == "report" or stem.startswith("report_")
                     or not path.with_name(stem + ".py").is_file()):

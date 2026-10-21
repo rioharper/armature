@@ -4,6 +4,19 @@
 
 - **The eval's copy holds no `PROGRESS.md`.** Once tracked, the maintainers' log named the hold-out's mechanism and quoted golden numbers, and `copy.sh` shipped it to the agent. `copy.sh` leaves it out, and `test_holdout.py` and `test_copy.py` hold that.
 
+### The gates: merge and buy, computed from the repo
+
+Overhaul 07 ([#154](https://github.com/rioharper/armature/issues/154), [ADR 0011](docs/adr/0011-actions-are-gated-not-stages.md)).
+
+- **`armature.gate`: the merge gate and `status`** ([#155](https://github.com/rioharper/armature/issues/155)).
+  - **`py -m armature.gate <merge|status> [--branch <b>] [--json] [--fresh]`** prints `pass|fail|waived <item> <detail>` for each of `merge`'s seven items at the branch tip, read from git objects: `fast-forward`, `ledger`, `stamps`, `engine`, `review`, `closed` and `moves`. It exits 1 on a failed item, and 2 when there is no branch to gate. `status` is `merge` for HEAD's branch in verify mode, which reads the stamps and runs nothing, as the hook will.
+  - **Stamps.** `merge` runs each `run_all.py` with no green stamp, on a clean tree with the branch checked out, and writes `.armature/runs/<key>.json` on a pass. The key hashes the folder's tree, the `ledger.toml` blob and the `uv.lock` of the environment it runs in: its own, or `analysis/model/`'s for a CAD folder, which runs there with build123d. `--fresh` ignores the cache.
+  - **Item 4** passes a path pin as `path pin`, as the templates and the evals pin the engine; behind, ahead and a rev fail.
+  - **Reviews.** The parser reads the `toml` block a review or recheck in `docs/reviews/` ends with (never `staging/`). A review counts when its `reviewed` SHA is on the branch at or after the branch point. A `fixed` closure's `check` must name a `test_*` in the review's own `review_<date>_<artifact>_checks.py` beside a `run_all.py`, whose stamp is its pass. The latest recheck naming a finding decides whether it is reopened. A ledger number is an entry's value, band, status, `of` or `qty`, or the entry itself added or removed.
+  - **Waivers** in a root `waivers.toml` waive a failed item of their gate on their branch, or `standing`. One with no `confirmed` date is ignored, with a warning line.
+  - **`armature` imports its names lazily,** so `armature.ledger` and `armature.gate` load no MuJoCo. `ledger.loads(text, path)` parses a ledger read from git, and `views.unrendered` gives a file's text outside its rendered sections.
+  - **The templates' `run_all.py` collect a review's checks file** on its own, and `layout.py` holds it to neither the pairing nor the truth gate.
+
 ### The ledger: every input number once, with its unit, band and provenance
 
 Overhaul 06 ([#139](https://github.com/rioharper/armature/issues/139), [ADR 0010](docs/adr/0010-every-input-number-lives-once-in-the-ledger.md)). No number in a project carried a unit, a band or a provenance. Units were comments, tolerances lived only in the interim `params.BANDS`, there were four provenance vocabularies, and numbers were copied: Plumb wrote one motor's 14.2 g in its datasheet index, its BOM and its budgets. On 2026-10-11, 4 of the 36 Blocker and Major findings in Plumb and Ibex were stale or unpropagated numbers, and one geometry change re-pinned 8 checks files in Plumb. Now each project keeps every input number in one `ledger.toml` at its root. Each entry is an SI value with its unit, the quantity as written, a band, a status and one of six source kinds. The engine's `armature.ledger` loads, checks, shows, renders and sets entries. The budgets, the BOM, the spec's requirements table and `CONTEXT.md`'s symbols are views it generates, `params.py` keeps only structure, and CAD writes its measured mass, COM and inertia back as entries.
