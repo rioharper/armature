@@ -65,6 +65,8 @@ def test_the_planted_derivation_passes_derives_own_gates(assembled):
                                  f"{ran.stdout}\n{ran.stderr}")
     assert "All self-tests passed across all milestones." in ran.stdout
     assert "Layout: the gates" in ran.stdout  # the truth gate ran too
+    # and the ledger check, on the golden's ledger at the project's root
+    assert "[PASS] ledger check on" in ran.stdout
 
 
 @pytest.mark.slow

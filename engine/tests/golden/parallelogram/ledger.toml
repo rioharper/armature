@@ -1,0 +1,159 @@
+# ledger.toml — the balanced parallelogram's input numbers, each written
+# once (ADR 0010). `params.py` loads it, walking up from its own folder, and
+# `run_all.py` runs `python -m armature.ledger check` on it as Milestone 0.
+# Values are SI. The counterweights' COMs, r1 and r3, are not inputs:
+# `params.py` solves them from the balance condition.
+
+# --- mechanism: what mechanism(p) reads, r1 and r3 aside ---
+
+[mechanism.a]
+value = 0.40
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the upper arm, O to P"
+
+[mechanism.b]
+value = 0.35
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the forearm, P to the tip"
+
+[mechanism.c]
+value = 0.08
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the crank, O to C, and the forearm's lever, P to Q"
+
+[mechanism.r2]
+value = -0.15
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the forearm's COM, along +y from P"
+
+[mechanism.r4]
+value = 0.20
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the coupler's COM, along +x from C"
+
+[mechanism.m1]
+value = 3.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the upper arm, its counterweight included"
+
+[mechanism.m2]
+value = 1.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the forearm"
+
+[mechanism.m3]
+value = 2.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the crank, its counterweight included"
+
+[mechanism.m4]
+value = 0.3
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the coupler"
+
+[mechanism.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures" }
+note = "gravitational acceleration"
+
+[mechanism.N1]
+value = 50.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "J1's gear ratio"
+
+[mechanism.N2]
+value = 30.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "J2's gear ratio"
+
+[mechanism.I]
+value = 2e-3
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "each body's inertia about its COM, every axis"
+
+[mechanism.J_m]
+value = 2e-5
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "each motor's rotor, about its axis"
+
+# --- drive: what drive.py's drive(p) reads (ADR 0006) ---
+# Both joints have the same motor, gearbox and driver. Each figure's basis is
+# the one drive.py hands the engine as a keyword.
+
+[drive.kt]
+value = 0.08
+unit = "N*m/A"
+basis = { per = "A_rms", side = "motor" }
+source = { kind = "chosen", ref = "spec" }
+note = "each motor's torque constant, per A_rms, motor side"
+
+[drive.r]
+value = 0.20
+unit = "ohm"
+basis = { between = "line" }
+source = { kind = "chosen", ref = "spec" }
+note = "each motor's resistance, line to line at 25 °C, wye"
+
+[drive.eta_gear]
+value = 1.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "each gearbox's efficiency, both directions of flow"
+
+[drive.eta_driver]
+value = 1.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "each driver's efficiency, both directions of flow"
+
+[drive.i_peak]
+value = 20.0
+unit = "A"
+basis = { per = "A_peak", between = "line" }
+source = { kind = "chosen", ref = "spec" }
+note = "each driver's peak line current"
+
+[drive.v_max]
+value = 44.0
+unit = "V"
+source = { kind = "chosen", ref = "spec" }
+note = "each driver's overvoltage trip"
+
+[drive.v_under]
+value = 10.0
+unit = "V"
+source = { kind = "chosen", ref = "spec" }
+note = "each driver's undervoltage trip"
+
+[drive.v_bus]
+value = 24.0
+unit = "V"
+source = { kind = "chosen", ref = "spec" }
+note = "the source's set point, a PSU behind a diode"
+
+[drive.p_source]
+value = 120.0
+unit = "W"
+source = { kind = "chosen", ref = "spec" }
+note = "the source's rating"
+
+[drive.c_bus]
+value = 1e-3
+unit = "F"
+source = { kind = "chosen", ref = "spec" }
+note = "the bus capacitance, the drivers' own"

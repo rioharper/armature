@@ -1,0 +1,82 @@
+# ledger.toml — the geared turret's input numbers, each written once
+# (ADR 0010). `params.py` loads it, walking up from its own folder, and
+# `run_all.py` runs `python -m armature.ledger check` on it as Milestone 0.
+# Values are SI.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+
+[mechanism.m]
+value = 6.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the turret, its payload included"
+
+[mechanism.d]
+value = 0.08
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "its COM, along +x from the bearing's axis"
+
+[mechanism.h]
+value = 0.25
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "its COM, above the bearing"
+
+[mechanism.Izz]
+value = 0.0216
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "its inertia about the COM, about the axis"
+
+[mechanism.Ixx]
+value = 0.03
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "its inertia about the COM, across the axis"
+
+[mechanism.reach]
+value = 0.30
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the muzzle, along +x from the axis"
+
+[mechanism.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures" }
+note = "gravitational acceleration"
+
+[mechanism.N]
+value = 60.0
+unit = "1"
+source = { kind = "chosen", ref = "spec" }
+note = "the pan's gear ratio"
+
+[mechanism.J_m]
+value = 3e-5
+unit = "kg*m^2"
+source = { kind = "chosen", ref = "spec" }
+note = "the pan motor's rotor, about its axis"
+
+# --- part: the pan bearing, PB-1 ---
+# Its static ratings, from the bearing's datasheet, each with the safety
+# factor already applied. Not mechanism entries, because the engine compiles
+# that section into the truth model and refuses a parameter it never reads.
+
+[part.PB-1.axial]
+value = 600.0
+unit = "N"
+as_written = "600 N"
+status = "confirmed"
+source = { kind = "datasheet", ref = "PB-1", retrieved = 2026-10-18 }
+note = "the static rating along the axis, the safety factor applied"
+
+[part.PB-1.moment]
+value = 5.0
+unit = "N*m"
+as_written = "5 N*m"
+status = "confirmed"
+source = { kind = "datasheet", ref = "PB-1", retrieved = 2026-10-18 }
+note = "the static rating across the axis, about the bearing's centre, the safety factor applied"

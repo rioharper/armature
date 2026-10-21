@@ -23,15 +23,16 @@ CASES = sorted(generate.HOLDOUT)
 # why: the hold-out is written once, never edited in response to its results.
 PINS = {
     "turret-derive":
-        "47c19a86eccd30ccad93c3b124d7b83215d86052ec808f833c6e20836d3c129c",
+        "4b9202787a73994ebcb8b07c87f84e67a9c6248d25c4302aba49af0b6180a9c8",
 }
 
 
 def _frozen(name):
     """The SHA-256 of what is `name`'s own: its brief, `case.yaml`, scaffold
-    and `catch-*` graders, its golden project and the `Answer`s its graders
-    quote, each file by its path under the repo and its text with LF line
-    endings, so a Windows checkout and the WSL copy agree. The `peeked-*`
+    and `catch-*` graders, its golden project (its modules and its ledger)
+    and the `Answer`s its graders quote, each file by its path under the
+    repo and its text with LF line endings, so a Windows checkout and the
+    WSL copy agree. The `peeked-*`
     and diagnostic graders every case shares are left out, so a fix to their
     wording reaches the hold-out without bumping its pin."""
     case = generate.HOLDOUT[name]
@@ -39,6 +40,7 @@ def _frozen(name):
                                        "scaffold.sh")]
     files += sorted((HELD / name / "graders").glob("catch-*.md"))
     files += sorted((GOLDEN / case.mechanism).glob("*.py"))
+    files += [GOLDEN / case.mechanism / "ledger.toml"]
     digest = hashlib.sha256()
     for path in files:
         digest.update(path.relative_to(ROOT).as_posix().encode() + b"\0")

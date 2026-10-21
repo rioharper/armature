@@ -1,0 +1,130 @@
+# ledger.toml — the cable platform's input numbers, each written once
+# (ADR 0010): Plumb Rev 1.0's rig. `params.py` loads it, walking up from its
+# own folder, and `run_all.py` runs `python -m armature.ledger check` on it
+# as Milestone 0. Values are SI.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+
+[mechanism.m]
+value = 2.0
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the platform's mass"
+
+# The rest lengths the level-platform tension law of Plumb's Milestone 1
+# Rev 1.0 (01_kinematics.md §3) gives at part.rig.pose, carrying m.
+[mechanism.l0_1]
+value = 2.306986964007753
+unit = "m"
+source = { kind = "chosen", ref = "Plumb Rev 1.0, 01_kinematics.md §3" }
+note = "cable c1's rest length at the pose"
+
+[mechanism.l0_2]
+value = 4.10772522279266
+unit = "m"
+source = { kind = "chosen", ref = "Plumb Rev 1.0, 01_kinematics.md §3" }
+note = "cable c2's rest length at the pose"
+
+[mechanism.l0_3]
+value = 4.10772522279266
+unit = "m"
+source = { kind = "chosen", ref = "Plumb Rev 1.0, 01_kinematics.md §3" }
+note = "cable c3's rest length at the pose"
+
+[mechanism.l0_4]
+value = 2.306986964007753
+unit = "m"
+source = { kind = "chosen", ref = "Plumb Rev 1.0, 01_kinematics.md §3" }
+note = "cable c4's rest length at the pose"
+
+[mechanism.I_P]
+value = [[0.02, 0.0, 0.0], [0.0, 0.02, 0.0], [0.0, 0.0, 0.02]]
+unit = "kg*m^2"
+point = "the platform's COM"
+axes = "base, at home"
+source = { kind = "chosen", ref = "spec" }
+note = "the platform's inertia, the same about every axis"
+
+# --- part: the rig, the cables and the platform ---
+# What the description reads besides, as module constants of params.py.
+# The anchor square (4 m, at 2.4 m) is a scaled copy of the attachment
+# square (0.15 m).
+
+[part.rig.g]
+value = 9.81
+unit = "m/s^2"
+as_written = "9.81 m/s^2"
+source = { kind = "standard", ref = "standard gravity, to three figures: the engine's default, which the description takes" }
+note = "gravitational acceleration, along -z"
+
+[part.rig.anchor-1]
+value = [0.0, 0.0, 2.4]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c1's anchor, in the room"
+
+[part.rig.anchor-2]
+value = [4.0, 0.0, 2.4]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c2's anchor, in the room"
+
+[part.rig.anchor-3]
+value = [4.0, 4.0, 2.4]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c3's anchor, in the room"
+
+[part.rig.anchor-4]
+value = [0.0, 4.0, 2.4]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c4's anchor, in the room"
+
+[part.rig.home]
+value = [2.0, 2.0, 1.2]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the room centre, where the description hangs the platform"
+
+[part.rig.pose]
+value = [0.5, 2.0, 1.2]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the edge midpoint, where the rest lengths carry the platform"
+
+[part.cable.ea]
+value = 44000.0
+unit = "N"
+source = { kind = "chosen", ref = "spec" }
+note = "each cable's axial stiffness"
+
+[part.platform.attach-1]
+value = [-0.075, -0.075, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c1's attachment, about the platform's point"
+
+[part.platform.attach-2]
+value = [0.075, -0.075, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c2's attachment, about the platform's point"
+
+[part.platform.attach-3]
+value = [0.075, 0.075, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c3's attachment, about the platform's point"
+
+[part.platform.attach-4]
+value = [-0.075, 0.075, 0.0]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "cable c4's attachment, about the platform's point"
+
+[part.platform.com]
+value = [0.0, 0.0, -0.10]
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the platform's COM, below its point"

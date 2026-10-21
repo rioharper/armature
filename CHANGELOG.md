@@ -50,6 +50,17 @@
 - **`py -m armature.ledger set part.<pn> --from-part <file>`** runs the part file's `--mass-properties` export, one JSON line, and writes `.mass`, `.com` and `.inertia`. Each has `kind = "cad"`, `ref = "<file>@<rev>"` (the file's last commit, `+dirty` if it has changed since, or `uncommitted`) and `status = "candidate"`. The tensor carries its `point` and `axes`, and the COM its origin as `point` and its `axes`. The write goes through tomlkit, so comments, order and every field `set` doesn't own survive, and new entries go at the end of the file. A re-run with the same measurement and rev changes nothing, a user's confirmation included. A moved measurement is a candidate again. `set` refuses an export without its frame, and leaves the ledger as it was on any refusal.
 - **`sweep/`** reads its link lengths and compiles the truth model from the ledger's `mechanism` section nearest `analysis/model/`, the one the model reads, and imports no `params.py`. With no ledger it stops, as it did with no `params.py`.
 
+### The golden mechanisms read the ledger
+
+[#142](https://github.com/rioharper/armature/issues/142). Every golden value is unchanged, and every golden input is bit for bit what it was.
+
+- **Each golden project has its own `ledger.toml`**, beside its files, and `ledger check` finds nothing in any of the six. Each `params.py` loads it from its own folder and passes the template's no-literal rule, which `test_golden.py` reads from the template's `params_checks.py` itself. A copied golden project runs its ledger check as Milestone 0.
+- **The cable platform's rig is ledger entries.** Its anchors, attachments, COM, home and pose are vector entries under `part.rig` and `part.platform`, its cable stiffness and gravity scalar ones, and its inertia one tensor in `mechanism`, which `mechanism(p)` reads through `p`. The red-team case's planted centre law carries the tensor with the rest lengths.
+- **The wheel leg's POINTS and LINKS are read from its mechanism entries**, so each point and link is still written once. Its workspace is `req.REQ-001`…`REQ-004`, and its COM fraction, the torso's COM and push point (now 3-vectors) and the skid pad's radius are `part.*` entries.
+- **The parallelogram's drive is its `drive` section**, each figure with its basis. Its counterweights' COMs, r1 and r3, are still solved in `params.py` from the balance condition, since they are not inputs.
+- **The hold-out's golden project takes the same shape.** ADR 0008 freezes its content, not its file format: its numbers are unchanged, and its pin, which now covers its ledger, is bumped.
+- **`scaffold.sh` places the golden's `ledger.toml` at the project's root**, where `load` finds it walking up from `analysis/model/`, and fails if it did not land. `copy.sh` copies each golden's ledger into `evals/golden/` with its modules, and `test_copy.py` holds both.
+
 ### A plan task's report is red-teamed, and derive loads for one
 
 [#138](https://github.com/rioharper/armature/issues/138). In the 2.0.0 release run the plugin arm dispatched the red team on 12 of 27 derive runs and loaded the derive skill on 22 of 27. Derive wrote its review rule only into the Milestone 1–3 checkpoint, so a plan task that landed as a report had no rule either way.

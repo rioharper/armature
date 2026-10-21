@@ -1,0 +1,30 @@
+# ledger.toml — the mass on a cable's input numbers, each written once
+# (ADR 0010). `params.py` loads it, walking up from its own folder, and
+# `run_all.py` runs `python -m armature.ledger check` on it as Milestone 0.
+# Values are SI.
+
+# --- mechanism: exactly what mechanism(p) reads ---
+
+[mechanism.m]
+value = 0.5
+unit = "kg"
+source = { kind = "chosen", ref = "spec" }
+note = "the bob"
+
+[mechanism.k]
+value = 1000.0
+unit = "N/m"
+source = { kind = "chosen", ref = "spec" }
+note = "the cable's stiffness, EA / rest: an elastic cable, a spring that only pulls"
+
+[mechanism.drop]
+value = 1.0
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the anchor, above the bob's home"
+
+[mechanism.rest]
+value = 0.99
+unit = "m"
+source = { kind = "chosen", ref = "spec" }
+note = "the cable's rest length"
