@@ -620,6 +620,19 @@ def test_a_cad_folder_runs_in_the_models_environment_and_keys_its_lock(
     assert "cad/parts" in detail and "analysis/model" in detail
 
 
+def test_a_run_all_at_the_root_runs_in_the_roots_own_environment(project):
+    """The root is folder `.`, whose `uv.lock` is `uv.lock`, never
+    `./uv.lock`: it runs in its own environment, not the model's."""
+    project.branch("armature/work")
+    project.write("run_all.py", PASSING)
+    project.write("uv.lock", "version = 1\n")
+    project.commit()
+    runner = Runner()
+    assert project.gate(runner=runner)["stamps"].state == "pass"
+    assert runner.runs == [(project.root, project.root)]
+    assert project.gate(verify=True)["stamps"].state == "pass"
+
+
 def test_a_branch_not_checked_out_is_not_run(project):
     model(project)
     project.checkout("main")
@@ -636,10 +649,10 @@ SOURCE = ('{{ git = "https://github.com/rioharper/armature", tag = "{}", '
           'subdirectory = "engine" }}')
 
 
-def pinned(project, source):
+def pinned(project, source, model="analysis/model/"):
     project.branch("armature/m0-setup")
-    project.write("analysis/model/run_all.py", PASSING)
-    project.write("analysis/model/pyproject.toml", f"""\
+    project.write(f"{model}run_all.py", PASSING)
+    project.write(f"{model}pyproject.toml", f"""\
         [project]
         name = "arm-model"
         version = "0.1.0"
@@ -664,6 +677,12 @@ def test_a_model_on_the_plugins_tag_is_in_step(project):
 
 def test_a_model_behind_the_plugins_tag_fails(project):
     result = pinned(project, SOURCE.format("v0.9.0"))
+    assert result.state == "fail"
+    assert "behind v0.9.0" in result.detail
+
+
+def test_a_model_at_the_repo_root_is_checked_too(project):
+    result = pinned(project, SOURCE.format("v0.9.0"), model="")
     assert result.state == "fail"
     assert "behind v0.9.0" in result.detail
 

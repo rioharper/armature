@@ -103,8 +103,7 @@ def _check(ctx, part, k, runnable):
     root = ctx.repo.root
     project = stamps.environment(ctx.files, part.folder)
     runner = ctx.runner or stamps.run_all
-    passed, output = runner(root / part.folder,
-                            root if project == "." else root / project,
+    passed, output = runner(root / part.folder, root / project,
                             "-B", "-c", PROBE,
                             part.recipe.rsplit("/", 1)[-1])
     got = _last_json(output)
@@ -151,7 +150,7 @@ def stamped(ctx):
     folders[MODEL] = "the model"
     notes = []
     for folder, whose in folders.items():
-        run_all = f"{folder}/{stamps.RUN_ALL}"
+        run_all = stamps.within(folder, stamps.RUN_ALL)
         if run_all not in ctx.files:
             failed.append(f"{whose}: no {run_all}")
         elif not stamps.stamped(ctx.repo.root, stamps.key(

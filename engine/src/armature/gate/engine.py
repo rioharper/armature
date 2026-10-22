@@ -14,7 +14,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .stamps import PYPROJECT, folders
+from .stamps import PYPROJECT, folders, within
 
 SCRIPT = Path("scripts") / "engine-source.sh"
 # engine/src/armature/gate/engine.py: the plugin root is four folders up.
@@ -45,7 +45,7 @@ def check(ctx):
     """4. `engine-source.sh check` is in-step, or a path pin, for each
     model directory."""
     models = [f for f in folders(ctx.files)
-              if f"{f}/{PYPROJECT}" in ctx.files]
+              if within(f, PYPROJECT) in ctx.files]
     if not models:
         return True, "no model directory pins an engine"
     found, shell = script(), bash()
@@ -56,7 +56,7 @@ def check(ctx):
     failed, notes = [], []
     with tempfile.TemporaryDirectory() as tmp:
         for model in models:
-            ctx.repo.export(ctx.tip, [f"{model}/{PYPROJECT}"], tmp)
+            ctx.repo.export(ctx.tip, [within(model, PYPROJECT)], tmp)
             run = subprocess.run(
                 [shell, found.as_posix(), "check",
                  (Path(tmp) / model).as_posix()],

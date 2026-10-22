@@ -34,6 +34,16 @@ TAIL = 3                # lines of a failing run's output shown
 FOREIGN_ENV = ("UV_PROJECT_ENVIRONMENT", "VIRTUAL_ENV")
 
 
+def within(folder, name=""):
+    """`name` in `folder`, both posix paths from the repo root, where the
+    root is `.`: the one place a folder and a name are joined, so the root's
+    `run_all.py` is `run_all.py`, never `./run_all.py`. With no `name`, the
+    folder itself (`""` for the root, as git names the root tree)."""
+    if folder == ".":
+        return name
+    return f"{folder}/{name}" if name else folder
+
+
 def folders(files):
     """Each folder holding a `run_all.py`, as a posix path from the repo
     root (`.` for the root), skipping dot-folders."""
@@ -48,16 +58,16 @@ def folders(files):
 
 def environment(files, folder):
     """The folder whose environment `folder`'s `run_all.py` runs in."""
-    own = {f"{folder}/{LOCK}", f"{folder}/{PYPROJECT}"}
+    own = {within(folder, LOCK), within(folder, PYPROJECT)}
     return folder if own & set(files) or folder == MODEL else MODEL
 
 
 def key(repo, tip, files, folder):
     """The stamp key of `folder` at commit `tip`: its tree, the ledger's
     blob and its environment's lock blob, hashed."""
-    lock = f"{environment(files, folder)}/{LOCK}"
+    lock = within(environment(files, folder), LOCK)
     parts = [folder,
-             repo.object(tip, "" if folder == "." else folder),
+             repo.object(tip, within(folder)),
              repo.object(tip, FILENAME) or "-",
              repo.object(tip, lock) if lock in files else "-"]
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
@@ -151,7 +161,5 @@ def check(ctx):
 
 def _run(ctx, folder):
     root = ctx.repo.root
-    where = root if folder == "." else root / folder
-    project = environment(ctx.files, folder)
     runner = ctx.runner or run_all
-    return runner(where, root if project == "." else root / project)
+    return runner(root / folder, root / environment(ctx.files, folder))
