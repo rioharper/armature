@@ -62,8 +62,6 @@ def placeholders(ctx):
     found, result = _release(ctx)
     if found is None:
         return result
-    runnable = (not ctx.verify and ctx.repo.head == ctx.tip
-                and ctx.repo.head_branch == ctx.branch)
     failed, notes = [], []
     for definition, part in _parts(ctx, found):
         if part is None:
@@ -73,37 +71,27 @@ def placeholders(ctx):
         if part.recipe is None:
             notes.append(f"{definition}: no build recipe, so no stub")
             continue
-        k = key(ctx, part)
-        if stamps.stamped(ctx.repo.root, k) and not (ctx.fresh
-                                                     and not ctx.verify):
-            notes.append(f"{definition}: no stub, checked for its content")
-            continue
-        why = _check(ctx, part, k, runnable)
+        why, how = stamps.stamp_or_run(
+            ctx, key(ctx, part), part.folder, lambda part=part: _build(
+                ctx, part), "its stubs are not checked", "buy")
         if why:
             failed.append(f"{definition}: {why}")
         else:
-            notes.append(f"{definition}: built, no stub left")
+            notes.append(f"{definition}: built, no stub left" if how == "ran"
+                         else f"{definition}: no stub, checked for its "
+                              f"content")
     if failed:
         return False, "; ".join(failed)
     return True, "; ".join(notes)
 
 
-def _check(ctx, part, k, runnable):
-    """Why `part` cannot show it has no stub left, or None, caching a
-    pass."""
-    if ctx.verify:
-        return ("its stubs are not checked for its content; run "
-                "py -m armature.gate buy")
-    if not runnable:
-        return f"not checked, and {ctx.branch} is not checked out to check it"
-    dirty = ctx.repo.dirty()
-    if dirty:
-        return (f"not checked, and the tree has uncommitted changes "
-                f"({', '.join(dirty[:3])}); commit them, then run the gate")
+def _build(ctx, part):
+    """Why `part`'s build leaves a stub or fails, or None: its recipe's
+    `build()`, run by `PROBE` in its folder and environment."""
     root = ctx.repo.root
-    project = stamps.environment(ctx.files, part.folder)
     runner = ctx.runner or stamps.run_all
-    passed, output = runner(root / part.folder, root / project,
+    passed, output = runner(root / part.folder,
+                            root / stamps.environment(ctx.files, part.folder),
                             "-B", "-c", PROBE,
                             part.recipe.rsplit("/", 1)[-1])
     got = _last_json(output)
@@ -114,11 +102,6 @@ def _check(ctx, part, k, runnable):
         return (f"still a placeholder: {', '.join(got['placeholders'])}; "
                 f"replace each with vendor geometry or a drawing from the "
                 f"datasheet")
-    changed = ctx.repo.dirty()
-    if changed:
-        return (f"its build changed {', '.join(changed[:3])}; commit that, "
-                f"then run the gate")
-    stamps.write(root, k, part.folder, ctx.tip)
     return None
 
 

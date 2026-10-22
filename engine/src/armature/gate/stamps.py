@@ -116,51 +116,59 @@ def tail(output):
     return " | ".join(lines[-TAIL:]) or "no output"
 
 
+def stamp_or_run(ctx, k, folder, attempt, missing, gate):
+    """Whether a check of `folder`'s content at the tip holds, by its stamp
+    under key `k`, or else by running `attempt()`, which returns why the
+    check fails or None, and stamping it. It runs only unless verifying,
+    with the branch checked out on a clean tree, and a run that changes
+    the tree is no pass. `missing` names what has no stamp, `gate` the
+    verb that runs it. (None, "stamped" | "ran") where it holds, else (why,
+    None)."""
+    if stamped(ctx.repo.root, k) and not (ctx.fresh and not ctx.verify):
+        return None, "stamped"
+    if ctx.verify:
+        return (f"{missing} for its content; run py -m armature.gate "
+                f"{gate}"), None
+    if not (ctx.repo.head == ctx.tip and ctx.repo.head_branch == ctx.branch):
+        return (f"{missing}, and {ctx.branch} is not checked out to run "
+                f"it"), None
+    dirty = ctx.repo.dirty()
+    if dirty:
+        return (f"{missing}, and the tree has uncommitted changes "
+                f"({', '.join(dirty[:3])}); commit them, then run the "
+                f"gate"), None
+    why = attempt()
+    if why:
+        return why, None
+    changed = ctx.repo.dirty()
+    if changed:
+        return (f"it passed and changed {', '.join(changed[:3])}; commit "
+                f"that, then run the gate"), None
+    write(ctx.repo.root, k, folder, ctx.tip)
+    return None, "ran"
+
+
 def check(ctx):
-    """3. Every `run_all.py` has a green stamp for its content at the tip.
-    Unless verifying, one without is run, when the branch is checked out on
-    a clean tree, and stamped if it passes."""
+    """3. Every `run_all.py` has a green stamp for its content at the tip,
+    or runs green and is stamped (`stamp_or_run`)."""
     found = folders(ctx.files)
     if not found:
         return True, f"no {RUN_ALL} in the project"
-    runnable = (not ctx.verify and ctx.repo.head == ctx.tip
-                and ctx.repo.head_branch == ctx.branch)
-    dirty = runnable and ctx.repo.dirty()
-    failed, notes = [], []
+    root, failed, notes = ctx.repo.root, [], []
+    runner = ctx.runner or run_all
     for folder in found:
-        k = key(ctx.repo, ctx.tip, ctx.files, folder)
-        if stamped(ctx.repo.root, k) and not (ctx.fresh and not ctx.verify):
-            notes.append(f"{folder} stamped")
-            continue
-        if ctx.verify:
-            failed.append(f"{folder}: no green stamp for its content; run "
-                          f"py -m armature.gate merge")
-        elif not runnable:
-            failed.append(f"{folder}: no green stamp, and {ctx.branch} is "
-                          f"not checked out to run it")
-        elif dirty:
-            failed.append(f"{folder}: no green stamp, and the tree has "
-                          f"uncommitted changes ({', '.join(dirty[:3])}); "
-                          f"commit them, then run the gate")
+        def attempt(folder=folder):
+            passed, output = runner(root / folder,
+                                    root / environment(ctx.files, folder))
+            return None if passed else f"{RUN_ALL} fails: {tail(output)}"
+        why, how = stamp_or_run(ctx, key(ctx.repo, ctx.tip, ctx.files,
+                                         folder), folder, attempt,
+                                "no green stamp", "merge")
+        if why:
+            failed.append(f"{folder}: {why}")
         else:
-            passed, output = _run(ctx, folder)
-            if not passed:
-                failed.append(f"{folder}: {RUN_ALL} fails: {tail(output)}")
-                continue
-            changed = ctx.repo.dirty()
-            if changed:
-                failed.append(f"{folder}: {RUN_ALL} passed and changed "
-                              f"{', '.join(changed[:3])}; commit that, then "
-                              f"run the gate")
-                continue
-            write(ctx.repo.root, k, folder, ctx.tip)
-            notes.append(f"{folder} ran green, stamped")
+            notes.append(f"{folder} ran green, stamped" if how == "ran"
+                         else f"{folder} stamped")
     if failed:
         return False, "; ".join(failed)
     return True, "; ".join(notes)
-
-
-def _run(ctx, folder):
-    root = ctx.repo.root
-    runner = ctx.runner or run_all
-    return runner(root / folder, root / environment(ctx.files, folder))
