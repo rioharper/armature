@@ -147,15 +147,19 @@ def milestone(laid, tmp_path_factory):
 def test_a_derive_merge_finds_a_committed_state_the_gate_reads(milestone):
     """Every item but the review is the scaffold's to satisfy: `main` is
     the branch point, the golden ledger checks, the model runs green and
-    is stamped, and the engine's path pin passes. Only the review, the red
+    is stamped, and the engine's path pin, which a project never commits,
+    is waived by the scaffold's standing waiver. Only the review, the red
     team's to supply, is missing."""
     _, project, _, gated, _ = milestone
     assert gated.returncode == 1, gated.stdout + gated.stderr
     verdict = json.loads(gated.stdout)
     states = {i["item"]: i["state"] for i in verdict["items"]}
     assert states == {"fast-forward": "pass", "ledger": "pass",
-                      "stamps": "pass", "engine": "pass", "review": "fail",
+                      "stamps": "pass", "engine": "waived", "review": "fail",
                       "closed": "pass", "moves": "pass"}, verdict["items"]
+    engine = next(i for i in verdict["items"] if i["item"] == "engine")
+    assert "eval sandbox" in engine["detail"]
+    assert verdict["warnings"] == []
     assert git(project, "status", "--porcelain") == ""
     assert list((project / ".armature" / "runs").glob("*.json"))
 

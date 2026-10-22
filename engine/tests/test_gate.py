@@ -687,10 +687,18 @@ def test_a_model_at_the_repo_root_is_checked_too(project):
     assert "behind v0.9.0" in result.detail
 
 
-def test_a_path_pin_passes_as_a_path_pin(project):
+def test_a_path_pin_fails_since_a_project_pins_the_engine_by_tag(project):
+    """`check` says `path`, never `in-step`, and a path is never committed
+    (ADR 0009); the eval sandbox's path pin is waived, never passed."""
     result = pinned(project, '{ path = "../../engine", editable = true }')
-    assert result.state == "pass"
-    assert "path pin" in result.detail
+    assert result.state == "fail"
+    assert "path ../../engine" in result.detail
+    assert "by tag" in result.detail and "engine-source.sh pin" in \
+        result.detail
+    project.write("waivers.toml", waiver(
+        item="engine", scope="standing", gate="merge"))
+    project.commit("the eval sandbox's waiver")
+    assert project.gate(verify=True)["engine"].state == "waived"
 
 
 # --- waivers --------------------------------------------------------------------

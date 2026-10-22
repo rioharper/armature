@@ -20,8 +20,8 @@ From a shell, `py -m armature.gate <merge|buy|status> [--branch <b>]
 2. `ledger`: `ledger check` reports no error.
 3. `stamps`: every `run_all.py` has a green stamp for its content
    (`stamps`); `merge` runs one without, unless verifying.
-4. `engine`: each model directory's `engine-source.sh check` is in-step, or
-   a path pin (`engine`).
+4. `engine`: each model directory's `engine-source.sh check` is in-step
+   (`engine`); a path pin fails.
 5. `review`: a review pinned on the branch, at or after its branch point,
    where the branch changes a ledger number, model code, a part
    definition, or spec or plan text outside the rendered sections
