@@ -16,6 +16,11 @@
 # gates, it exits 0 before starting Python. With no uv it denies only what
 # looks gated, asking for uv. scripts/armature.ps1 is the same launcher for
 # PowerShell, the hook's fallback where there is no Git Bash.
+
+# set -u, and neither -e nor pipefail: the hook's tests are commands that
+# fail as a matter of course (a grep -q that finds nothing, git outside a
+# repo, grep -q closing a pipe early), and its handler is onFailure: block,
+# so a script that exited on one would block every call it should let by.
 set -u
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -165,7 +170,8 @@ hook() {
 case "${1:-}" in
     hook) hook ;;
     ""|-h|--help)
-        sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+        # The header comment: from line 2 to the first line not a comment.
+        awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0" | sed 's/^# \{0,1\}//'
         exit 2 ;;
     *)
         uv=$(find_uv) || { echo "error: the engine runs on uv, which is not installed; install uv (https://docs.astral.sh/uv/getting-started/installation/)" >&2; exit 2; }

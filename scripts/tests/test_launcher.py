@@ -255,6 +255,16 @@ def test_the_skills_verbs_run_the_same_engine(setup):
     assert uv.endswith("python -m armature.gate status --json")
 
 
+def test_help_prints_the_header_comment_and_nothing_else(setup):
+    run = setup.bash("--help")
+    assert run.returncode == 2
+    lines = run.stdout.decode().splitlines()
+    assert lines[0].startswith("The plugin's own engine, run through uv")
+    assert lines[-1].endswith("PowerShell, the hook's fallback where there "
+                              "is no Git Bash.")
+    assert not any(line.startswith(("set ", "#")) for line in lines)
+
+
 def test_a_call_that_cannot_be_gated_never_starts_python(setup):
     setup.with_uv()
     for event in (
