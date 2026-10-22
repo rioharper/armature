@@ -9,7 +9,7 @@ A loose idea has arrived, too big for one agent session, and wrapped in fog: the
 
 Naming the destination is the first act of charting: it fixes the scope and shapes every ticket. Typical robotics destinations: a spec frozen and ready for **armature-plan**, an actuation architecture locked before CAD hours, a mechanism choice settled before parts are ordered.
 
-A map is an **effort overlay**, not a pipeline stage: the `Stage:` line in `CLAUDE.md` stays as the stage skills left it, and under a map the stage skills keep running — as ticket resolvers (see [Running the pipeline under a map](#running-the-pipeline-under-a-map)).
+A map is an **effort overlay**, not a pipeline stage: under a map the stage skills keep running — as ticket resolvers (see [Running the pipeline under a map](#running-the-pipeline-under-a-map)). A ticket whose resolution changes what a review gates — a ledger number, the model, a part definition, spec or plan text — works on a branch, `armature/ticket-<n>`, and merges through the gate as `${CLAUDE_PLUGIN_ROOT}/references/gates.md` says.
 
 ## Plan, don't do
 

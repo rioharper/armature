@@ -11,20 +11,19 @@ You produce the analytical backbone of a robotics project: derivations to engine
 
 The derivation is four self-contained parts, each with its own `.md` note, its own module — a `.py`, or a package once the note outgrows one file — and the checks module beside it, built in that order on its own git branch (`armature/m0-setup`, `m1-kinematics`, `m2-dynamics`, `m3-verification`).
 
-Milestones 1–3 close through the same **checkpoint**:
+Every milestone closes through the same **checkpoint**, the merge through the gate (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`):
 
-1. Run the self-tests via Bash, in `analysis/model/`. First `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check .`, which prints one line stating the engine's state against the plugin you run, and act on it:
+1. Commit, then run the gate via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge`. It runs `analysis/model/run_all.py`, every discovered check, `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`. Expect every item to pass but `review`, which waits on step 2. Its `engine` line quotes `engine-source.sh check`'s state against the plugin you run; act on it:
    - `in-step`: go on.
-   - `behind … (minor)`, or `rev … (in vX.Y.Z)`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin .`, commit `pyproject.toml` and `uv.lock`, and go on. The runs below are then the upgrade's check.
+   - `behind … (minor)`, or `rev … (in vX.Y.Z)`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model`, commit `pyproject.toml` and `uv.lock`, and gate again. Its run is then the upgrade's check.
    - `behind … (major)`, `ahead` or `path`: stop and report. A move across a major version is a migration, so read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` with the user first; `ahead` means the plugin is out of date. A path is never committed (Step 0); offer `pin`, which replaces one, and run it once the user agrees.
    - `rev … (unreleased)` or `rev … (unknown)`: report it and go on.
+2. Dispatch the **armature-red-team** agent at that commit with the milestone's `.md`, its modules and their checks modules, `mechanism.py` and `mechanism_checks.py`, and earlier milestones as context (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*). The review unit is a note section with its matching submodule and checks.
+3. Close each BLOCKER and MAJOR in the review's block (`gates.md`, *Closing a finding*): a recomputed number lands as a test, `test_F<n>_<what>`, in `analysis/model/review_<date>_<artifact>_checks.py`, which `run_all.py` collects; a judgment goes to a recheck, or to the user. Log the resolutions in the milestone `.md`'s revision note, and commit.
+4. Run the gate again, routing each `fail` by `gates.md`. Done when it exits 0.
+5. Merge: `git checkout main`, then `git merge --ff-only` the milestone's branch. The merge is the phase gate — the next milestone's branch is cut from `main` after it.
 
-   Then `uv run python run_all.py` and `uv run pytest`, which reach the same discovered checks. All must pass, `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`.
-2. Dispatch the **armature-red-team** agent with the milestone's `.md`, its modules and their checks modules, `mechanism.py` and `mechanism_checks.py`, and earlier milestones as context. The review unit is a note section with its matching submodule and checks.
-3. Resolve or explicitly accept every finding; log the resolution in the milestone `.md`'s revision note.
-4. Merge the branch. The merge is the phase gate — the next milestone starts only after it.
-
-Milestone 0's gate is just its commit and merge — nothing to red-team until kinematics makes a claim. Milestone 1's dispatch adds the review artifact `report_truth.py` writes, so the mechanism description is read against the spec's sketch before anything is built on it.
+Whether a milestone is reviewed is the gate's `review` item, not a rule of this skill. Milestone 0 writes model code, the template's and the mechanism description, so it is reviewed like the rest, and its dispatch adds the review artifact `report_truth.py` writes, so the mechanism description is read against the spec's sketch before anything is built on it.
 
 ## File layout
 
@@ -190,38 +189,39 @@ each with its checks module, under the same budget. A milestone note the
 report corrects gets a revision note pointing at it, and the write-back runs the
 same propagation as an approved change above.
 
-**Every report is red-teamed before the task closes**, unless it re-runs an
-unchanged model and moves neither a number nor a requirement's verdict; a report
-that skips its review says so, and why, in its Status line. A verdict counts on
-its own: "REQ-012 holds" is what a spec or a purchase rests on, even with an empty
-write-back table. Dispatch the **armature-red-team** agent as the checkpoint's
-step 2 does, with the report, its `report_<task>.py` and checks modules,
-`mechanism.py`, `params.py`, the ledger prefixes the report moves, and any
-milestone note the report corrects, and
-name the review file in the report's **Review** line. The review is yours to
-run, not the user's, so a user who is away changes nothing: fix a BLOCKER or
-MAJOR the run can settle in the report before stopping; one it cannot sets the
-Status to blocked on it, with a row under *Items routed here*.
+**A report closes through the checkpoint**, on its task's branch,
+`armature/task-<T-id>`. Whether it is reviewed is the gate's `review` item: a
+report that moves a ledger number or adds model code, its `report_<task>.py`
+among it, is; one that re-runs an unchanged model and moves nothing needs no
+review, and its Status line says the gate asked for none. Dispatch the
+**armature-red-team** agent as the checkpoint's step 2 does, with the report,
+its `report_<task>.py` and checks modules, `mechanism.py`, `params.py`, the
+ledger prefixes the report moves, and any milestone note the report corrects,
+and name the review file in the report's **Review** line. The review is yours
+to run, not the user's, so a user who is away changes nothing: close each
+BLOCKER or MAJOR the run can settle before stopping; one it cannot leaves the
+branch unmerged and sets the Status to blocked on it, with a row under *Items
+routed here*.
 
 ## Boundaries
 
-Any milestone merge is a clean stopping point: files committed, tests green, review resolved, branch merged — a fresh session resumes from the repo alone. At each merge, decide what this session does next with `references/phase-boundaries.md` — five options, judged in order, at the boundary only.
+Any milestone merge is a clean stopping point: files committed, the gate passed, branch merged — a fresh session resumes from the repo alone. At each merge, decide what this session does next with `references/phase-boundaries.md` — five options, judged in order, at the boundary only.
 
 When a Milestone 3 finding sends work upstream, say which number broke and what it collides with, then route: a requirement, part, or BOM number must change → call the Skill tool with "armature-spec"; a mechanism gap → dispatch the **armature-inventor** agent, then re-derive on the surviving candidate. Update `docs/decisions.md` when the change is accepted.
 
 As each REQ's analysis lands, move its row in `docs/01-spec/traceability.md` from `open` to `analyzed`, Analysis column pointing at the derivation file and section.
 
-When Milestone 3's branch is merged and its findings resolved, close out the stage: update `CLAUDE.md`'s **Stage** to `cad` and **Latest artifacts** to `analysis/derivation/03_results.md` and `analysis/model/`, append a `docs/decisions.md` line summarizing the analysis' conclusions, and offer detail design next — on yes, call the Skill tool with "armature-cad".
+When Milestone 3's branch has merged, append a `docs/decisions.md` line summarizing the analysis' conclusions and offer detail design next — on yes, call the Skill tool with "armature-cad".
 
 ## Calibration — when hardware exists
 
-Datasheet numbers are the model's opening bid; measured numbers are the truth. When a test report in `docs/testing/` carries a measured value the model assumed — friction, motor torque constant, a real link mass — update its ledger entry: `value` and `as_written` the measured figure, `source = { kind = "measured", ref = "<the report's path>" }`, `status = "confirmed"` once the user has accepted the report's Result, the old value in a comment beside it. Then `render`, `check` and `run_all.py`, and record in `03_results.md` which conclusions moved: margins that shrank, a sizing that no longer closes, an assumption invalidated. The budgets that read the entry re-render with it.
+Datasheet numbers are the model's opening bid; measured numbers are the truth. When a test report in `docs/testing/` carries a measured value the model assumed — friction, motor torque constant, a real link mass — update its ledger entry: `value` and `as_written` the measured figure, `source = { kind = "measured", ref = "<the report's path>" }`, `status = "confirmed"` once the user has accepted the report's Result, the old value in a comment beside it. A number moving is work for the task's branch, which closes through the checkpoint like a report. Then `render`, `check` and `run_all.py`, and record in `03_results.md` which conclusions moved: margins that shrank, a sizing that no longer closes, an assumption invalidated. The budgets that read the entry re-render with it.
 
 ## Deliverables
 
 1. `analysis/derivation/00_setup.md` … `03_results.md` — four files per `references/derivation-standards.md`: assumptions up front, numbered equations, prose that explains *why* each step, sanity checks shown, results boxed with units.
 2. `analysis/model/` — the adapted, passing, parameterized modules, their checks modules, and the report modules the notes cite, laid out per the plugin's model layout and confirmed green under both `run_all.py` and `pytest`.
-3. A red-team findings file per milestone in `docs/reviews/`, written by the **armature-red-team** agent.
+3. A red-team findings file per milestone in `docs/reviews/`, written by the **armature-red-team** agent, every BLOCKER and MAJOR closed in its block.
 
 ## Scope notes
 

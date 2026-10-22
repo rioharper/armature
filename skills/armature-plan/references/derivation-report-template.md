@@ -6,10 +6,11 @@ Rev <n> — <date> — plan task <T-id> (issue #<n>), Executor: armature-derive
 four sentences, with every number it moves, old → new. A reader who stops here
 knows what changed and what it cost.
 
-**Review:** `docs/reviews/<review file>`, and how its findings closed: fixed
-here, accepted with the reason, or open and blocking. A report that skipped its
-review says why in the Status line instead (armature-derive, *When a plan task
-lands as a report*).
+**Review:** `docs/reviews/<review file>`. Each finding's closure (a check, a
+recheck, or the user's acceptance) is in that review's block, so this line
+names the file and any BLOCKER or MAJOR still open, which blocks the merge. A
+report the gate asked no review of says so in the Status line instead
+(armature-derive, *When a plan task lands as a report*).
 
 ## Purpose
 The decision this task was handed and who handed it — the milestone, review
@@ -54,7 +55,9 @@ belong here.
 | Routed by | Item | Closed |
 
 Every finding, question, and TBD earlier work sent to this task, each with its
-resolution or the reason it stays open. An item with no row is an item lost.
+resolution or the reason it stays open. A review finding's Closed cell points at
+its closure in that review's block (`<review file>` F3, its check or recheck),
+never a second account of it. An item with no row is an item lost.
 
 ## Feeds
 | Target | Update |

@@ -27,13 +27,13 @@ Run the interview per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`: work the 
 
 ## The concept brief
 
-Once the frontier is empty, finish the brief at `docs/00-concept/concept-brief.md` using `references/concept-brief-template.md` and drop the Draft line — its absence is what marks the interview closed.
+The brief and its checkpoints live on a branch, `armature/pitch-<name>`, cut from `main` when the interview starts. Once the frontier is empty, finish the brief at `docs/00-concept/concept-brief.md` using `references/concept-brief-template.md` and drop the Draft line — its absence is what marks the interview closed.
 
 Requirements in the brief are outcome-level, numbered **RC-001…** — deliberately a different scheme from **armature-spec**'s REQ-0xx, so nobody mistakes an RC for a verified engineering requirement with a test method behind it. armature-spec translates each RC into one or more REQs once the technical work starts.
 
 ## Hand-off
 
-When the brief is written: update the project `CLAUDE.md` — set the Stage line to `spec` and point Latest artifacts at the brief — and add a line to `docs/decisions.md` naming the concept as settled. Then offer to continue straight into the spec in this same session — the interview is with the user, not a fresh reader — and on yes, call the Skill tool with "armature-spec".
+When the brief is written: add a line to `docs/decisions.md` naming the concept as settled, commit, and merge through the gate (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`): `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge` on the branch, then `git checkout main` and `git merge --ff-only armature/pitch-<name>`. A brief is no path a review gates, so the gate asks for none. Then offer to continue straight into the spec in this same session — the interview is with the user, not a fresh reader — and on yes, call the Skill tool with "armature-spec".
 
 If, partway through the interview, the person already knows their audience and differentiation cold, say so and offer to skip the brief: call the Skill tool with "armature-spec" directly.
 
