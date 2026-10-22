@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 3.0.0 — 2026-10-22
+
+Three changes, the first breaking: two actions, `merge` and `buy`, are gated and recomputed from the repo, with the plugin's first hook as their backstop, and the Stage line is gone; every input number lives once in a root `ledger.toml`, with its unit, band and provenance; and a plan task's report is red-teamed, with derive loading for one. The first two are recorded as ADRs: [0011](docs/adr/0011-actions-are-gated-not-stages.md) and [0010](docs/adr/0010-every-input-number-lives-once-in-the-ledger.md). The eval suite gains three traps that survive a passing `run_all.py` ([#147](https://github.com/rioharper/armature/issues/147)). A project on 2.0.0 upgrades by hand, as *The gates* says below.
 
 - **The eval's copy holds no `PROGRESS.md`.** Once tracked, the maintainers' log named the hold-out's mechanism and quoted golden numbers, and `copy.sh` shipped it to the agent. `copy.sh` leaves it out, and `test_holdout.py` and `test_copy.py` hold that.
 

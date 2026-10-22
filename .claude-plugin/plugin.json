@@ -1,6 +1,6 @@
 {
   "name": "armature",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Robotics engineering pipeline for Claude Code: init scaffolds the project, then pitch, spec, plan, derive, and CAD skills run it with budgets, traceability, datasheet provenance, and adversarial review.",
   "author": {
     "name": "Rio Harper"
