@@ -2,6 +2,37 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## Overhaul 07: built — 2026-10-21
+
+**Status:** #155–#160 built and merged on `overhaul-07`, not yet on `main` or pushed. The CHANGELOG's *Unreleased* holds one breaking entry for 07, with the choices each ticket made that #154 left open. #154 closes after the release run.
+
+**Done:**
+- **#155 the gate engine, #156 the red team's block and recheck mode, #157 `buy`, #158 the hook and launcher, #159 the skills.** The #158 manual run (Git Bash and the PowerShell fallback) and #159's 73-call dry walk are in the session notes, and the CHANGELOG has their findings.
+- **#160:** `CONTEXT.md` gains Gate, Order record, Waiver, Recheck and Stamp, and Stage loses the `Stage:` line. The README's red-team line becomes the two gates and the hook. `grep -rn "Stage:" CONTEXT.md README.md skills` finds nothing.
+- **The eval scaffold** puts its project on `main` and ignores `.armature/`. It also excludes the sandbox's masked dotfiles in `.git/info/exclude`. `evals/tests/test_scaffold_gates.py` (slow) holds all three, and holds that the copy's launcher leaves no venv and no hard link.
+- **On-demand run** (WSL, `claude` 2.1.301, at `54146f4`), `spring-cable-derive` and `spring-cable-review`, one run each, both scored after both finished. Both were caught 1/1 with 0 peeks, for $2.83 + $0.59. `red-team-dispatched` was 1/1 on the derive case and 0/1 on the review case, which reviewed by itself and loaded no skill. No file in the copy had a second link after either case.
+
+**Bug found by the run, fixed here:**
+- The sandbox lays `.bashrc`, `.claude/`, `.mcp.json` and ten more over the workspace, and `git status` lists them untracked.
+- The gate therefore never stamped the model, and the hook denied the derive case's merge twice with `fail stamps`.
+- The agent's own `| grep -v bashrc` hid that line, so it reported "the merge gate passes" and stopped unmerged.
+- The catch graders never saw any of it. The fix is not yet confirmed by a live run; the release run will show it.
+
+**Learned:**
+- Hooks run outside the sandbox with network. The first `git` call in a run built the launcher's venv under the run's `config/plugins/data/armature-inline` in time. The sandboxed skill call through the launcher then worked.
+- A sandboxed `git add -A` fails on the masked `.bash_profile` ("can only add regular files"). The exclude fixes that too.
+
+**Left before the pre-CAD pipeline is finished:**
+1. **The release run**, on the version-bump commit, after `overhaul-07` merges to `main`. It covers 06, #147 and 07. Expect about $117 and 259 min, and score only after every case has finished. It reports #147's Δ, and `red-team-dispatched` against 12/27 before. Check the derive cases' traces for a hook denial, since no grader sees one.
+2. **Ibex's hand edit** when it picks up the release: seed `ledger.toml`, and swap its CLAUDE.md lines for init's `gate status` line.
+3. **The open pipeline-v2 decisions:** plan vs map, where safety lives, and where controls and electrical live.
+4. **Overhaul 10**, symbolic vs numeric, before Ibex reaches derive Milestone 2.
+5. **Ibex's spec, on the released plugin.**
+
+**Open from 07:**
+- The `ask` prompt has only been seen as a `-p` refusal. Run one interactive confirmation by hand.
+- A real machine with no Git Bash has not been tried.
+
 ## Overhaul 07: designed and ticketed — 2026-10-21
 
 **Status:** Grilled in three rounds of 24 questions. All recommendations were accepted, plus ten items settled at confirmation. Recorded as:

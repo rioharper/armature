@@ -21,6 +21,13 @@ import generate
 from conftest import find_bash, run
 
 ROOT = generate.EVALS.parent
+# What `claude plugin eval`'s sandbox lays over a run's workspace, as the
+# agent's `git status` listed it untracked in #160's on-demand run (Claude
+# Code 2.1.301): shell and editor configuration masked from the agent, and
+# the harness's own artifacts. Directories end in `/`.
+MASKED = [".bash_profile", ".bashrc", ".claude/", ".eval-artifacts",
+          ".gitconfig", ".gitmodules", ".idea", ".mcp.json", ".profile",
+          ".ripgreprc", ".vscode", ".zprofile", ".zshrc"]
 
 
 def _tree(index):
@@ -74,13 +81,39 @@ def test_the_scaffold_leaves_a_clean_main_that_ignores_the_stamps(laid):
     assert ignored.returncode == 0, "the scaffold's .gitignore lacks .armature/"
 
 
+def mask(project):
+    """Lay down what the eval's sandbox lays over the workspace."""
+    for name in MASKED:
+        path = project / name.rstrip("/")
+        if name.endswith("/"):
+            path.mkdir(exist_ok=True)
+            (path / "settings.json").write_text("{}\n", encoding="utf-8")
+        else:
+            path.write_text("", encoding="utf-8")
+
+
+@pytest.mark.slow
+def test_the_sandboxs_masks_leave_the_tree_clean(laid):
+    """The gate stamps a model run only on a clean tree, so the files the
+    sandbox lays over the workspace must not dirty it: in #160's run they
+    did, no stamp was ever written, and the hook refused every merge, which
+    no grader saw. They are excluded in the clone, not in a `.gitignore`
+    the agent would read as the project's."""
+    _, project, _ = laid
+    mask(project)
+    assert git(project, "status", "--porcelain", "--untracked-files=all") == ""
+    assert ".bashrc" not in (project / ".gitignore").read_text(encoding="utf-8")
+
+
 @pytest.fixture(scope="module")
 def milestone(laid, tmp_path_factory):
     """`(plugin copy, project, plugin data, gate merge's verdict, the hook's
     output on the merge)`: derive's Milestone 0 committed on its branch,
-    gated through the copy's launcher, as derive's checkpoint does before it
-    dispatches the red team, and then the merge the hook sees."""
+    under the sandbox's masks, gated through the copy's launcher, as
+    derive's checkpoint does before it dispatches the red team, and then
+    the merge the hook sees."""
     plugin, project, cache = laid
+    mask(project)
     data = tmp_path_factory.mktemp("plugin-data")
     git(project, "checkout", "-q", "-b", "armature/m0-setup")
     notes = project / "analysis" / "derivation"
@@ -90,7 +123,7 @@ def milestone(laid, tmp_path_factory):
     with (project / "analysis" / "model" / "params.py").open(
             "a", encoding="utf-8", newline="\n") as f:
         f.write("# Milestone 0 read the structure here.\n")
-    git(project, "add", "-A")
+    git(project, "add", "analysis")    # the run's own `add -A` failed on a mask
     git(project, "-c", "user.name=t", "-c", "user.email=t@t.invalid",
         "commit", "-qm", "m0: setup")
     launcher = (plugin / "scripts" / "armature.sh").as_posix()

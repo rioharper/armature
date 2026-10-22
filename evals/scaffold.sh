@@ -56,6 +56,14 @@ grep -qF "path = \"$engine\"" "$model/pyproject.toml" \
 
 printf '.venv/\n__pycache__/\n.pytest_cache/\nreview/\n.armature/\n' > .gitignore
 git init -q -b main
+# What claude plugin eval's sandbox lays over the workspace: shell and editor
+# configuration masked from the agent, and the harness's own artifacts. Left
+# untracked they dirty the tree, so the gate never stamps a model run and the
+# hook refuses every merge (#160). They are excluded in the clone, so the
+# project's .gitignore stays the project's.
+printf '%s\n' /.bash_profile /.bashrc /.claude/ /.eval-artifacts /.gitconfig \
+    /.gitmodules /.idea /.mcp.json /.profile /.ripgreprc /.vscode /.zprofile \
+    /.zshrc >> .git/info/exclude
 git add -A
 git -c user.name="Armature eval" -c user.email=eval@armature.invalid \
     commit -qm "Spec stage: the mechanism description and its parameters"
