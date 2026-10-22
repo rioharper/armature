@@ -488,11 +488,11 @@ RUN_ALLS = [SKILLS / "armature-derive/scripts/model_template/run_all.py",
 
 @pytest.mark.parametrize("template", RUN_ALLS, ids=["model", "part"])
 def test_run_all_runs_a_reviews_checks_file(tmp_path, template):
-    """A `check` closure's pass is its folder's stamp, so the folder's
-    `run_all.py` must run the review's checks file, which has no module of
-    its own beside it; and the layout gates, which pair every checks module
-    with a module and hold one beside a mechanism description to a truth
-    check, must let it stand."""
+    """A `check` closure holds when its folder's stamp records a run of
+    the review's checks file, so the folder's `run_all.py` must run that
+    file, which has no module of its own beside it; and the layout gates,
+    which pair every checks module with a module and hold one beside a
+    mechanism description to a truth check, must let it stand."""
     for name in ("run_all.py", "layout.py", "layout_checks.py"):
         (tmp_path / name).write_bytes((template.parent / name).read_bytes())
     (tmp_path / "mechanism.py").write_text("")

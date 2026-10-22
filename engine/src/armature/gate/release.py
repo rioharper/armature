@@ -6,9 +6,9 @@ and an empty list from a process that built nothing proves nothing. So the
 check runs in the part's folder, in the environment its `run_all.py` runs
 in: it loads the part's build recipe, calls its `build()`, and asks the
 `stubs` that build imported. A recipe with no `build()` fails; a part with
-no recipe (modeled by hand in CAD) has no stub to build. A pass is cached
-like a stamp, under a key of the folder's stamp key and the recipe, so
-`verify` reads it and runs nothing.
+no recipe (modeled by hand in CAD) has no stub to build. A part found
+with no stub left is stamped, as a run is, under a key of the folder's
+stamp key and the recipe, so `verify` reads the stamp and runs nothing.
 """
 
 import hashlib

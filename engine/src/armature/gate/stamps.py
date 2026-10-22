@@ -1,4 +1,5 @@
-"""Stamps: a cache of green `run_all.py` results, keyed by content.
+"""Stamps: each a record that a `run_all.py` passed on one content, a
+cache keyed by that content.
 
 A stamp is `.armature/runs/<key>.json`, written when a `run_all.py` passes
 on a clean tree. Its key hashes the folder's git tree, the `ledger.toml`
