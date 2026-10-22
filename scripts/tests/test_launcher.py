@@ -158,6 +158,81 @@ def test_with_no_uv_an_ungated_command_or_another_repo_is_left_alone(setup):
     assert out["permissionDecision"] == "deny"
 
 
+LAUNCHERS = ["bash", "powershell"]
+
+
+def launch(setup, which, event):
+    """The hook's decision from `which` launcher, run directly."""
+    if which == "bash":
+        return decision(setup.bash("hook", stdin=event))
+    if powershell() is None:
+        pytest.skip("no PowerShell")
+    return decision(subprocess.run(
+        [powershell(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy",
+         "Bypass", "-File", str(setup.plugin / "scripts" / "armature.ps1"),
+         "hook"], input=event.encode("utf-8"), capture_output=True,
+        env=setup.env, cwd=setup.project))
+
+
+@pytest.mark.parametrize("which", LAUNCHERS)
+def test_with_no_uv_nothing_outside_a_project_is_denied(setup, which):
+    """The hook is a no-op where no root ledger.toml is reachable: an edit
+    accepting a finding in a plain repo, and a commit behind a `cd` into a
+    folder of it."""
+    (setup.plain / "sub").mkdir()
+    for event in (
+            setup.event("Edit", cwd=setup.plain,
+                        file_path=str(setup.plain / "docs/reviews/a.md"),
+                        old_string="open", new_string='status = "accepted"'),
+            setup.event("Write", cwd=setup.plain,
+                        file_path="reviews/a.md",
+                        content='status = "accepted"\n'),
+            setup.event("Bash", cwd=setup.plain,
+                        command="cd sub && git commit -m x"),
+            setup.event("Bash", cwd=setup.plain,
+                        command="git -C sub merge feature")):
+        assert launch(setup, which, event) is None, event
+
+
+@pytest.mark.parametrize("which", LAUNCHERS)
+def test_with_no_uv_a_project_reached_by_cd_or_dash_c_is_gated(setup, which):
+    project = setup.project.as_posix()
+    for command in (f"cd {project} && git merge feature",
+                    f'cd "{project}"; git push',
+                    f"git -C {project} commit -m x"):
+        out = launch(setup, which, setup.event("Bash", cwd=setup.plain,
+                                               command=command))
+        assert out and out["permissionDecision"] == "deny", command
+
+
+@pytest.mark.parametrize("which", LAUNCHERS)
+def test_with_no_uv_only_what_the_edit_writes_is_read(setup, which):
+    """Inside a project an edit is denied for what it writes, never for a
+    word elsewhere in the event: `confirmed` in a review, or in the text an
+    edit replaces, confirms nothing."""
+    reviews = str(setup.project / "docs/reviews/a.md")
+    ledger = str(setup.project / "ledger.toml")
+    for event in (
+            setup.event("Edit", file_path=reviews, old_string="a",
+                        new_string="the confirmed torque is 2 N m"),
+            setup.event("Edit", file_path=ledger,
+                        old_string='status = "confirmed"',
+                        new_string='status = "candidate"')):
+        assert launch(setup, which, event) is None, event
+    for event in (
+            setup.event("Edit", file_path=reviews, old_string="open",
+                        new_string='status = "accepted"'),
+            setup.event("Edit", file_path=ledger, old_string="# entries",
+                        new_string='[mechanism.l1]\nvalue = 0.3\nunit = "m"\n'
+                                   'source = { kind = "chosen", ref = "x" }'),
+            setup.event("Write", file_path=str(setup.project / "waivers.toml"),
+                        content='[[waiver]]\ngate = "merge"\n'),
+            setup.event("Write", file_path=str(
+                setup.project / ".armature/runs/k.json"), content="{}")):
+        out = launch(setup, which, event)
+        assert out and out["permissionDecision"] == "deny", event
+
+
 # --- with uv: the engine, its venv under CLAUDE_PLUGIN_DATA ------------------
 def test_a_call_that_may_be_gated_reaches_the_engine_through_uv(setup):
     setup.with_uv()

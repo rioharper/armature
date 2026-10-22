@@ -57,6 +57,45 @@ function Test-Project($folder) {
     return (Test-Path -LiteralPath (Join-Path $top 'ledger.toml') -PathType Leaf)
 }
 
+function Resolve-From($path, $folder) {
+    # The path, read from the folder; Git Bash's /c/... is C:/...
+    if ($path -eq '~') { return $HOME }
+    if ($path -match '^~[/\\]') { return (Join-Path $HOME $path.Substring(2)) }
+    $path = $path -replace '^/([a-zA-Z])(?=/|$)', '$1:'
+    if ([System.IO.Path]::IsPathRooted($path)) { return $path }
+    return (Join-Path $folder $path)
+}
+
+# A cd (PowerShell's too) or git -C and the folder it names, plain or quoted.
+$ChDir = '(?<![A-Za-z0-9_-])((?i:cd|pushd|chdir|set-location|sl)|-C)\s+' +
+         '(?:(?i:-[a-z]*path)\s+)?("[^"]*"|''[^'']*''|[^\s;&|()]+)'
+
+function Test-Reaches($folder, $command) {
+    # The command runs in a project, from the folder or one a cd or git -C
+    # on it names. A folder the line does not spell out (a variable, a
+    # substitution) reaches none, as the engine's own reading has it.
+    if (Test-Project $folder) { return $true }
+    foreach ($m in [regex]::Matches($command, $ChDir)) {
+        $target = $m.Groups[2].Value.Trim('"', "'")
+        if (-not $target -or $target.Contains('$') -or $target.Contains('`')) { continue }
+        $target = Resolve-From $target $folder
+        if (Test-Project $target) { return $true }
+        if ($m.Groups[1].Value -cne '-C') { $folder = $target }
+    }
+    return $false
+}
+
+function Test-EditProject($folder, $file) {
+    # The file, read from the folder, is in a project.
+    $at = Split-Path -Parent (Resolve-From $file $folder)
+    while ($at -and -not (Test-Path -LiteralPath $at -PathType Container)) {
+        $up = Split-Path -Parent $at
+        if ($up -eq $at) { return $false }
+        $at = $up
+    }
+    return ($at -and (Test-Project $at))
+}
+
 function Deny($reason) {
     $out = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse';
               permissionDecision = 'deny'; permissionDecisionReason = $reason } }
@@ -74,24 +113,35 @@ function Invoke-Hook {
     if (-not $cwd) { $cwd = (Get-Location).Path }
     $input_ = $event.tool_input
     if ($tool -eq 'Bash' -or $tool -eq 'PowerShell') {
+        # git and gh, run in a project
         $command = [string]$input_.command
         if ($command -notmatch '(^|[^A-Za-z0-9_.-])(git|gh)([^A-Za-z0-9_-]|$)') { exit 0 }
-        if (-not (Test-Project $cwd) -and
-            $command -notmatch '(?i)(^|[^A-Za-z0-9_-])(cd|pushd|chdir|set-location|sl|-C)\s') { exit 0 }
+        if (-not (Test-Reaches $cwd $command)) { exit 0 }
         $gated = '(git|gh)[^|;&]*\s(merge|push|commit)'
         $subject = $command
     } elseif (@('Edit', 'Write', 'MultiEdit', 'NotebookEdit') -contains $tool) {
         $file = [string]$input_.file_path
         if (-not $file) { $file = [string]$input_.notebook_path }
-        if ($file -notmatch '(\.armature|ledger\.toml|waivers\.toml|reviews)') { exit 0 }
-        $gated = '\.armature|confirmed|accepted|\[\[ *waiver'
-        $subject = $raw
+        $file = $file -replace '\\', '/'
+        # By file, what the edit writes that is gated: a stamp, a
+        # confirmation (written, or a kind confirmed by default), a waiver,
+        # an acceptance.
+        if ($file -match '(^|/)\.armature/') { $gated = $null }
+        elseif ($file -match '(^|/)ledger\.toml$') {
+            $gated = 'confirmed|kind\s*=\s*["'']?(chosen|standard)' }
+        elseif ($file -match '(^|/)waivers\.toml$') { $gated = 'confirmed|\[\[ *waiver' }
+        elseif ($file -match '(^|/)reviews/') { $gated = 'accepted' }
+        else { exit 0 }
+        if (-not (Test-EditProject $cwd $file)) { exit 0 }
+        $subject = (@($input_.new_string, $input_.content, $input_.new_source) +
+                    @($input_.edits | ForEach-Object { $_.new_string }) |
+                    Where-Object { $_ }) -join "`n"
     } else {
         exit 0
     }
     $uv = Find-Uv
     if (-not $uv) {
-        if ($subject -match $gated) {
+        if ($null -eq $gated -or $subject -match $gated) {
             Deny ('Armature (ADR 0011): this action is gated, and the gate runs on uv, ' +
                   'which is not installed. Install uv ' +
                   '(https://docs.astral.sh/uv/getting-started/installation/), then retry.')
