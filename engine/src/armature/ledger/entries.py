@@ -74,11 +74,18 @@ class Entry:
     def effective_status(self):
         """The status as written, else `confirmed` for an `of` entry, which
         cites a candidate only by saying so, or for a chosen or standard
-        entry, else None."""
-        if self.status is None and (self.of is not None
-                                    or self.kind in CONFIRMED_BY_KIND):
-            return "confirmed"
-        return self.status
+        entry, else None (`status_of`)."""
+        return status_of(self.status, self.kind, self.of)
+
+
+def status_of(status, kind, of=None):
+    """An entry's effective status, from its written `status`, its source
+    `kind` and its `of`: as written, else `confirmed` for an `of` entry or
+    a chosen or standard one, else None. Read from raw TOML too, as the
+    hook does to see what an edit confirms."""
+    if status is None and (of is not None or kind in CONFIRMED_BY_KIND):
+        return "confirmed"
+    return status
 
 
 class Ledger:

@@ -85,7 +85,8 @@ QUESTION never blocks: route it, and leave it `open` until it is settled.
 ## Confirmations and waivers
 
 Three edits are the user's alone, and the hook asks the user before each lands:
-`status = "confirmed"` on a ledger entry, `accepted` on a finding, and a
+`status = "confirmed"` on a ledger entry (or a `chosen` or `standard` source
+kind, which confirms an entry with no status), `accepted` on a finding, and a
 `[[waiver]]` in `waivers.toml`. Make one only after the user has given that
 decision in the conversation, one decision per edit, and name it in the commit
 message.
