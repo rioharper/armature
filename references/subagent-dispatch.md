@@ -70,8 +70,10 @@ Accepted already: <risk>. Report to docs/reviews/2026-10-21-spec-review.md.
 
 The review ends in a block of findings, every one `open`. Closing each BLOCKER and MAJOR
 is the dispatching conversation's work: a `check` in the review's checks file that passes,
-a recheck, or the user's acceptance. Write the closure into the review's block yourself;
-the red team never writes one.
+a recheck, or the user's acceptance (`gates.md`, *Closing a finding*). Write the closure
+into the review's block yourself; the red team never writes one. The block is the one
+record of how a finding closed: a report's **Review** line or a routed item's row points
+at the finding's closure there, and never restates it.
 
 **A recheck** is for a finding no test can hold: a judgment, an argument, a requirement's
 reading. Commit the fix, then dispatch it with the review, the finding ids and the fix

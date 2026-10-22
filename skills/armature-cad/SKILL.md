@@ -21,6 +21,8 @@ Without `CONTEXT.md`, reuse the frames and symbols from `analysis/derivation/00_
 
 Then confirm two things the files rarely pin: **which CAD package**, and the **fabrication reality** — in-house machining envelope and tolerances, printer and filament, sheet stock and bend capability, minimum tool and drill sizes. When the shop is outside and the user can't speak for its limits, offer a **questionnaire** built per `${CLAUDE_PLUGIN_ROOT}/references/questionnaire.template.md`, written to `cad/questionnaire-<shop>.md`, sent with a sketch or drawing for the questions to point at. Its answers are release-grade inputs; until they return, they ride the affected parts as TBDs.
 
+**Derive's last milestone comes first.** CAD hours are spent against the loads, so before the first definition anyone models from, check that Milestone 3 passed `merge`: `git cat-file -e main:analysis/derivation/03_results.md` succeeds only once it has, since a commit on `main` cannot add derivation text. Where it fails, call the Skill tool with "armature-derive" for the loads; a sketch-grade definition for a prototype ticket may go ahead, its loads TBD, and says no modeling hours rest on it.
+
 **Gate.** Release grade requires two sourced numbers:
 
 - *Loads*, from the derivation. Not derived yet → call the Skill tool with "armature-derive" for them.
@@ -133,7 +135,7 @@ Done when every part definition's inertia claim matches the model.
 
 ## Red-team before the money moves
 
-The **release transition** is the gate: before any drawing, DXF, or order leaves the project, dispatch the **armature-red-team** agent with the batch's part-definition paths plus `analysis/derivation/03_results.md` and `docs/01-spec/bom.md` — interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop checked. Sketch-grade batches skip it; offer it early when a batch is interface-heavy and the modeling hours ahead are large.
+Every batch is reviewed at its merge (below). The **release transition** is an order of its own (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`, *`buy`*): before any drawing, DXF, quote request or fit print leaves the project, cut `armature/order-<batch>` from `main`, commit the exports being sent, and add `docs/orders/<date>-<batch>.toml` with `kind = "release"` and one line per part, `definition = "cad/parts/<PART-ID>"` with its `exports`. Commit, then dispatch the **armature-red-team** agent at that commit with the order record, the batch's part-definition paths, `analysis/derivation/03_results.md` and `docs/01-spec/bom.md` — interfaces defined on both sides and agreeing, every load traced to a result, fits with a functional basis, the inertia loop checked. Close its findings (`gates.md`, *Closing a finding*; a recomputed number lands as a test in `review_<date>_<artifact>_checks.py` in `cad/parts/`), then run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate buy`: beyond `merge`'s items it wants that review listing the record, every part's placeholders resolved, and each part's and the model's `run_all.py` stamped green. Merge when it exits 0, and tell the user what it cleared to send.
 
 **Sweep the tolerance corners before the dispatch.** Every tolerance this batch grants — a fit, a free length, a rate band — is exercised at the corners of its product first, so a margin that holds at nominal and fails at a corner is never the review's discovery. The sweep belongs to **armature-derive** (Milestone 3): hand it the grants, which it declares as bands that every margin they can move searches, and carry the worst corner's value beside the nominal in *Critical dimensions & tolerances*.
 
@@ -144,7 +146,7 @@ The **release transition** is the gate: before any drawing, DXF, or order leaves
 - A part that resists being made manufacturable and wants a cleverer mechanism → dispatch the **armature-inventor** agent.
 - A user who wants to *understand* a concept a definition turns on (a press fit, k-factor, datum order) → call the Skill tool with "armature-teach".
 
-Work each batch on an `armature/cad-<batch>` branch; merge once its definitions are red-teamed and findings resolved. Then point `CLAUDE.md`'s Latest artifacts at the new part/assembly definitions and log the batch's design decisions in `docs/decisions.md`. When the project's final batch merges, set `CLAUDE.md`'s **Stage** to `build`.
+Work each batch on an `armature/cad-<batch>` branch and merge it through the gate (`gates.md`). A part definition is a path the gate reviews, at sketch grade too: commit, dispatch the **armature-red-team** agent at that commit with the batch's definitions, close its findings, run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge` on the branch until it exits 0, then `git checkout main` and `git merge --ff-only armature/cad-<batch>`. Log the batch's design decisions in `docs/decisions.md`.
 
 ## Scope
 

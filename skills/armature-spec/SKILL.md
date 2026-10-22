@@ -15,6 +15,8 @@ Read `docs/00-concept/concept-brief.md` and `CLAUDE.md` if they exist. If a conc
 
 ## The process
 
+A spec revision, the first included, is a branch, `armature/spec-<rev>`, cut from `main` before the first checkpoint: the spec, its ledger entries and §9's model all commit there, and it reaches `main` only through the gate at the Hand-off.
+
 ### Phase 1: Interrogation (the grilling)
 
 Interview first; the spec comes after. Run it per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`, checkpointing the spec after each round; the Draft line survives Phases 1–2, and Phase 3's finished spec drops it. Lookupables here are a datasheet number, a COTS part's existence, a material property.
@@ -69,7 +71,7 @@ Write the document to `docs/01-spec/spec.md` using the structure in `references/
 
 Once the trade study has settled the architecture and the feasibility math has picked the major commercial-off-the-shelf (COTS) parts — actuators, gearboxes, bearings, drive electronics, batteries — and the structural materials (which metal, which polymer, which filament and print process), pin down the actual parts and the datasheets that back them.
 
-- **Ask first, hunt second.** Request datasheets the user already has. For anything missing, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter): a pre-confirmed P/N is cached in the run; a candidate waits in the agent's staging file for your confirmation with the user, then its Merge step. A dispatch that canvasses a field rather than a part — custom vendors, stock catalogues — leaves a permanent survey record in `docs/datasheets/` whether or not it confirms anything. Cite `part.<pn>` entries, never memory. An entry whose `status` is `candidate` is open: settle it with the user, number by number, and set `status = "confirmed"` on each one they confirm. Several parts at once go out in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
+- **Ask first, hunt second.** Request datasheets the user already has. For anything missing, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter): a pre-confirmed P/N is cached in the run; a candidate waits in the agent's staging file for your confirmation with the user, then its Merge step. A dispatch that canvasses a field rather than a part — custom vendors, stock catalogues — leaves a permanent survey record in `docs/datasheets/` whether or not it confirms anything. Cite `part.<pn>` entries, never memory. An entry whose `status` is `candidate` is open: settle it with the user, number by number, and set `status = "confirmed"` on each one they confirm, one edit per decision: the plugin's hook asks the user before that edit lands. Several parts at once go out in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
 - **When a number can't be sourced, stop and say so.** If a design-critical spec (stall torque, continuous current, rotor inertia, yield strength, max operating temperature) isn't available from the user or a trustworthy public source, log it as an open question and pause for the user rather than inventing a plausible value — and when a person the user can reach holds it (a vendor's application engineer), offer a **questionnaire**.
 - Materials get the same treatment as parts: the design-driving properties of the chosen stock (yield and modulus for metals; glass-transition and layer-adhesion for prints; thickness and impact behavior for polycarbonate) belong on the record, not in your head.
 
@@ -77,13 +79,18 @@ Then write the **design-driver BOM** to `docs/01-spec/bom.md` per `references/bo
 
 ### Hand-off
 
-When the spec is accepted, dispatch the **armature-red-team** agent with the spec, BOM, budgets, and traceability paths — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds.
+When the spec is accepted, it merges through the gate (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`):
+
+1. Log the architecture decision in `docs/decisions.md` and commit.
+2. Dispatch the **armature-red-team** agent at that commit with the spec, BOM, budgets, traceability and `ledger.toml` paths (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*) — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds.
+3. Close each BLOCKER and MAJOR (`gates.md`, *Closing a finding*): a recomputed number lands as a test in `analysis/model/review_<date>_spec_checks.py` once §9 has made the model, and a judgment goes to a recheck or to the user. Commit.
+4. `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge` on the branch, routing each `fail` by `gates.md`. Done when it exits 0; then `git checkout main` and `git merge --ff-only armature/spec-<rev>`.
+
+**Buying parts is an order**, never part of the spec branch: once the parts it buys are confirmed and the spec has merged, cut `armature/order-<name>` from `main`, add `docs/orders/<date>-<name>.toml` with `kind = "purchase"` and a line per part (`gates.md`, *`buy`*), commit, and dispatch the red team with the order record plus the BOM and the `part.<pn>` entries it rests on. Close its findings, run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate buy`, and merge it as a spec merges. So does a single bench part bought to be measured before the design is done: the user confirms its datasheet numbers, and the bench report replaces them.
 
 Then offer the routes onward and, on yes, call the Skill tool with the chosen one: "armature-plan" (converts the spec into a phased implementation plan with analysis and CAD milestones) or "armature-derive" (derives the kinematics/dynamics the chosen architecture implies). Either runs right here in this same session — the files on disk are what those skills need, not the conversation that produced them.
 
 If the effort outgrows the session — the design hangs on more decisions than one interview can settle — call the Skill tool with "armature-wayfind" to chart it as a map.
-
-Update `CLAUDE.md` (Stage → `plan`, Latest artifacts) and log the architecture decision in `docs/decisions.md`.
 
 ## Scope boundaries
 
