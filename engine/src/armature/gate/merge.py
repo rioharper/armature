@@ -14,7 +14,6 @@ from .changes import gated, numbers
 from .repo import MAIN
 
 ERRORS_SHOWN = 3
-RUN_ALL = stamps.RUN_ALL
 
 
 def fast_forward(ctx):
@@ -55,7 +54,7 @@ def review(ctx):
     it counts when its `reviewed` SHA is on the branch, at or after the
     branch point. A review whose block cannot be read fails here."""
     broken = [f"cannot read {path}: {error}"
-              for path, error in ctx.blocks[1] if path in ctx.changed]
+              for path, error in ctx.blocks.unreadable if path in ctx.changed]
     if broken:
         return False, "; ".join(broken)
     reasons = gated(ctx)
@@ -71,7 +70,7 @@ def review(ctx):
         f" and {len(reasons) - ERRORS_SHOWN} more"
         if len(reasons) > ERRORS_SHOWN else "")
     missed = [f"{r.path} is pinned to {r.reviewed[:7]}, {_where(ctx, r)}"
-              for r in ctx.blocks[0] if isinstance(r, reviews.Review)
+              for r in ctx.blocks.read if isinstance(r, reviews.Review)
               and r.path in ctx.changed]
     return False, (f"the branch changes {shown}, and no review is pinned to "
                    f"a commit on it" + "".join(f"; {m}" for m in missed))
@@ -136,8 +135,9 @@ def _check(ctx, r, check):
                f"{r.checks_name}"
     if file not in ctx.files:
         return f"is fixed by {file}, which is not at the tip"
-    if str(where.parent / RUN_ALL) not in ctx.files:
-        return f"is fixed by {file}, and no {RUN_ALL} beside it collects it"
+    if str(where.parent / stamps.RUN_ALL) not in ctx.files:
+        return (f"is fixed by {file}, and no {stamps.RUN_ALL} beside it "
+                f"collects it")
     try:
         tree = ast.parse(ctx.repo.text(ctx.tip, file))
     except SyntaxError as e:

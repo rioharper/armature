@@ -18,7 +18,8 @@ FILENAME = "ledger.toml"
 # one key below `mechanism`, `[part."moteus-r4.11".mass]` two below `part`.
 # The CAD part template's stdlib-only `check/ledger.py` keeps a copy.
 SECTIONS = {"mechanism": 1, "drive": 1, "req": 1, "budget": 2, "part": 2}
-KINDS = ("chosen", "standard", "estimate", "datasheet", "cad", "measured")
+ESTIMATE = "estimate"        # the one kind that carries a band of its own
+KINDS = ("chosen", "standard", ESTIMATE, "datasheet", "cad", "measured")
 STATUSES = ("candidate", "confirmed")
 CONFIRMED_BY_KIND = ("chosen", "standard")  # status defaults to confirmed
 ALLOCATION = "allocation"   # the budget entry its lines are summed against
@@ -74,11 +75,18 @@ class Entry:
     def effective_status(self):
         """The status as written, else `confirmed` for an `of` entry, which
         cites a candidate only by saying so, or for a chosen or standard
-        entry, else None."""
-        if self.status is None and (self.of is not None
-                                    or self.kind in CONFIRMED_BY_KIND):
-            return "confirmed"
-        return self.status
+        entry, else None (`status_of`)."""
+        return status_of(self.status, self.kind, self.of)
+
+
+def status_of(status, kind, of=None):
+    """An entry's effective status, from its written `status`, its source
+    `kind` and its `of`: as written, else `confirmed` for an `of` entry or
+    a chosen or standard one, else None. Read from raw TOML too, as the
+    hook does to see what an edit confirms."""
+    if status is None and (of is not None or kind in CONFIRMED_BY_KIND):
+        return "confirmed"
+    return status
 
 
 class Ledger:

@@ -336,6 +336,17 @@ def test_an_unstaged_edit_a_compound_stages_is_seen(project):
         assert "model code analysis/model/arm.py" in decision.reason
 
 
+def test_a_repo_git_cannot_read_is_denied_with_gits_error(project):
+    """A broken index makes git itself fail: the hook denies, naming git's
+    error, where a crash would block the call with no reason."""
+    staged(project, "docs/01-spec/spec.md", SPEC.replace("2 kg", "3 kg"))
+    (project.root / ".git" / "index").write_bytes(b"garbage")
+    for command in ("git commit -m 'lift more'", "git add -A && git commit"):
+        decision = bash(command, project.root)
+        assert decision.permission == "deny", command
+        assert "index" in decision.reason and "git" in decision.reason
+
+
 def test_a_commit_on_a_work_branch_is_not_the_main_rule(project):
     project.branch("armature/spec-arm")
     staged(project, "docs/01-spec/spec.md", SPEC.replace("2 kg", "3 kg"))
@@ -371,6 +382,31 @@ def test_setting_an_entry_confirmed_is_asked(project):
     assert decision.permission == "ask"
     assert "mechanism.m2" in decision.reason
     assert edit(project, "ledger.toml", "0.72", "0.70") is None
+
+
+def test_an_entry_confirmed_by_its_kind_is_asked(project):
+    """A `chosen` or `standard` entry with no status is confirmed (the
+    ledger's own rule), so adding one, or turning an entry's kind into one,
+    confirms it as surely as writing the word."""
+    added = edit(project, "ledger.toml", "[mechanism.m2]", (
+        '[mechanism.l2]\nvalue = 0.2\nunit = "m"\n'
+        'source = { kind = "chosen", ref = "spec §3" }\n\n[mechanism.m2]'))
+    assert added.permission == "ask"
+    assert "mechanism.l2" in added.reason
+    project.write("ledger.toml", LEDGER + CANDIDATE.replace(
+        'status = "candidate"\n', ""))
+    kind = edit(project, "ledger.toml", 'kind = "datasheet"',
+                'kind = "standard"')
+    assert kind.permission == "ask"
+    assert "part.rs02.mass" in kind.reason
+
+
+def test_a_sum_entry_confirms_nothing_of_its_own(project):
+    """An `of` entry is confirmed only as far as the entry it cites is:
+    adding one confirms no number, so nothing is asked."""
+    assert edit(project, "ledger.toml", "[mechanism.m2]", (
+        '[budget.mass.arm]\nof = "mechanism.m2"\nqty = 2\n\n'
+        '[mechanism.m2]')) is None
 
 
 REVIEW = """\

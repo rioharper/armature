@@ -20,8 +20,8 @@ From a shell, `py -m armature.gate <merge|buy|status> [--branch <b>]
 2. `ledger`: `ledger check` reports no error.
 3. `stamps`: every `run_all.py` has a green stamp for its content
    (`stamps`); `merge` runs one without, unless verifying.
-4. `engine`: each model directory's `engine-source.sh check` is in-step, or
-   a path pin (`engine`).
+4. `engine`: each model directory's `engine-source.sh check` is in-step
+   (`engine`); a path pin fails.
 5. `review`: a review pinned on the branch, at or after its branch point,
    where the branch changes a ledger number, model code, a part
    definition, or spec or plan text outside the rendered sections
@@ -47,8 +47,8 @@ From a shell, `py -m armature.gate <merge|buy|status> [--branch <b>]
 An item is a function of the `Context` returning (passed, detail); a gate
 is a list of (id, function) pairs, `MERGE` or `BUY`, and `evaluate`
 computes one and applies the waivers of that gate alone (`waivers`).
-`verify` is the mode the hook calls; `order(ctx)` tells it which gate a
-branch takes.
+`verify` is the mode the hook calls; `required` computes the gate a
+branch's merge takes, `buy` for one adding an order record (`order(ctx)`).
 """
 
 import datetime
@@ -66,7 +66,7 @@ BUY = MERGE + BUY_ITEMS
 
 __all__ = ["BUY", "Context", "GateError", "MERGE", "Recheck", "Result",
            "Review", "ReviewError", "Verdict", "buy", "evaluate", "merge",
-           "order", "status"]
+           "order", "required", "status"]
 
 
 def evaluate(gate, items, ctx):
@@ -96,30 +96,38 @@ def evaluate(gate, items, ctx):
     return Verdict(gate, ctx.branch, ctx.tip, results, ctx.warnings)
 
 
-def merge(path=None, branch=None, *, verify=False, fresh=False, today=None,
-          runner=None):
+def merge(path=None, branch=None, **options):
     """`merge`'s verdict for `branch` (default: HEAD's) of the repo at or
-    above `path`. `verify` reads the stamps and runs nothing, as the hook
-    does; `fresh` runs every `run_all.py`, ignoring them. `today` is the
-    date the ledger's check counts a price's age from. `runner(folder,
-    project)` runs one `run_all.py` (default: with uv)."""
-    return evaluate("merge", MERGE,
-                    _context(path, branch, verify, fresh, today, runner))
+    above `path`. The keyword `options`: `verify` reads the stamps and
+    runs nothing, as the hook does; `fresh` runs every `run_all.py`,
+    ignoring them; `today` is the date the ledger's check counts a price's
+    age from; `runner(folder, project)` runs one `run_all.py` (default:
+    with uv)."""
+    return evaluate("merge", MERGE, _context(path, branch, **options))
 
 
-def buy(path=None, branch=None, *, verify=False, fresh=False, today=None,
-        runner=None):
+def buy(path=None, branch=None, **options):
     """`buy`'s verdict for `branch` (default: HEAD's), computed as
-    `merge`'s is: merge's items, then buy's. On a pass its notes say the
-    order is cleared, and that nobody can see whether it was placed."""
-    ctx = _context(path, branch, verify, fresh, today, runner)
+    `merge`'s is, with its `options`: merge's items, then buy's. On a pass
+    its notes say the order is cleared, and that nobody can see whether it
+    was placed."""
+    ctx = _context(path, branch, **options)
     verdict = evaluate("buy", BUY, ctx)
     if verdict.passed:
         verdict.notes.append(cleared(order(ctx)))
     return verdict
 
 
-def _context(path, branch, verify, fresh, today, runner):
+def required(path=None, branch=None, **options):
+    """The verdict `branch`'s merge into `main` must pass, with `merge`'s
+    `options`: `buy`'s where the branch adds an order record, else
+    `merge`'s."""
+    gate = merge if order(_context(path, branch, **options)) is None else buy
+    return gate(path, branch, **options)
+
+
+def _context(path, branch, *, verify=False, fresh=False, today=None,
+             runner=None):
     return Context.at(path, branch, verify=verify, fresh=fresh,
                       today=today or datetime.date.today(), runner=runner)
 
@@ -127,8 +135,8 @@ def _context(path, branch, verify, fresh, today, runner):
 def status(path=None, branch=None, *, today=None):
     """Every gate that applies to `branch` (default: HEAD's), verifying:
     `merge`'s verdict, and `buy`'s where the branch adds an order
-    record."""
-    verdicts = [merge(path, branch, verify=True, today=today)]
-    if order(_context(path, branch, True, False, today, None)) is not None:
-        verdicts.append(buy(path, branch, verify=True, today=today))
-    return verdicts
+    record (`required`)."""
+    gate = required(path, branch, verify=True, today=today)
+    if gate.gate == "merge":
+        return [gate]
+    return [merge(path, branch, verify=True, today=today), gate]

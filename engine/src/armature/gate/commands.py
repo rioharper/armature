@@ -10,10 +10,9 @@ import sys
 import tomllib
 from pathlib import Path
 
-from ..ledger import LedgerError
-from ..ledger.entries import FILENAME, SECTIONS
-from ..ledger.views import unrendered
-from .changes import kind
+from ..ledger.entries import FILENAME, SECTIONS, status_of
+from .changes import differs_outside, kind
+from .orders import ORDERS
 from .repo import MAIN, GateError, Repo
 from .shell import UNKNOWN, commands
 
@@ -44,7 +43,6 @@ VALUES = {
 # what `merge` reviews, the derivation's notes, and the order records `buy`
 # gates.
 DERIVATION = "analysis/derivation/"
-ORDERS = "docs/orders/"
 BRANCH_RULE = ("Commit it on a branch, armature/<kind>-<name>, and merge "
                "that through the gate.")
 
@@ -325,13 +323,13 @@ def main_commit(repo, pending):
     tree, untracked files included."""
     head = repo.commit("HEAD")
     against = [head] if head else []
-    paths = set(_lines(repo.git("diff", "--cached", "--name-only",
-                                "--no-renames", "-z", *against)))
+    paths = set(repo.listing("diff", "--cached", "--name-only",
+                             "--no-renames", *against))
     if pending:
-        paths |= set(_lines(repo.git("diff", "--name-only", "--no-renames",
-                                     "-z", *against)))
-        paths |= set(_lines(repo.git("ls-files", "--others",
-                                     "--exclude-standard", "-z")))
+        paths |= set(repo.listing("diff", "--name-only", "--no-renames",
+                                  *against))
+        paths |= set(repo.listing("ls-files", "--others",
+                                  "--exclude-standard"))
     old = repo.read(head, sorted(paths)) if head else {}
     if pending:
         new = {p: _file(repo.root / p) for p in paths}
@@ -374,12 +372,12 @@ def ledger_moves(before, after):
             continue
         if name not in eb:
             problems.append(f"it removes the entry {name}")
-        elif _status(eb[name]) != "candidate":
+        elif _effective(eb[name]) != "candidate":
             problems.append(f"it {'edits' if name in ea else 'adds'} {name}"
-                            f", which it leaves {_status(eb[name])}")
-        elif name in ea and _status(ea[name]) != "candidate":
+                            f", which it leaves {_effective(eb[name])}")
+        elif name in ea and _effective(ea[name]) != "candidate":
             problems.append(f"it edits {name}, which was "
-                            f"{_status(ea[name])}")
+                            f"{_effective(ea[name])}")
     return problems
 
 
@@ -401,9 +399,16 @@ def entries(data):
     return found
 
 
-def _status(entry):
-    status = entry.get("status") if isinstance(entry, dict) else None
-    return status or "with no status"
+def _effective(entry):
+    """The raw TOML `entry`'s effective status, as the ledger reads it
+    (`status_of`), named for a message: `of no status` where it has
+    none."""
+    if not isinstance(entry, dict):
+        return "of no status"
+    source = entry.get("source")
+    return status_of(entry.get("status"),
+                     source.get("kind") if isinstance(source, dict) else None,
+                     entry.get("of")) or "of no status"
 
 
 def _rest(data):
@@ -418,19 +423,19 @@ def _gated(path):
         return what
     if path.startswith(DERIVATION):
         return "text"
-    if path.startswith(ORDERS):
+    if path.startswith(ORDERS + "/"):
         return "the order record"
     return None
 
 
 def _outside(path, before, after):
-    """Whether markdown `path` differs outside its rendered sections."""
-    if not path.lower().endswith(".md") or before is None or after is None:
-        return True
+    """Whether `path`'s bytes differ outside its rendered sections
+    (`differs_outside`)."""
     try:
-        return unrendered(path, before.decode("utf-8")) != unrendered(
-            path, after.decode("utf-8"))
-    except (LedgerError, UnicodeDecodeError):
+        return differs_outside(path, *(None if raw is None
+                                       else raw.decode("utf-8")
+                                       for raw in (before, after)))
+    except UnicodeDecodeError:
         return True
 
 
@@ -482,10 +487,6 @@ def _parse(args, values):
             pos.append(a)
         at += 1
     return flags, pos
-
-
-def _lines(out):
-    return [p for p in out.split("\0") if p]
 
 
 def _file(path):

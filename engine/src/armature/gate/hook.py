@@ -16,8 +16,9 @@ allows. In a project, a git repo whose root holds `ledger.toml`:
   `candidate` entries.
 - **`Edit`, `Write`, `MultiEdit` or `NotebookEdit`**: a path under
   `.armature/`, where the stamps live, is denied. An edit that introduces
-  `status = "accepted"` in `docs/reviews/`, introduces `status =
-  "confirmed"` in `ledger.toml`, or adds or confirms a `[[waiver]]` in
+  `status = "accepted"` in `docs/reviews/`, confirms an entry of
+  `ledger.toml` (its effective status, written or by a `chosen` or
+  `standard` source kind), or adds or confirms a `[[waiver]]` in
   `waivers.toml` is asked about (`ask`), naming what it confirms.
 
 Outside a project nothing is decided. `python -m armature.gate.hook` reads
@@ -25,7 +26,6 @@ the hook's JSON event on stdin and prints the decision's JSON, or nothing;
 `scripts/armature.sh hook` runs it on the plugin's own engine.
 """
 
-import datetime
 import json
 import os
 import re
@@ -35,7 +35,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..ledger.entries import FILENAME
+from ..ledger.entries import FILENAME, status_of
 from . import commands, reviews, waivers
 from .commands import HookError
 from .repo import OWN, GateError, Repo
@@ -67,16 +67,23 @@ def decide(tool_name, tool_input, cwd, *, gate=None, pr=None):
     folder `cwd`, or None. `gate(root, branch)` is the verdict a branch
     must pass (default: `buy` for an order branch, else `merge`, verifying);
     `pr(root, ref)` is what `gh pr merge <ref>` merges, a dict of `head`,
-    `base` and `oid` (default: asked of `gh`)."""
-    if tool_name in SHELLS:
-        refused = commands.shell(tool_input.get("command") or "", cwd,
-                                 SHELLS[tool_name], gate or verdict,
-                                 pr or pull_request)
-        if refused:
-            return Decision("deny", PREFIX + "\n\n".join(refused))
-        return None
-    if tool_name in EDITS:
-        return _edit(tool_name, tool_input, cwd)
+    `base` and `oid` (default: asked of `gh`). Where git itself fails on
+    a project's repo, the call is denied with git's error."""
+    try:
+        if tool_name in SHELLS:
+            refused = commands.shell(tool_input.get("command") or "", cwd,
+                                     SHELLS[tool_name], gate or verdict,
+                                     pr or pull_request)
+            if refused:
+                return Decision("deny", PREFIX + "\n\n".join(refused))
+            return None
+        if tool_name in EDITS:
+            return _edit(tool_name, tool_input, cwd)
+    except GateError as e:
+        return Decision("deny", PREFIX + (
+            f"the hook cannot read this project's repo, so it cannot tell "
+            f"whether the call is gated: {e}. Repair the repo, then "
+            f"retry."))
     return None
 
 
@@ -107,9 +114,10 @@ def _edit(tool, args, cwd):
         names = _confirmed(before, after)
         if names:
             return Decision("ask", PREFIX + (
-                f"this edit sets status = \"confirmed\" on {names} in "
-                f"{FILENAME}. Only the user confirms an entry: approve "
-                f"only if you have checked it yourself."))
+                f"this edit confirms {names} in {FILENAME}, by status = "
+                f"\"confirmed\" or by a chosen or standard source kind. "
+                f"Only the user confirms an entry: approve only if you "
+                f"have checked it yourself."))
     elif rel == waivers.FILENAME:
         added = _waived(before, after)
         if added:
@@ -118,7 +126,7 @@ def _edit(tool, args, cwd):
                 f" ({added}), exempting a gate's item. Only the user "
                 f"confirms a waiver: approve only if you agree to waive "
                 f"it."))
-    elif rel.startswith(reviews.FOLDER + "/"):
+    elif rel.startswith(reviews.REVIEWS + "/"):
         ids = _accepted(before, after, rel)
         if ids:
             return Decision("ask", PREFIX + (
@@ -172,8 +180,8 @@ def _confirmed(before, after):
         b = commands.entries(tomllib.loads(after))
     except tomllib.TOMLDecodeError:
         return _more(CONFIRMED, before, after, "an entry")
-    names = [n for n, e in b.items() if _status(e) == "confirmed"
-             and _status(a.get(n)) != "confirmed"]
+    names = [n for n, e in b.items()
+             if _confirmed_by(e) and not _confirmed_by(a.get(n))]
     return ", ".join(names)
 
 
@@ -216,18 +224,24 @@ def _more(pattern, before, after, what):
         pattern.findall(before)) else ""
 
 
-def _status(entry):
-    return entry.get("status") if isinstance(entry, dict) else None
+def _confirmed_by(entry):
+    """Whether the raw TOML `entry` is confirmed by what it says itself:
+    the ledger's effective status (`status_of`), written or by its source
+    kind. An `of` entry's default is left out: it is confirmed only as far
+    as the entry it cites, so it confirms no number of its own."""
+    if not isinstance(entry, dict):
+        return False
+    source = entry.get("source")
+    kind = source.get("kind") if isinstance(source, dict) else None
+    return status_of(entry.get("status"), kind) == "confirmed"
 
 
 # --- the defaults: the gate, and what a pull request merges ------------------
 def verdict(root, branch):
-    """The gate `branch` must pass, verifying: `buy` where the branch adds
-    an order record, else `merge`."""
-    from . import Context, buy, merge, order   # the package imports this
-    ctx = Context.at(root, branch, verify=True, today=datetime.date.today())
-    gate = merge if order(ctx) is None else buy
-    return gate(root, branch, verify=True)
+    """The gate `branch` must pass, verifying (`required`): `buy` where the
+    branch adds an order record, else `merge`."""
+    from . import required     # the package imports this module
+    return required(root, branch, verify=True)
 
 
 def pull_request(root, ref):

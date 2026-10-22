@@ -488,11 +488,11 @@ RUN_ALLS = [SKILLS / "armature-derive/scripts/model_template/run_all.py",
 
 @pytest.mark.parametrize("template", RUN_ALLS, ids=["model", "part"])
 def test_run_all_runs_a_reviews_checks_file(tmp_path, template):
-    """A `check` closure's pass is its folder's stamp, so the folder's
-    `run_all.py` must run the review's checks file, which has no module of
-    its own beside it; and the layout gates, which pair every checks module
-    with a module and hold one beside a mechanism description to a truth
-    check, must let it stand."""
+    """A `check` closure holds when its folder's stamp records a run of
+    the review's checks file, so the folder's `run_all.py` must run that
+    file, which has no module of its own beside it; and the layout gates,
+    which pair every checks module with a module and hold one beside a
+    mechanism description to a truth check, must let it stand."""
     for name in ("run_all.py", "layout.py", "layout_checks.py"):
         (tmp_path / name).write_bytes((template.parent / name).read_bytes())
     (tmp_path / "mechanism.py").write_text("")
@@ -620,6 +620,19 @@ def test_a_cad_folder_runs_in_the_models_environment_and_keys_its_lock(
     assert "cad/parts" in detail and "analysis/model" in detail
 
 
+def test_a_run_all_at_the_root_runs_in_the_roots_own_environment(project):
+    """The root is folder `.`, whose `uv.lock` is `uv.lock`, never
+    `./uv.lock`: it runs in its own environment, not the model's."""
+    project.branch("armature/work")
+    project.write("run_all.py", PASSING)
+    project.write("uv.lock", "version = 1\n")
+    project.commit()
+    runner = Runner()
+    assert project.gate(runner=runner)["stamps"].state == "pass"
+    assert runner.runs == [(project.root, project.root)]
+    assert project.gate(verify=True)["stamps"].state == "pass"
+
+
 def test_a_branch_not_checked_out_is_not_run(project):
     model(project)
     project.checkout("main")
@@ -636,10 +649,10 @@ SOURCE = ('{{ git = "https://github.com/rioharper/armature", tag = "{}", '
           'subdirectory = "engine" }}')
 
 
-def pinned(project, source):
+def pinned(project, source, model="analysis/model/"):
     project.branch("armature/m0-setup")
-    project.write("analysis/model/run_all.py", PASSING)
-    project.write("analysis/model/pyproject.toml", f"""\
+    project.write(f"{model}run_all.py", PASSING)
+    project.write(f"{model}pyproject.toml", f"""\
         [project]
         name = "arm-model"
         version = "0.1.0"
@@ -668,10 +681,24 @@ def test_a_model_behind_the_plugins_tag_fails(project):
     assert "behind v0.9.0" in result.detail
 
 
-def test_a_path_pin_passes_as_a_path_pin(project):
+def test_a_model_at_the_repo_root_is_checked_too(project):
+    result = pinned(project, SOURCE.format("v0.9.0"), model="")
+    assert result.state == "fail"
+    assert "behind v0.9.0" in result.detail
+
+
+def test_a_path_pin_fails_since_a_project_pins_the_engine_by_tag(project):
+    """`check` says `path`, never `in-step`, and a path is never committed
+    (ADR 0009); the eval sandbox's path pin is waived, never passed."""
     result = pinned(project, '{ path = "../../engine", editable = true }')
-    assert result.state == "pass"
-    assert "path pin" in result.detail
+    assert result.state == "fail"
+    assert "path ../../engine" in result.detail
+    assert "by tag" in result.detail and "engine-source.sh pin" in \
+        result.detail
+    project.write("waivers.toml", waiver(
+        item="engine", scope="standing", gate="merge"))
+    project.commit("the eval sandbox's waiver")
+    assert project.gate(verify=True)["engine"].state == "waived"
 
 
 # --- waivers --------------------------------------------------------------------
@@ -788,6 +815,17 @@ def test_a_detached_head_with_no_branch_named_is_an_error(project):
     run = gate("status", cwd=project.root)
     assert run.returncode == 2
     assert "--branch" in run.stderr
+
+
+def test_a_repo_git_cannot_read_is_an_error_not_a_traceback(project):
+    """A broken index makes `git status` fail where the gate asks whether
+    the tree is clean: exit 2 with git's error, as for no repo."""
+    model(project)
+    (project.root / ".git" / "index").write_bytes(b"garbage")
+    run = gate("merge", cwd=project.root)
+    assert run.returncode == 2, run.stdout + run.stderr
+    assert run.stderr.startswith("error: git status")
+    assert "Traceback" not in run.stderr
 
 
 STATUS = """\

@@ -5,11 +5,19 @@ matter, each read once."""
 import datetime
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import NamedTuple
 
 from ..ledger import LedgerError
 from ..ledger.entries import FILENAME, loads
-from . import reviews
+from . import orders, reviews
 from .repo import MAIN, GateError, Repo
+
+
+class Blocks(NamedTuple):
+    """The findings blocks at a tip: each review and recheck read, and each
+    file whose block cannot be, as (path, error)."""
+    read: list
+    unreadable: list
 
 
 @dataclass
@@ -27,6 +35,7 @@ class Context:
     today: datetime.date = None
     runner: object = None
     warnings: list = field(default_factory=list)
+    _ledgers: dict = field(default_factory=dict, init=False, repr=False)
 
     @classmethod
     def at(cls, path=None, branch=None, **kw):
@@ -67,7 +76,7 @@ class Context:
     @cached_property
     def blocks(self):
         """Every review and recheck at the tip, parsed, and each file whose
-        block cannot be read, as (path, error)."""
+        block cannot be read (`Blocks`)."""
         found, broken = [], []
         for path, raw in self.repo.read(self.tip,
                                         reviews.paths(self.files)).items():
@@ -78,7 +87,13 @@ class Context:
                 continue
             if parsed is not None:
                 found.append(parsed)
-        return found, broken
+        return Blocks(found, broken)
+
+    @cached_property
+    def order_record(self):
+        """The order record the branch adds, parsed, and why there is none:
+        (order, None) or (None, problem) (`orders.read`)."""
+        return orders.read(self)
 
     def on_branch(self, sha):
         """`sha`'s full commit SHA where it is on the branch, at or after
@@ -95,7 +110,7 @@ class Context:
     def counted(self):
         """The reviews that count: each pinned to a commit on the branch,
         at or after its branch point, with that commit's full SHA."""
-        return [(r, sha) for r in self.blocks[0]
+        return [(r, sha) for r in self.blocks.read
                 if isinstance(r, reviews.Review)
                 and (sha := self.on_branch(r.reviewed)) is not None]
 
@@ -103,7 +118,7 @@ class Context:
     def rechecks(self):
         """Every recheck pinned on the branch, oldest first, as (recheck,
         full SHA): ordered by its commit's depth, then by path."""
-        found = [(r, sha) for r in self.blocks[0]
+        found = [(r, sha) for r in self.blocks.read
                  if isinstance(r, reviews.Recheck)
                  and (sha := self.on_branch(r.reviewed)) is not None]
         depth = {sha: int(self.repo.git("rev-list", "--count", sha))
@@ -113,7 +128,7 @@ class Context:
     def ledger(self, rev):
         """The ledger at `rev`, parsed; None where there is none. A ledger
         that will not parse raises `LedgerError`."""
-        cache = self.__dict__.setdefault("_ledgers", {})
+        cache = self._ledgers
         if rev not in cache:
             text = self.repo.text(rev, FILENAME)
             try:

@@ -3,8 +3,11 @@
 
 A model directory is a folder holding a `run_all.py` and its own
 `pyproject.toml`. Its `pyproject.toml` at the tip is checked, by the script
-of the plugin this engine ships in. A path pin, as the plugin's own
-templates and the evals use, passes as one; behind, ahead and a rev fail.
+of the plugin this engine ships in. Only `in-step` passes: behind, ahead,
+a rev and a path pin fail, a path because a project pins the engine by
+tag and never commits a path (ADR 0009). The eval sandbox, whose scaffold
+pins the plugin copy's engine by path, waives this item with a standing
+waiver of its own (`evals/scaffold.sh`).
 """
 
 import os
@@ -14,7 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from .stamps import PYPROJECT, folders
+from .stamps import PYPROJECT, folders, within
 
 SCRIPT = Path("scripts") / "engine-source.sh"
 # engine/src/armature/gate/engine.py: the plugin root is four folders up.
@@ -42,10 +45,10 @@ def bash():
 
 
 def check(ctx):
-    """4. `engine-source.sh check` is in-step, or a path pin, for each
-    model directory."""
+    """4. `engine-source.sh check` is in-step for each model
+    directory."""
     models = [f for f in folders(ctx.files)
-              if f"{f}/{PYPROJECT}" in ctx.files]
+              if within(f, PYPROJECT) in ctx.files]
     if not models:
         return True, "no model directory pins an engine"
     found, shell = script(), bash()
@@ -56,17 +59,19 @@ def check(ctx):
     failed, notes = [], []
     with tempfile.TemporaryDirectory() as tmp:
         for model in models:
-            ctx.repo.export(ctx.tip, [f"{model}/{PYPROJECT}"], tmp)
+            ctx.repo.export(ctx.tip, [within(model, PYPROJECT)], tmp)
             run = subprocess.run(
                 [shell, found.as_posix(), "check",
                  (Path(tmp) / model).as_posix()],
                 capture_output=True, text=True, encoding="utf-8",
                 errors="replace")
             line = (run.stdout.strip().splitlines() or [""])[0]
-            if run.returncode == 0:
+            if line.startswith("path "):
+                failed.append(f"{model}: {line}; a project pins the engine "
+                              f"by tag, never a path: run engine-source.sh "
+                              f"pin {model}")
+            elif run.returncode == 0:
                 notes.append(f"{model} {line}")
-            elif line.startswith("path "):
-                notes.append(f"{model} path pin")
             else:
                 failed.append(f"{model}: {line or run.stderr.strip()}")
     if failed:

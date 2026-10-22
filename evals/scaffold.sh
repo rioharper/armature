@@ -21,7 +21,10 @@
 #     leaves. Its root ledger.toml puts it in the plugin hook's scope, so it
 #     is left as init leaves a project: on `main`, which the skills merge
 #     into and the hook guards, with `.armature/`, the gate's stamps,
-#     ignored, since the gate runs the model only on a clean tree (ADR 0011).
+#     ignored, since the gate runs the model only on a clean tree (ADR 0011),
+#     and a waivers.toml whose standing waivers, one per gate, waive the
+#     engine item: step 3's path pin, which no project commits (ADR 0009),
+#     fails it by construction.
 set -euo pipefail
 
 mechanism="${1:?usage: scaffold.sh <mechanism>}"
@@ -55,6 +58,17 @@ grep -qF "path = \"$engine\"" "$model/pyproject.toml" \
     UV_PYTHON_DOWNLOADS=never uv sync --quiet )
 
 printf '.venv/\n__pycache__/\n.pytest_cache/\nreview/\n.armature/\n' > .gitignore
+for gate in merge buy; do
+    cat <<EOF
+[[waiver]]
+gate = "$gate"
+item = "engine"
+scope = "standing"
+reason = "the eval sandbox's path pin: evals/scaffold.sh points the model at the plugin copy's engine by path, so the run reads the engine under test; a project pins it by tag"
+confirmed = 2026-10-21
+
+EOF
+done > waivers.toml
 git init -q -b main
 # What claude plugin eval's sandbox lays over the workspace: shell and editor
 # configuration masked from the agent, and the harness's own artifacts. Left

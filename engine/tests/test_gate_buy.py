@@ -460,6 +460,21 @@ def test_a_part_in_a_folder_of_its_own_is_read_too(shop):
     assert "cad/parts/hip-plate" in verdict["release-stamps"].detail
 
 
+def test_a_part_at_the_repo_root_is_read_too(shop):
+    """The root is folder `.`: its `run_all.py` is `run_all.py`."""
+    shop.write("analysis/model/run_all.py", PASSING)
+    shop.write("run_all.py", PASSING)
+    shop.write("stubs.py", STUBS)
+    shop.write("HIP.md", "# HIP plate\n")
+    shop.write("HIP.py", CLEAN)
+    shop.commit("a part at the root")
+    shop.order(release("HIP", ["HIP.md"]), path=RELEASE)
+    verdict = shop.buy(runner=Runner())
+    assert verdict["placeholders"].state == "pass", verdict.lines()
+    assert verdict["release-stamps"].state == "pass", verdict.lines()
+    assert ". stamped" in verdict["release-stamps"].detail
+
+
 def test_a_release_needs_the_models_run_all(shop):
     verdict = released(shop, model=False)
     assert verdict["stamps"].state == "pass"
