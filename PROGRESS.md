@@ -2,6 +2,45 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## What's left before the pre-CAD pipeline is finished — 2026-10-22
+
+**Status:** Overhauls 01–07 are built. 01–06 and #147 are on `main` and pushed. 07 is only on the local branch `overhaul-07` (`d8dd4d6`), 30 commits ahead of `main` and a fast-forward of it. `main` is itself 2 commits ahead of `origin/main` (`3da75a3` ADR 0011, `378c5dd` its log entry), and neither is pushed. Open issues: #154 (07's spec), #147, #138, #137, #152, #153. Nothing since 2.0.0 is released. This replaces the list in the entry below and in the 2026-10-21 one.
+
+**Found while checking:**
+- **This machine's plugin cache is still 1.3.0.** `~/.claude/plugins/installed_plugins.json` points at `cache/armature-plugins/armature/1.3.0` (`4927e3e`), and no `2.0.0` folder exists. 2.0.0 was tagged but never pulled here. So any project that opened the cached plugin since 2026-09-11, Ibex's restart on 2026-10-16 included, ran 1.3.0. The entries above that say "Ibex's cached plugin has neither the ledger nor the traps" undersold it.
+- Ibex (`cef0f15`, 2026-10-16, brief Rev 1.0, staged to spec) has no `ledger.toml` and no plugin setting of its own. It has not moved since.
+
+**Left, in order:**
+1. **Land 07.** Fast-forward `main` to `overhaul-07` and push. That also sends the ADR 0011 commits, whose push the classifier blocked.
+2. **The version bump and the release run.** 07 is breaking, so the bump is a major. One run covers 06, #147, 07 and #138's three unrun derive cases. Expect about $117 and 259 min, and score only after every case has finished. It does these jobs:
+   - gates the bump;
+   - reports #147's Δ, which closes #147 and #137;
+   - shows `red-team-dispatched` against 12/27 before, which settles #138;
+   - confirms live the scaffold's dotfile exclude, which only a test holds today. Read the derive traces for a hook denial, since no grader sees one.
+   Then close #154, tag, push `--atomic`, and run `evals/release-smoke.sh`.
+3. **Pull the release into the cache.** Update the plugin (`claude plugin update armature@armature-plugins`), then check that `installed_plugins.json` names the new version. Or run Ibex with `--plugin-dir` against this repo.
+4. **07's hand checks:** one interactive `ask` confirmation (seen so far only as a `-p` refusal), a machine with no Git Bash, and the WSL engine run (#127), which was cut short by memory.
+5. **Ibex's hand edit:** seed a root `ledger.toml` (this also turns the hook on), and swap its CLAUDE.md lines for init's `gate status` line.
+6. **The open pipeline-v2 decisions.** Each gets a grill, an ADR, a spec and tickets.
+   - **Plan vs map:** reopens ADR 0001. Ibex and Plumb both used a map instead of a plan.
+   - **Where safety lives:** Overhaul 11's hazard rows per energy source go here.
+   - **Where controls and electrical live,** beyond the actuators and bus that ADR 0007 settled.
+7. **Overhaul 10, symbolic vs numeric.** Settle it before Ibex reaches derive Milestone 2. The Lagrangian import timed out at four links, and Ibex is far past that.
+8. **Ibex's spec, on the released plugin,** writing into `ledger.toml` from the start. It is the acceptance test for 1–7. Its findings are plugin feedback.
+
+Items 6 and 7 don't depend on 1–5 and can be grilled now. Ibex's spec needs 1–5, and it needs 6's plan-vs-map and safety answers before it can be finished.
+
+**Loose ends (not blocking), carried from 2026-10-21:**
+- Glossary clashes: "slack" means both a margin's room and a slack cable, and `Envelope` clashes with "envelope".
+- `Simulated.moved.speed` jumps about 28 rad/s at a cable snap.
+- `load()`'s nearest-`ledger.toml` lookup was never grilled.
+- A shell edit to `ledger.toml` gets past the hook's `ask`.
+- The Pinocchio, Placo and CalculiX environment decision is still open.
+- `engine/MUJOCO_LOG.TXT` is untracked and not ignored.
+- #147's open question: ADR 0008's amendment names the trap classes, and `docs/adr/` ships to the agent under test.
+
+**Not pre-CAD:** Overhauls 08 and 09, which wait for Ibex to reach CAD. #152 (blocked by #138) and #153 (its arm probe needs the user's go-ahead). Plumb and CineWave V2 stay deferred.
+
 ## Overhaul 07: built — 2026-10-21
 
 **Status:** #155–#160 built and merged on `overhaul-07`, not yet on `main` or pushed. The CHANGELOG's *Unreleased* holds one breaking entry for 07, with the choices each ticket made that #154 left open. #154 closes after the release run.
