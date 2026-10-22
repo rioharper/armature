@@ -29,6 +29,7 @@ class Verdict:
     tip: str
     results: list
     warnings: list = field(default_factory=list)
+    notes: list = field(default_factory=list)   # printed after the items
 
     @property
     def passed(self):
@@ -42,12 +43,13 @@ class Verdict:
                        f"{', '.join(r.item for r in self.results)}")
 
     def lines(self):
-        """The printed verdict: a line per item, then `warning` lines."""
+        """The printed verdict: a line per item, then `warning` lines, then
+        its notes."""
         return ([str(r) for r in self.results]
-                + [f"warning {w}" for w in self.warnings])
+                + [f"warning {w}" for w in self.warnings] + self.notes)
 
     def as_dict(self):
         return {"gate": self.gate, "branch": self.branch, "tip": self.tip,
                 "passed": self.passed,
                 "items": [r.as_dict() for r in self.results],
-                "warnings": list(self.warnings)}
+                "warnings": list(self.warnings), "notes": list(self.notes)}

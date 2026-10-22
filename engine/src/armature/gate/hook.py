@@ -224,16 +224,10 @@ def _status(entry):
 def verdict(root, branch):
     """The gate `branch` must pass, verifying: `buy` where the branch adds
     an order record, else `merge`."""
-    from . import merge
-    try:
-        from . import buy, order
-    except ImportError:                       # no buy gate yet
-        return merge(root, branch, verify=True)
-    from .context import Context
+    from . import Context, buy, merge, order   # the package imports this
     ctx = Context.at(root, branch, verify=True, today=datetime.date.today())
-    if order(ctx) is not None:
-        return buy(root, branch, verify=True)
-    return merge(root, branch, verify=True)
+    gate = merge if order(ctx) is None else buy
+    return gate(root, branch, verify=True)
 
 
 def pull_request(root, ref):

@@ -17,7 +17,9 @@ class Context:
     """A gate computed for `branch` at its tip. `verify` reads the stamps
     and never runs a `run_all.py`; `fresh` runs every one, ignoring the
     stamps; `runner(folder, project)` runs one, returning (passed, output),
-    where `project` is the folder whose environment it runs in."""
+    where `project` is the folder whose environment it runs in, and
+    `runner(folder, project, *command)` runs `python <command>` there, as
+    a release's stub check does."""
     repo: Repo
     branch: str
     verify: bool = False

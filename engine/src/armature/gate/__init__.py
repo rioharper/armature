@@ -1,16 +1,19 @@
-"""The gates (ADR 0011): `merge`, a work branch into `main`, computed from
-the repo every time it is asked. Nothing stores a pass; the stored inputs
-are the reviews, `waivers.toml` and the stamp cache.
+"""The gates (ADR 0011): `merge`, a work branch into `main`, and `buy`, the
+merge of an order branch adding an order record, each computed from the
+repo every time it is asked. Nothing stores a pass; the stored inputs are
+the reviews, `waivers.toml`, the order records and the stamp cache.
 
     verdict = merge()                    # HEAD's branch, at its tip
     verdict.passed                       # no item failed
     verdict["review"]                    # Result(item, state, detail)
     print("\\n".join(verdict.lines()))   # pass|fail|waived <item> <detail>
     merge(verify=True)                   # read the stamps, run nothing
-    status()                             # [merge's verdict], verifying
+    buy()                                # merge's items, then buy's
+    status()                             # [merge's, and buy's on an
+                                         #  order branch], verifying
 
-From a shell, `py -m armature.gate <merge|status> [--branch <b>] [--json]
-[--fresh]`; it exits 1 on any failed item.
+From a shell, `py -m armature.gate <merge|buy|status> [--branch <b>]
+[--json] [--fresh]`; it exits 1 on any failed item.
 
 `merge`'s items, by id, each read at the branch tip:
 1. `fast-forward`: `main` is an ancestor of the tip.
@@ -27,22 +30,43 @@ From a shell, `py -m armature.gate <merge|status> [--branch <b>] [--json]
 7. `moves`: every ledger number changed after a counted review is named in
    some closure's `moves`.
 
+`buy`'s, after merge's, on a branch adding one `docs/orders/*.toml`
+(`orders`, `buy`, `release`):
+- `order`: the branch adds exactly one order record, of the contract's
+  shape.
+- `confirmed`: every entry of each ordered part is confirmed, and none
+  rests on an estimate.
+- `price`: each line's price tier, the largest `price_at_<n>` at or below
+  its qty, was retrieved no more than 90 days ago.
+- `order-review`: a review on the branch lists the order record in its
+  `artifacts`, whatever item 5 says.
+- `placeholders`, for a release: each part's build leaves no stub.
+- `release-stamps`, for a release: each part's and the model's
+  `run_all.py` are stamped green.
+
 An item is a function of the `Context` returning (passed, detail); a gate
-is a list of (id, function) pairs, `MERGE`, and `evaluate` computes one and
-applies the waivers (`waivers`). `verify` is the mode the hook calls.
+is a list of (id, function) pairs, `MERGE` or `BUY`, and `evaluate`
+computes one and applies the waivers of that gate alone (`waivers`).
+`verify` is the mode the hook calls; `order(ctx)` tells it which gate a
+branch takes.
 """
 
 import datetime
 
+from .buy import ITEMS as BUY_ITEMS
 from .context import Context
 from .merge import ITEMS as MERGE
+from .orders import cleared, order
 from .repo import GateError
 from .reviews import Recheck, Review, ReviewError
 from .verdict import Result, Verdict
 from .waivers import FILENAME as WAIVERS, parse as parse_waivers
 
-__all__ = ["GateError", "MERGE", "Recheck", "Result", "Review",
-           "ReviewError", "Verdict", "evaluate", "merge", "status"]
+BUY = MERGE + BUY_ITEMS
+
+__all__ = ["BUY", "Context", "GateError", "MERGE", "Recheck", "Result",
+           "Review", "ReviewError", "Verdict", "buy", "evaluate", "merge",
+           "order", "status"]
 
 
 def evaluate(gate, items, ctx):
@@ -79,12 +103,32 @@ def merge(path=None, branch=None, *, verify=False, fresh=False, today=None,
     does; `fresh` runs every `run_all.py`, ignoring them. `today` is the
     date the ledger's check counts a price's age from. `runner(folder,
     project)` runs one `run_all.py` (default: with uv)."""
-    ctx = Context.at(path, branch, verify=verify, fresh=fresh,
-                     today=today or datetime.date.today(), runner=runner)
-    return evaluate("merge", MERGE, ctx)
+    return evaluate("merge", MERGE,
+                    _context(path, branch, verify, fresh, today, runner))
+
+
+def buy(path=None, branch=None, *, verify=False, fresh=False, today=None,
+        runner=None):
+    """`buy`'s verdict for `branch` (default: HEAD's), computed as
+    `merge`'s is: merge's items, then buy's. On a pass its notes say the
+    order is cleared, and that nobody can see whether it was placed."""
+    ctx = _context(path, branch, verify, fresh, today, runner)
+    verdict = evaluate("buy", BUY, ctx)
+    if verdict.passed:
+        verdict.notes.append(cleared(order(ctx)))
+    return verdict
+
+
+def _context(path, branch, verify, fresh, today, runner):
+    return Context.at(path, branch, verify=verify, fresh=fresh,
+                      today=today or datetime.date.today(), runner=runner)
 
 
 def status(path=None, branch=None, *, today=None):
     """Every gate that applies to `branch` (default: HEAD's), verifying:
-    `merge`'s verdict."""
-    return [merge(path, branch, verify=True, today=today)]
+    `merge`'s verdict, and `buy`'s where the branch adds an order
+    record."""
+    verdicts = [merge(path, branch, verify=True, today=today)]
+    if order(_context(path, branch, True, False, today, None)) is not None:
+        verdicts.append(buy(path, branch, verify=True, today=today))
+    return verdicts

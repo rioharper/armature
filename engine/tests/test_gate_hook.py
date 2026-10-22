@@ -440,6 +440,29 @@ def test_the_hook_reads_the_event_and_asks_the_real_gate(project):
     assert quiet.stdout == b""
 
 
+def test_an_order_branch_is_gated_by_buy(project):
+    """The default gate on a branch adding an order record is `buy`: its
+    own items print, and an order of a candidate estimate fails
+    `confirmed`. A plain branch gets `merge`, which has no such item."""
+    project.branch("armature/order-m2")
+    project.write("docs/orders/2026-10-21-m2.toml", """\
+        kind = "purchase"
+        vendor = "a shop"
+        [[line]]
+        part = "part.rs02"
+        qty = 1
+        """)
+    project.commit("order")
+    project.checkout("main")
+    decision = bash("git merge armature/order-m2", project.root)
+    assert decision.permission == "deny"
+    assert "buy fails for armature/order-m2" in decision.reason
+    assert "fail confirmed" in decision.reason
+    branch = project.work()
+    plain = bash(f"git merge {branch}", project.root)
+    assert plain is None or "confirmed" not in plain.reason
+
+
 def test_an_edit_that_confirms_nothing_is_left_alone(project):
     assert edit(project, "docs/01-spec/spec.md", "2 kg", "3 kg") is None
     project.write("waivers.toml", "# Waivers\n")
