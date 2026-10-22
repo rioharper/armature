@@ -80,17 +80,19 @@ class Repo:
         return self.git("merge-base", a, b) if self.ok("merge-base", a, b) \
             else None
 
+    def listing(self, *args):
+        """The paths `git <args> -z` lists, NUL-separated."""
+        return [p for p in self.git(*args, "-z").split("\0") if p]
+
     def changed(self, a, b):
         """The paths that differ between commits `a` (None: the empty tree)
         and `b`."""
-        out = self.git("diff", "--name-only", "--no-renames", "-z",
-                       a or EMPTY_TREE, b)
-        return [p for p in out.split("\0") if p]
+        return self.listing("diff", "--name-only", "--no-renames",
+                            a or EMPTY_TREE, b)
 
     def files(self, rev):
         """Every file path in `rev`'s tree."""
-        out = self.git("ls-tree", "-r", "-z", "--name-only", rev)
-        return [p for p in out.split("\0") if p]
+        return self.listing("ls-tree", "-r", "--name-only", rev)
 
     def object(self, rev, path=""):
         """The SHA of `rev`'s blob or tree at `path` (the root tree for

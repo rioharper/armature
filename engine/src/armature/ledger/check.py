@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 
 from .budgets import BudgetUnitError, budgets, reqs, tally
-from .entries import CONFIRMED_BY_KIND, OfError, load
+from .entries import CONFIRMED_BY_KIND, ESTIMATE, OfError, load
 from .units import CURRENCY, parse_unit, registry as _registry
 from .views import number, stale
 
@@ -149,7 +149,7 @@ def _ref(e):
 
 def _band(e):
     if e.band is None:
-        if e.kind == "estimate":
+        if e.kind == ESTIMATE:
             yield ("band.missing", "error",
                    "an estimate carries a band, [lo, hi]")
         return

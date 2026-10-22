@@ -26,7 +26,6 @@ the hook's JSON event on stdin and prints the decision's JSON, or nothing;
 `scripts/armature.sh hook` runs it on the plugin's own engine.
 """
 
-import datetime
 import json
 import os
 import re
@@ -127,7 +126,7 @@ def _edit(tool, args, cwd):
                 f" ({added}), exempting a gate's item. Only the user "
                 f"confirms a waiver: approve only if you agree to waive "
                 f"it."))
-    elif rel.startswith(reviews.FOLDER + "/"):
+    elif rel.startswith(reviews.REVIEWS + "/"):
         ids = _accepted(before, after, rel)
         if ids:
             return Decision("ask", PREFIX + (
@@ -239,12 +238,10 @@ def _confirmed_by(entry):
 
 # --- the defaults: the gate, and what a pull request merges ------------------
 def verdict(root, branch):
-    """The gate `branch` must pass, verifying: `buy` where the branch adds
-    an order record, else `merge`."""
-    from . import Context, buy, merge, order   # the package imports this
-    ctx = Context.at(root, branch, verify=True, today=datetime.date.today())
-    gate = merge if order(ctx) is None else buy
-    return gate(root, branch, verify=True)
+    """The gate `branch` must pass, verifying (`required`): `buy` where the
+    branch adds an order record, else `merge`."""
+    from . import required     # the package imports this module
+    return required(root, branch, verify=True)
 
 
 def pull_request(root, ref):

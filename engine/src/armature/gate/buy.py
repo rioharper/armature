@@ -13,11 +13,11 @@ import datetime
 import re
 
 from ..ledger import LedgerError
+from ..ledger.check import PRICE_AGE    # its price.old, an error here
+from ..ledger.entries import ESTIMATE
 from . import orders, release
 
-PRICE_AGE = 90      # days; `ledger check`'s price.old, an error here
 TIER = re.compile(r"price_at_(\d+)")
-ESTIMATE = "estimate"
 
 
 def order(ctx):
@@ -36,22 +36,26 @@ def order(ctx):
 
 
 def _purchase(ctx):
-    """(order, None) for a purchase, else (None, the item's result)."""
-    return orders.of_kind(ctx, "purchase", "buys no part")
+    """(order, ledger, None) for a purchase, the ledger at the tip read;
+    else (None, None, the item's result)."""
+    found, result = orders.of_kind(ctx, "purchase", "buys no part")
+    if found is None:
+        return None, None, result
+    try:
+        ledger = ctx.ledger(ctx.tip)
+    except LedgerError as e:
+        return None, None, (False, f"cannot read the ledger: {e}")
+    if ledger is None:
+        return None, None, (False, "no ledger.toml at the project root")
+    return found, ledger, None
 
 
 def confirmed(ctx):
     """Every entry under each part the order's lines name is confirmed,
     and none rests on an estimate, through its `of` chain."""
-    found, result = _purchase(ctx)
+    found, ledger, result = _purchase(ctx)
     if found is None:
         return result
-    try:
-        ledger = ctx.ledger(ctx.tip)
-    except LedgerError as e:
-        return False, f"cannot read the ledger: {e}"
-    if ledger is None:
-        return False, "no ledger.toml at the project root"
     failed, count = [], 0
     for line in found.lines:
         entries = [e for e in ledger if e.section == line.part]
@@ -90,15 +94,9 @@ def tier(ledger, line):
 def price(ctx):
     """Each line's price, its tier (`tier`), was retrieved no more than 90
     days ago: `price.old`, a warning to `ledger check`, is an error here."""
-    found, result = _purchase(ctx)
+    found, ledger, result = _purchase(ctx)
     if found is None:
         return result
-    try:
-        ledger = ctx.ledger(ctx.tip)
-    except LedgerError as e:
-        return False, f"cannot read the ledger: {e}"
-    if ledger is None:
-        return False, "no ledger.toml at the project root"
     failed, notes = [], []
     for line in found.lines:
         e = tier(ledger, line)

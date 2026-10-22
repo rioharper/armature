@@ -8,8 +8,7 @@ import numpy as np
 from ..ledger import LedgerError
 from ..ledger.entries import FILENAME
 from ..ledger.views import unrendered
-
-MODEL = "analysis/model/"
+from .stamps import MODEL
 CAD = "cad/"
 OTS = "cad/ots-parts/"          # vendor models the librarian caches
 PART_SUFFIXES = (".md", ".py")
@@ -40,20 +39,24 @@ def _equal(x, y):
     return np.shape(x) == np.shape(y) and bool(np.all(np.equal(x, y)))
 
 
-def text_outside(repo, old_rev, new_rev, path):
-    """Whether `path`'s text differs between the two commits outside its
-    rendered ledger sections. A file added, removed or not markdown, or
-    one whose markers cannot be read, differs."""
-    if not path.lower().endswith(".md"):
-        return True
-    old = repo.text(old_rev, path) if old_rev else None
-    new = repo.text(new_rev, path)
-    if old is None or new is None:
+def differs_outside(path, old, new):
+    """Whether `path`'s text differs between `old` and `new` (None for no
+    file) outside its rendered ledger sections. A file added, removed or
+    not markdown, or one whose markers cannot be read, differs."""
+    if not path.lower().endswith(".md") or old is None or new is None:
         return True
     try:
         return unrendered(path, old) != unrendered(path, new)
     except LedgerError:
         return True
+
+
+def text_outside(repo, old_rev, new_rev, path):
+    """Whether `path`'s text differs between the two commits outside its
+    rendered ledger sections (`differs_outside`)."""
+    return differs_outside(path,
+                           repo.text(old_rev, path) if old_rev else None,
+                           repo.text(new_rev, path))
 
 
 def gated(ctx):
@@ -81,7 +84,7 @@ def kind(path):
     definition`, or spec or plan `text` (gated outside its rendered
     sections alone); None for anything else. The ledger is gated by its
     numbers (`numbers`), never by its path."""
-    if path.startswith(MODEL):
+    if path.startswith(MODEL + "/"):
         return "model code"
     if (path.startswith(CAD) and not path.startswith(OTS)
             and PurePosixPath(path).suffix in PART_SUFFIXES):

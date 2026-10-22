@@ -18,7 +18,8 @@ FILENAME = "ledger.toml"
 # one key below `mechanism`, `[part."moteus-r4.11".mass]` two below `part`.
 # The CAD part template's stdlib-only `check/ledger.py` keeps a copy.
 SECTIONS = {"mechanism": 1, "drive": 1, "req": 1, "budget": 2, "part": 2}
-KINDS = ("chosen", "standard", "estimate", "datasheet", "cad", "measured")
+ESTIMATE = "estimate"        # the one kind that carries a band of its own
+KINDS = ("chosen", "standard", ESTIMATE, "datasheet", "cad", "measured")
 STATUSES = ("candidate", "confirmed")
 CONFIRMED_BY_KIND = ("chosen", "standard")  # status defaults to confirmed
 ALLOCATION = "allocation"   # the budget entry its lines are summed against

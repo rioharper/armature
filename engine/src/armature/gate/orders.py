@@ -33,7 +33,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-FOLDER = "docs/orders"
+ORDERS = "docs/orders"
 KINDS = ("purchase", "release")
 NAME = re.compile(r"(\d{4}-\d{2}-\d{2})-.+\.toml")
 FIELDS = ("kind", "vendor", "line")
@@ -67,7 +67,7 @@ class Order:
 def paths(files):
     """The order records among `files`: each `.toml` directly in
     `docs/orders/`."""
-    return [p for p in files if str(PurePosixPath(p).parent) == FOLDER
+    return [p for p in files if str(PurePosixPath(p).parent) == ORDERS
             and p.lower().endswith(".toml")]
 
 
@@ -89,22 +89,23 @@ def order(ctx):
 
 def record(ctx):
     """The order the branch adds, parsed, and why there is none: (order,
-    None) or (None, problem). Read once per context."""
-    if "_order" not in ctx.__dict__:
-        found = sorted(added(ctx))
-        if not found:
-            got = (None, f"the branch adds no order record under {FOLDER}/")
-        elif len(found) > 1:
-            got = (None, f"the branch adds {len(found)} order records, "
-                         f"{', '.join(found)}; an order branch adds one")
-        else:
-            try:
-                got = (parse(ctx.repo.text(ctx.tip, found[0]), found[0]),
-                       None)
-            except (OrderError, UnicodeDecodeError) as e:
-                got = (None, str(e))
-        ctx.__dict__["_order"] = got
-    return ctx.__dict__["_order"]
+    None) or (None, problem). Read once per context
+    (`Context.order_record`)."""
+    return ctx.order_record
+
+
+def read(ctx):
+    """`record`, read from the repo."""
+    found = sorted(added(ctx))
+    if not found:
+        return None, f"the branch adds no order record under {ORDERS}/"
+    if len(found) > 1:
+        return None, (f"the branch adds {len(found)} order records, "
+                      f"{', '.join(found)}; an order branch adds one")
+    try:
+        return parse(ctx.repo.text(ctx.tip, found[0]), found[0]), None
+    except (OrderError, UnicodeDecodeError) as e:
+        return None, str(e)
 
 
 def of_kind(ctx, kind, otherwise):
@@ -126,7 +127,7 @@ def parse(text, path):
         datetime.date.fromisoformat(match[1] if match else "")
     except ValueError:
         raise OrderError(f"{path}: an order record is named "
-                         f"{FOLDER}/<date>-<name>.toml, its date as "
+                         f"{ORDERS}/<date>-<name>.toml, its date as "
                          f"2026-10-21") from None
     try:
         data = tomllib.loads(text)

@@ -28,7 +28,7 @@ LOCK = "uv.lock"
 PYPROJECT = "pyproject.toml"
 MODEL = "analysis/model"
 BUILD123D = "build123d~=0.11"
-FOLDER = OWN + "runs"   # the hook denies an edit under OWN
+RUNS = OWN + "runs"     # the hook denies an edit under OWN
 TAIL = 3                # lines of a failing run's output shown
 # Set by the plugin's launcher for its own engine; a project's run_all
 # runs in the project's environment, never the plugin's.
@@ -77,7 +77,7 @@ def key(repo, tip, files, folder):
 def stamped(root, k):
     """Whether a green stamp is cached under key `k`."""
     try:
-        data = json.loads((Path(root) / FOLDER / f"{k}.json")
+        data = json.loads((Path(root) / RUNS / f"{k}.json")
                           .read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
@@ -85,7 +85,7 @@ def stamped(root, k):
 
 
 def write(root, k, folder, tip):
-    path = Path(root) / FOLDER / f"{k}.json"
+    path = Path(root) / RUNS / f"{k}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({
         "folder": folder, "commit": tip, "passed": True,

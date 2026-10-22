@@ -31,7 +31,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-FOLDER = "docs/reviews"
+REVIEWS = "docs/reviews"
 SEVERITIES = ("BLOCKER", "MAJOR", "MINOR", "QUESTION")
 BLOCKING = ("BLOCKER", "MAJOR")
 STATUSES = ("open", "fixed", "accepted")
@@ -97,7 +97,7 @@ def paths(files):
     """The review and recheck files among `files`: each `.md` directly in
     `docs/reviews/`, never in `staging/` below it."""
     return [p for p in files
-            if str(PurePosixPath(p).parent) == FOLDER
+            if str(PurePosixPath(p).parent) == REVIEWS
             and p.lower().endswith(".md")]
 
 

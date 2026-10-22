@@ -16,8 +16,6 @@ import json
 
 from . import orders, stamps
 
-MODEL = stamps.MODEL
-TAIL = stamps.TAIL
 # Run in the part's folder as `python -B -c PROBE <recipe>`: no bytecode,
 # so a pass leaves the tree as clean as it found it.
 PROBE = """\
@@ -130,7 +128,7 @@ def stamped(ctx):
                           f"{definition}.md")
         else:
             folders.setdefault(part.folder, definition)
-    folders[MODEL] = "the model"
+    folders[stamps.MODEL] = "the model"
     notes = []
     for folder, whose in folders.items():
         run_all = stamps.within(folder, stamps.RUN_ALL)
