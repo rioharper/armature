@@ -336,6 +336,17 @@ def test_an_unstaged_edit_a_compound_stages_is_seen(project):
         assert "model code analysis/model/arm.py" in decision.reason
 
 
+def test_a_repo_git_cannot_read_is_denied_with_gits_error(project):
+    """A broken index makes git itself fail: the hook denies, naming git's
+    error, where a crash would block the call with no reason."""
+    staged(project, "docs/01-spec/spec.md", SPEC.replace("2 kg", "3 kg"))
+    (project.root / ".git" / "index").write_bytes(b"garbage")
+    for command in ("git commit -m 'lift more'", "git add -A && git commit"):
+        decision = bash(command, project.root)
+        assert decision.permission == "deny", command
+        assert "index" in decision.reason and "git" in decision.reason
+
+
 def test_a_commit_on_a_work_branch_is_not_the_main_rule(project):
     project.branch("armature/spec-arm")
     staged(project, "docs/01-spec/spec.md", SPEC.replace("2 kg", "3 kg"))

@@ -14,8 +14,8 @@ OWN = ".armature/"
 
 
 class GateError(RuntimeError):
-    """A gate that cannot be computed: no git repo, no such branch, or a
-    detached HEAD with no branch named."""
+    """A gate that cannot be computed: no git repo, no such branch, a
+    detached HEAD with no branch named, or a git command that fails."""
 
 
 class Repo:
@@ -30,13 +30,20 @@ class Repo:
         self.root = Path(top)
 
     @staticmethod
-    def _git(cwd, *args, input=None, check=True):
+    def _run(cwd, *args, input=None):
+        """`git <args>`'s stdout, as bytes; raises `GateError` on a nonzero
+        exit, naming git's error."""
         run = subprocess.run(["git", "-C", str(cwd), *args], input=input,
                              capture_output=True)
-        if check and run.returncode:
+        if run.returncode:
             raise GateError(f"git {' '.join(args)}: "
                             f"{run.stderr.decode('utf-8', 'replace').strip()}")
-        return run.stdout.decode("utf-8", "replace").strip()
+        return run.stdout
+
+    @classmethod
+    def _git(cls, cwd, *args, input=None):
+        return cls._run(cwd, *args, input=input).decode(
+            "utf-8", "replace").strip()
 
     def git(self, *args, input=None):
         """`git <args>` in the repo, its stdout stripped; raises on a
@@ -99,10 +106,8 @@ class Repo:
         if not paths:
             return {}
         query = "".join(f"{rev}:{p}\n" for p in paths).encode("utf-8")
-        run = subprocess.run(["git", "-C", str(self.root), "cat-file",
-                              "--batch"], input=query, capture_output=True,
-                             check=True)
-        out, at, found = run.stdout, 0, {}
+        out = self._run(self.root, "cat-file", "--batch", input=query)
+        at, found = 0, {}
         for path in paths:
             end = out.index(b"\n", at)
             header = out[at:end].split()
@@ -134,10 +139,9 @@ class Repo:
     def dirty(self):
         """The paths with uncommitted changes, untracked files included,
         leaving out the gate's own `.armature/`."""
-        run = subprocess.run(["git", "-C", str(self.root), "status",
-                              "--porcelain", "-z", "--untracked-files=all"],
-                             capture_output=True, check=True)
-        entries = iter(run.stdout.decode("utf-8", "replace").split("\0"))
+        out = self._run(self.root, "status", "--porcelain", "-z",
+                        "--untracked-files=all")
+        entries = iter(out.decode("utf-8", "replace").split("\0"))
         paths = []
         for entry in entries:
             if len(entry) > 3:

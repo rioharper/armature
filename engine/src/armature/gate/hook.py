@@ -67,16 +67,23 @@ def decide(tool_name, tool_input, cwd, *, gate=None, pr=None):
     folder `cwd`, or None. `gate(root, branch)` is the verdict a branch
     must pass (default: `buy` for an order branch, else `merge`, verifying);
     `pr(root, ref)` is what `gh pr merge <ref>` merges, a dict of `head`,
-    `base` and `oid` (default: asked of `gh`)."""
-    if tool_name in SHELLS:
-        refused = commands.shell(tool_input.get("command") or "", cwd,
-                                 SHELLS[tool_name], gate or verdict,
-                                 pr or pull_request)
-        if refused:
-            return Decision("deny", PREFIX + "\n\n".join(refused))
-        return None
-    if tool_name in EDITS:
-        return _edit(tool_name, tool_input, cwd)
+    `base` and `oid` (default: asked of `gh`). Where git itself fails on
+    a project's repo, the call is denied with git's error."""
+    try:
+        if tool_name in SHELLS:
+            refused = commands.shell(tool_input.get("command") or "", cwd,
+                                     SHELLS[tool_name], gate or verdict,
+                                     pr or pull_request)
+            if refused:
+                return Decision("deny", PREFIX + "\n\n".join(refused))
+            return None
+        if tool_name in EDITS:
+            return _edit(tool_name, tool_input, cwd)
+    except GateError as e:
+        return Decision("deny", PREFIX + (
+            f"the hook cannot read this project's repo, so it cannot tell "
+            f"whether the call is gated: {e}. Repair the repo, then "
+            f"retry."))
     return None
 
 

@@ -790,6 +790,17 @@ def test_a_detached_head_with_no_branch_named_is_an_error(project):
     assert "--branch" in run.stderr
 
 
+def test_a_repo_git_cannot_read_is_an_error_not_a_traceback(project):
+    """A broken index makes `git status` fail where the gate asks whether
+    the tree is clean: exit 2 with git's error, as for no repo."""
+    model(project)
+    (project.root / ".git" / "index").write_bytes(b"garbage")
+    run = gate("merge", cwd=project.root)
+    assert run.returncode == 2, run.stdout + run.stderr
+    assert run.stderr.startswith("error: git status")
+    assert "Traceback" not in run.stderr
+
+
 STATUS = """\
 import json, runpy, sys, time
 sys.argv = ["armature.gate", "status", "--json"]

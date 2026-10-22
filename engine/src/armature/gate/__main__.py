@@ -9,7 +9,8 @@ is cleared and that nobody can see whether it was placed. `status` prints
 every gate that applies to the branch, each under its name, reading the
 stamps and running nothing. `--json` prints the verdicts instead. Each exits 1
 on any failed item, and 2 when no gate can be computed: no git repo, no
-such branch, or a detached HEAD with no `--branch`."""
+such branch, a detached HEAD with no `--branch`, or a git command that
+fails on the repo."""
 
 import argparse
 import json
