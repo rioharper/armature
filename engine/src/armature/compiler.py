@@ -47,7 +47,7 @@ from .contact import TOUCH
 from .description import (compliant_contacts, coordinate_joints, describe,
                           rigid_cables, tree_order)
 from .elements import FREE_COMPONENTS, WORLD
-from .rotations import AXES, floating_rotation, turn
+from .rotations import AXES, floating_rotation, turn, turn_axes
 from .state import Placement, State, placement
 from .variants import reduce
 
@@ -226,12 +226,20 @@ class Compiled:
         i = FREE_COMPONENTS.index(component)
         return float(point[i]) if i < 3 else 0.0
 
-    def at(self, q=None, qd=None):
+    def at(self, q=None, qd=None, *, view=False):
         """The state with coordinates `q`, keyed by coordinate name, and rates
         `qd`, keyed by dof. An omitted coordinate is at its home value, an
         omitted rate is zero. A floating body's value is a `Placement`, or a
         (position, rotation) pair. Raises on an unknown name or a coordinate
         outside its joint's range.
+
+        With `view=True`, `q` and `qd` are in the symbolic view's
+        coordinates (`armature.symbolic`): a free joint is its six
+        components `<joint>:x` to `<joint>:rz`, its point's position and its
+        turns about its own x, y, z axes, with the turns' rates where its
+        dofs' are the angular velocity. The state's `inverse()` takes `qdd`
+        and reports `generalised` in them too. With no free joint the view's
+        coordinates are the dofs, and the state is the plain one.
 
         On a closed chain, `q` and `qd` take the independent coordinates only.
         The dependent ones are solved so that every loop and couple closes to
@@ -240,6 +248,7 @@ class Compiled:
         `ClosureError` naming the loop, or the joint closing would put
         outside its range."""
         q, qd = dict(q or {}), dict(qd or {})
+        turns = self._from_view(q, qd) if view and self._free else None
         for given, names, label in ((q, self.coordinates, "coordinate"),
                                     (qd, self.dofs, "dof")):
             unknown = sorted(set(given) - set(names))
@@ -270,7 +279,33 @@ class Compiled:
         rates = {name: float(qd.get(name, 0.0)) for name in self.dofs}
         if self.closure:
             values, rates = self._close(values, rates)
-        return State(self, MappingProxyType(values), MappingProxyType(rates))
+        return State(self, MappingProxyType(values), MappingProxyType(rates),
+                     turns)
+
+    def _from_view(self, q, qd):
+        """Each free joint's components in `q` and `qd`, the view's, turned
+        in place into its `Placement` and its dofs' rates; returns its turns
+        and their rates, keyed by joint, for the state to answer in."""
+        turns = {}
+        for jid in self._free:
+            name = self.model.joint(jid).name
+            if name in q:
+                raise KeyError(f"{name!r}: in the view's coordinates a free "
+                               f"joint is its components, "
+                               f"{name}:x to {name}:rz")
+            home = self.home(name).position
+            position = [float(q.pop(f"{name}:{c}", h))
+                        for c, h in zip("xyz", home)]
+            angles = np.array([float(q.pop(f"{name}:r{c}", 0.0))
+                               for c in "xyz"])
+            rates = np.array([float(qd.get(f"{name}:r{c}", 0.0))
+                              for c in "xyz"])
+            q[name] = (position, floating_rotation({}, dict(zip(
+                ("rx", "ry", "rz"), angles))))
+            qd.update(zip((f"{name}:r{c}" for c in "xyz"),
+                          turn_axes(angles) @ rates))
+            turns[name] = (tuple(angles), tuple(rates))
+        return MappingProxyType(turns)
 
     def _close(self, values, rates):
         """`values` and `rates` with the dependent coordinates and rates

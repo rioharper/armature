@@ -36,7 +36,7 @@ from .assembly import RANK_TOL, tangent, write_q
 from .contact import (MOVE_TOL, RESOLVED, ContactForce, forces, frequencies,
                       from_solver, roots, selectors, split, touching)
 from .description import compliant_contacts
-from .rotations import floating_rotation, turn
+from .rotations import floating_rotation, turn, turn_axes, turn_drift
 from .variants import DISPLACED, QUANTIFIED, Couple, Lock
 
 EPS = 1e-6
@@ -96,10 +96,17 @@ class State:
     A kinematic record's `residual` is the state's closure residual, how far
     its loops are from closed (m); on an open chain it is zero. On a closed
     chain, `q` and `qd` include the dependent coordinates `at()` solved.
+
+    `view` is None, or for a state made in the symbolic view's coordinates
+    (`at(..., view=True)`) each free joint's turns and their rates as the
+    view writes them, `(angles, rates)`, keyed by joint. `inverse()` then
+    answers in the view's coordinates; every other query, and `q` and `qd`,
+    stay the dofs'.
     """
     compiled: object
     q: MappingProxyType
     qd: MappingProxyType
+    view: MappingProxyType = None
 
     def _data(self):
         """A new `MjData` at this state, for a caller that keeps it."""
@@ -167,13 +174,38 @@ class State:
         force and its friction-cone margin from the same solve. The
         accelerations are taken as given: a contact's rows carry force, not
         motion, so at rest `qdd` is zero.
-        """
-        with self._scratch() as data:
-            return self._solve(data, qdd, loads)[0]
 
-    def _solve(self, data, qdd, loads):
+        On a state made in the view's coordinates, `qdd` is keyed by them, a
+        free joint's turns' accelerations, and its rows are the view's:
+        ω̇ = E φ̈ + Ė φ̇ with ω = E φ̇, and the generalised force on the
+        turns is Eᵀ times that on the angular velocity, so `generalised` is
+        what M q̈ + C q̇ + g gives in the view's coordinates.
+        """
+        viewed = None
+        if self.view:
+            qdd, viewed = self._from_view(qdd)
+        with self._scratch() as data:
+            return self._solve(data, qdd, loads, viewed)[0]
+
+    def _from_view(self, qdd):
+        """`qdd`, in the view's coordinates, keyed by dof, each free joint's
+        angular acceleration E φ̈ + Ė φ̇; and V, the dofs' rates per unit
+        rate of the view's coordinates, whose transpose turns rows."""
+        compiled, qdd = self.compiled, dict(qdd or {})
+        viewed = np.eye(compiled.model.nv)
+        for name, (angles, rates) in self.view.items():
+            dofs = [f"{name}:r{c}" for c in "xyz"]
+            axes = turn_axes(angles)
+            accel = np.array([float(qdd.get(d, 0.0)) for d in dofs])
+            qdd.update(zip(dofs, axes @ accel + turn_drift(angles, rates)))
+            at = compiled.dofs.index(dofs[0])
+            viewed[at:at + 3, at:at + 3] = axes
+        return qdd, viewed
+
+    def _solve(self, data, qdd, loads, viewed=None):
         """The inverse record, the unknowns [τ; λ_loops; λ_contacts] (NaN
-        where undetermined), and the touching contact points, at `data`."""
+        where undetermined), and the touching contact points, at `data`.
+        With `viewed`, V, the rows are the view's: Vᵀ times the dofs'."""
         compiled = self.compiled
         model, closure = compiled.model, compiled.closure
         _refuse_constraints(model, data, "an inverse solve")
@@ -190,6 +222,8 @@ class State:
                            - _load_force(model, data, loads))
         columns = turned.T @ np.hstack([_moment(model, data).T, jac.T,
                                         contact_jac.T])
+        if viewed is not None:
+            need, columns = viewed.T @ need, viewed.T @ columns
         solved, rank, condition, residual, null = _least_squares(columns,
                                                                  need)
         unknowns = solved.copy()

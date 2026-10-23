@@ -507,7 +507,7 @@ def test_the_level_platform_hangs_on_its_cables_in_the_equations():
     """The level variant's equations carry the four elastic cables as
     springs, so M, C q̇ and g are MuJoCo's at states a little below the hung
     point, where every cable is taut; without the cables they would be a platform
-    in free fall. The full free joint's are #163's, in the view's turns."""
+    in free fall."""
     from mujoco_equations import reduced
 
     p = params(HOME, 2.0)
@@ -529,3 +529,61 @@ def test_the_level_platform_hangs_on_its_cables_in_the_equations():
             want_m, abs=1e-9)
         assert np.ravel(bias(*point, *rates)) == pytest.approx(want_b,
                                                                abs=1e-9)
+
+
+def _hung_low(rng):
+    """The full platform's view coordinates, rates and accelerations at a
+    state turned up to 0.3 rad about each axis and hung 20 to 25 cm below
+    the hung point, low enough that every cable stays taut."""
+    q = np.concatenate([np.asarray(HOME) + rng.uniform([-0.05, -0.05, -0.25],
+                                                       [0.05, 0.05, -0.2]),
+                        rng.uniform(-0.3, 0.3, 3)])
+    return q, rng.uniform(-0.5, 0.5, 6), rng.uniform(-2.0, 2.0, 6)
+
+
+def test_the_floating_platform_hangs_on_its_cables_in_the_equations():
+    """The full free joint, in the view's coordinates: its turns are the
+    intrinsic x-y-z angles and their rates, where MuJoCo's are the angular
+    velocity. A state made in the view's coordinates answers `inverse()` in
+    them, so M q̈ + C q̇ + g is its generalised force. Read as the angular
+    velocity instead, the same numbers disagree: the two agree only at
+    home."""
+    p = params(HOME, 2.0)
+    e = armature.equations(platform, p)
+    m = armature.compile(platform, p)
+    assert e.coordinates == m.dofs
+    mass, bias = e.numeric(e.M), e.numeric(e.Cqd + e.g, rates=True)
+    rng = np.random.default_rng(20261023)
+    unmapped = 0.0
+    for _ in range(20):
+        q, qd, qdd = _hung_low(rng)
+        want = (np.asarray(mass(*q), dtype=float) @ qdd
+                + np.ravel(bias(*q, *qd)))
+        s = m.at(q=dict(zip(e.coordinates, q)), qd=dict(zip(e.coordinates, qd)),
+                 view=True)
+        with s._scratch() as data:
+            assert np.all(data.ten_length > np.array(
+                [p[f"l0_{i + 1}"] for i in range(4)])), "a cable is slack"
+        got = s.inverse(qdd=dict(zip(e.coordinates, qdd))).generalised
+        assert list(got) == list(e.coordinates)
+        assert list(got.values()) == pytest.approx(want, abs=1e-9)
+        plain = m.at(q={"hang": (q[:3], Rotation.from_euler(
+            "XYZ", q[3:]).as_matrix())}, qd=dict(zip(m.dofs, qd)))
+        unmapped = max(unmapped, np.max(np.abs(np.array(list(
+            plain.inverse(qdd=dict(zip(m.dofs, qdd))).generalised.values()))
+            - want)))
+    assert unmapped > 1e-2
+
+
+def test_a_state_in_the_views_coordinates_is_the_state_without_a_free_joint():
+    """With no free joint the view's coordinates are the dofs, so a state
+    made in them is the plain one and answers exactly as it does."""
+    p = params(HOME, 2.0)
+    m = armature.compile(LEVEL, p)
+    q = dict(zip(m.coordinates, np.asarray(HOME) + (0.01, -0.02, -0.005)))
+    qd, qdd = dict(zip(m.dofs, (0.3, -0.1, 0.2))), dict(zip(m.dofs,
+                                                            (1.0, 0.5, -2.0)))
+    viewed, plain = m.at(q=q, qd=qd, view=True), m.at(q=q, qd=qd)
+    assert viewed.q == plain.q and viewed.qd == plain.qd
+    assert (viewed.inverse(qdd=qdd).generalised
+            == plain.inverse(qdd=qdd).generalised)

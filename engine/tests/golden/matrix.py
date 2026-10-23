@@ -203,10 +203,11 @@ CABLE_PLATFORM = {
     "symbolic": Known("C", _in(
         _PLATFORM, "test_symbolic_level_platform_is_three_slides")),
     "equations": Known("I", _in(
-        _PLATFORM, "test_the_level_platform_hangs_on_its_cables_in_the_"
-                   "equations"),
-        note="on the level variant, three slides: the full free joint's "
-             "rates are the angular velocity, the view's the turns' (#163)"),
+        _PLATFORM, "test_the_floating_platform_hangs_on_its_cables_in_the_"
+                   "equations",
+        "test_the_level_platform_hangs_on_its_cables_in_the_equations"),
+        note="the free joint against `inverse()` in the view's coordinates, "
+             "its turns' rates mapped to the angular velocity (#163)"),
     "coarse": _coarse("joint above it, floating or hinged"),
     "sample": Known("I", _in(
         "test_sampler", "test_floating_samples_respect_the_envelope",

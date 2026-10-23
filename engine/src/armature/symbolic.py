@@ -13,7 +13,8 @@ along the base axes, then turns about the body's own axes in x, y, z order,
 locked turns first. Its coordinates are the components left unlocked, named
 `<joint>:x` to `<joint>:rz` like the compiled dofs. Where the truth model keeps
 the free joint whole, its rates are the angular velocity instead of these
-angles' rates; the two agree at home.
+angles' rates; the two agree at home, and a state made with
+`at(..., view=True)` answers in the view's.
 
 The derivation hangs its own `RigidBody`s on these frames and points and runs
 `LagrangesMethod` or `KanesMethod`; the view does not form equations.
