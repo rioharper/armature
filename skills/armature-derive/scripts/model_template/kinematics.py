@@ -2,7 +2,8 @@
 kinematics.py — Milestone 1: forward kinematics and the geometric Jacobian.
 
 Mirrors 01_kinematics.md; its self-tests are in kinematics_checks.py, and its
-margin, SIGMA (σ_min over the workspace), is searched by `run_all.py`. Imports
+margin, SIGMA (σ_min over the workspace), is searched on the truth model by
+`run_all.py`, this file's J_v its check. Imports
 only mechanism.py and params.py, so a red-team pass on Milestone 1 reads this
 file, its checks, and the description. Check it alone:
 `uv run python run_all.py kinematics`.
@@ -14,7 +15,8 @@ ch. 4) written as a chain of SymPy frames. No transform is typed here, so the
 derivation and the truth model cannot disagree about where a joint is — and
 the truth checks one file over are about what is built on the frames.
 Keep the structure if the note uses another convention: symbolic build ->
-numeric functions.
+numeric functions. Nothing here simplifies; `report_results.py` simplifies
+what it prints.
 """
 
 import numpy as np
@@ -41,7 +43,7 @@ def forward_kinematics():
     frame, as a 4x4 homogeneous transform in the coordinates."""
     p = VIEW.sites[TOOL].pos_from(VIEW.origin).to_matrix(VIEW.world)
     R = VIEW.world.dcm(VIEW.frames[TOOL_BODY])
-    return sp.trigsimp(R.row_join(p).col_join(sp.Matrix([[0, 0, 0, 1]])))
+    return R.row_join(p).col_join(sp.Matrix([[0, 0, 0, 1]]))
 
 
 def geometric_jacobian():
@@ -56,7 +58,7 @@ def geometric_jacobian():
     rates = [c.diff(dynamicsymbols._t) for c in Q]
     v = VIEW.sites[TOOL].vel(VIEW.world).to_matrix(VIEW.world)
     w = VIEW.frames[TOOL_BODY].ang_vel_in(VIEW.world).to_matrix(VIEW.world)
-    return sp.trigsimp(v.col_join(w).jacobian(rates))
+    return v.col_join(w).jacobian(rates)
 
 
 print("Building symbolic kinematics ...")
@@ -91,26 +93,28 @@ def singular_values(configs):
                      for qv in np.atleast_2d(np.asarray(configs, dtype=float))])
 
 
-def sigma_slack(p):
-    """σ_min of the derivation's J_v at the point's posture, less SIGMA_MIN
-    [m/rad]: the rank claim, as slack. SIGMA_MIN carries no derating; it is
-    the rate the requirement asks for."""
-    return float(singular_values(vector(p.state.q))[0, -1]) - SIGMA_MIN
-
-
 def sigma_truth(p):
-    """The same slack from the truth model's own site Jacobian, `s.jacobian`,
-    which never saw the derivation's frames chained."""
+    """σ_min of the truth model's own site Jacobian at the point's posture,
+    `s.jacobian`'s position rows, less SIGMA_MIN [m/rad]: the rank claim, as
+    slack. SIGMA_MIN carries no derating; it is the rate the requirement
+    asks for."""
     linear = p.state.jacobian(TOOL).linear
     return float(np.linalg.svd(linear, compute_uv=False)[-1]) - SIGMA_MIN
 
 
-# σ_min(J_v) everywhere in the intended workspace, searched: the matrix the IK
+def sigma_slack(p):
+    """The same slack from the derivation's J_v, which chains the frames the
+    truth model never saw chained."""
+    return float(singular_values(vector(p.state.q))[0, -1]) - SIGMA_MIN
+
+
+# σ_min(J_v) everywhere in the intended workspace, searched on the truth model
+# and checked against the derivation's J_v (ADR 0012): the matrix the IK
 # inverts keeps its rank where the requirements name, at the rate SIGMA_MIN
 # asks. The envelope holds the elbow singularity and the workspace must not,
 # so the space is `within=WORKSPACE`. A band on a length would join this
 # space as `**bands()`; the template's one band, a mass, cannot move σ.
-SIGMA = Margin("sigma_min(J_v) over WORKSPACE", sigma_slack, "m/rad",
+SIGMA = Margin("sigma_min(J_v) over WORKSPACE", sigma_truth, "m/rad",
                over=Space(state=Coordinates(mechanism, PARAMS,
                                             within=WORKSPACE)),
-               check=sigma_truth, agree=1e-9)
+               check=sigma_slack, agree=1e-9)

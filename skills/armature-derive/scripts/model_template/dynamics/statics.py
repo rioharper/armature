@@ -6,7 +6,7 @@ Self-tests in statics_checks.py.
 
 import numpy as np
 
-from dynamics.lagrangian import g_num
+from dynamics.equations import g_num
 
 
 def static_torques(q_vals, **band):

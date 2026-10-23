@@ -18,9 +18,15 @@ cancels — so no check in this model draws one. The evidence is the seeded
 sample the checks modules draw from the engine's sampler, and each margin's
 searched worst case, the table at the end, found by the same discovery
 `run_all.py` runs them by.
+
+**This is also the only place a symbolic result is simplified.** The build
+never is (ADR 0012): each entry prints `trigsimp`'d where its operation count
+is at most SIMPLIFY_CAP, and as the coordinates it depends on where it is
+over, so the report stays readable at six joints.
 """
 
 import numpy as np
+import sympy as sp
 
 import armature
 from armature.sampler import DEFAULT_SEED
@@ -28,7 +34,7 @@ from armature.sampler import DEFAULT_SEED
 from params import SIGMA_MIN, WORKSPACE
 from mechanism import COORDINATES, truth, vector
 from kinematics import J, T_EE, singular_values
-from dynamics.lagrangian import G_SYM, M_SYM
+from dynamics.equations import G_SYM, M_SYM, q
 from dynamics.statics import static_torques
 from drive import capacitances, energies
 from run_all import (discover_exemptions, discover_margins, exempt_row,
@@ -44,10 +50,30 @@ NAMED = {
     "workspace corner, elbow folded": HIGH,
 }
 SWEEP = 400
+# The most operations (`sympy.count_ops`) an entry may have and still print
+# simplified. Every entry of this arm's M and g is under 30; a spatial 6R's
+# run 8 to 16,249, and the 13 under the cap trigsimp in 19 s.
+SIMPLIFY_CAP = 200
+
+
+def print_entries(name, matrix):
+    """Each entry of `matrix`, `trigsimp`'d where it is at most SIMPLIFY_CAP
+    operations, otherwise as the coordinates it depends on."""
+    for i in range(matrix.rows):
+        for j in range(matrix.cols):
+            at = f"{name}[{i}, {j}]" if matrix.cols > 1 else f"{name}[{i}]"
+            entry, ops = matrix[i, j], sp.count_ops(matrix[i, j])
+            if ops <= SIMPLIFY_CAP:
+                print(f"  {at} = {sp.trigsimp(entry)}")
+                continue
+            depends = [str(c.func) for c in q if entry.has(c)]
+            print(f"  {at}: {ops} operations, a function of "
+                  f"({', '.join(depends)})")
+
 
 print("\n01_kinematics.md")
-print("  T_0_ee =", T_EE)
-print("  J =", J)
+print_entries("T_0_ee", T_EE)
+print_entries("J", J)
 
 # The envelope holds the elbow singularity, and a sample of it says so; the
 # bound inside WORKSPACE is a margin, searched, in the table at the end.
@@ -62,8 +88,8 @@ print(f"  min sigma_min {sig[j, -1]:.4f} m/rad at q = {np.round(Q[j], 4)}, "
 print(f"  the bound the derivation needs inside the workspace: {SIGMA_MIN} m/rad")
 
 print("\n02_dynamics.md")
-print("  M(q) =", M_SYM)
-print("  g(q) =", G_SYM)
+print_entries("M", M_SYM)
+print_entries("g", G_SYM)
 
 print("\nNamed configurations, for the reader (never the evidence)")
 print(f"  {'configuration':<34}{'sigma_min [m/rad]':>18}  static tau [N m]")

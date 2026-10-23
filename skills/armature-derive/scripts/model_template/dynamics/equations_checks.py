@@ -1,8 +1,8 @@
 """
-dynamics/lagrangian_checks.py — self-tests for lagrangian.py, 02_dynamics.md §1–2.
+dynamics/equations_checks.py — self-tests for equations.py, 02_dynamics.md §1–2.
 
 Every check here but three is **self-consistency**: it holds M, C, g and V
-against each other and against properties any correct Lagrangian has, using no
+against each other and against properties any correct dynamics has, using no
 model but this one. That is exactly what a wrong assumption survives, since the
 assumption sits on both sides of the comparison. The two truth checks — the
 inverse dynamics and the modes — hold the equations against the truth model,
@@ -12,15 +12,15 @@ arithmetic slip the moment it lands.
 """
 
 import numpy as np
-import sympy as sp
+from scipy.spatial.transform import Rotation
 
 import armature
 from armature.sampler import DEFAULT_SEED
 
-from dynamics.lagrangian import (M_SYM, C_SYM, K_num, M_num, C_num, N, g_num,
-                                 V_num, q, small_oscillation_modes, t,
-                                 total_energy)
-from mechanism import derived, named, truth, vector
+from dynamics.equations import (EQ, C_num, Cqd_num, K_num, M_num, Mdot_num,
+                                N, V_num, g_num, q, small_oscillation_modes,
+                                total_energy)
+from mechanism import COORDINATES, derived, named, truth, vector
 from params import PARAMS, QDD_LIMITS, QD_LIMITS
 
 # The configuration whose modes 02_dynamics.md quotes, and the rank the note
@@ -50,7 +50,7 @@ def closed_form(qv, qdv, p=PARAMS):
     """M, C, g and V of the planar elbow manipulator, from the ledger's
     numbers by the textbook route (Spong, Hutchinson and Vidyasagar, *Robot
     Modeling and Control*, 1st ed., ch. 7, the planar elbow manipulator), in
-    the Christoffel form of C. It shares nothing with lagrangian.py but the
+    the Christoffel form of C. It shares nothing with equations.py but the
     ledger, so a rebuild of the symbolic construction has to produce the same
     equations, and an edit to an entry moves both sides at once."""
     l1, lc1, lc2 = p["l1"], p["lc1"], p["lc2"]
@@ -71,11 +71,17 @@ def closed_form(qv, qdv, p=PARAMS):
 
 
 def test_coordinates_match_the_variant():
-    """The coordinates LagrangesMethod was given are the variant's, by name:
+    """The coordinates the equations were formed in are the variant's, by name:
     a coordinate leaves these equations only through a reduction in DERIVED,
     never by being left out of the list. `armature.account` names any
-    coordinate at fault."""
+    coordinate at fault. On a closed chain the equations are reduced onto
+    the independent coordinates the variant's `at()` takes, so a closure the
+    equations ignored shows here as a coordinate they kept free."""
     armature.account(derived(), list(q))
+    assert list(EQ.independent) == list(derived().independent), (
+        f"the equations are reduced onto {list(EQ.independent)} where the "
+        f"variant closes onto {list(derived().independent)}: a closure is "
+        f"ignored")
     print(f"  [PASS] the equations are in the variant's coordinates "
           f"{list(derived().coordinates)}")
 
@@ -112,12 +118,35 @@ def test_mass_matrix_properties(trials=5, seed=DEFAULT_SEED, tol=1e-9):
     print("  [PASS] M(q) symmetric positive-definite")
 
 
-def test_skew_symmetry(tol=1e-8):
-    """Mdot - 2C must be skew-symmetric (Christoffel C)."""
-    Mdot = M_SYM.diff(t)
-    S = sp.simplify(Mdot - 2 * C_SYM)
-    assert sp.simplify(S + S.T) == sp.zeros(N, N), "Mdot-2C not skew"
-    print("  [PASS] Mdot - 2C skew-symmetric")
+def test_christoffel_gives_the_velocity_products(n=8, seed=DEFAULT_SEED,
+                                                 tol=1e-12):
+    """C q̇, C the Christoffel matrix, against the equations' velocity
+    products at sampled states: the C the note writes as a matrix is these
+    equations' C. Numeric, never a simplified symbolic difference, which is
+    what failed after ~290 s on a spatial 4R (ADR 0012)."""
+    samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
+                                     qdd_limits=QDD_LIMITS)
+    for s in samples:
+        qv, qdv = vector(s.q), vector(s.qd)
+        got = np.asarray(C_num(*qv, *qdv), dtype=float) @ qdv
+        want = np.asarray(Cqd_num(*qv, *qdv), dtype=float).flatten()
+        assert np.allclose(got, want, atol=tol), (
+            f"C qd reads {got} where the equations' velocity products read "
+            f"{want} at q={qv}, qd={qdv}")
+    print(f"  [PASS] C qd is the equations' velocity products over {samples}")
+
+
+def test_skew_symmetry(n=8, seed=DEFAULT_SEED, tol=1e-8):
+    """Mdot - 2C must be skew-symmetric (Christoffel C), at sampled states."""
+    samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
+                                     qdd_limits=QDD_LIMITS)
+    for s in samples:
+        qv, qdv = vector(s.q), vector(s.qd)
+        S = (np.asarray(Mdot_num(*qv, *qdv), dtype=float)
+             - 2 * np.asarray(C_num(*qv, *qdv), dtype=float))
+        assert np.allclose(S + S.T, 0, atol=tol), (
+            f"Mdot - 2C is not skew at q={qv}, qd={qdv}: {S}")
+    print(f"  [PASS] Mdot - 2C skew-symmetric over {samples}")
 
 
 def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
@@ -134,9 +163,9 @@ def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
     def rhs(_t, s):
         qv, qdv = s[:N], s[N:]
         Mn = np.asarray(M_num(*qv), dtype=float)
-        Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
+        cqd = np.asarray(Cqd_num(*qv, *qdv), dtype=float).flatten()
         gn = np.asarray(g_num(*qv), dtype=float).flatten()
-        qddv = np.linalg.solve(Mn, -(Cn @ qdv) - gn)
+        qddv = np.linalg.solve(Mn, -cqd - gn)
         return np.concatenate([qdv, qddv])
 
     q0 = vector(armature.sample(truth(), 1, seed).states[0].q)
@@ -153,33 +182,55 @@ def test_energy_conservation(T_end=2.0, seed=DEFAULT_SEED, tol_rel=1e-4):
     print("  [PASS] total energy conserved under SciPy integration")
 
 
+def in_view(s):
+    """A sampled state's coordinates in the view's: a free joint's Placement
+    as its point's position and its intrinsic x-y-z turns, `as_euler("XYZ")`.
+    Its sampled rates and accelerations, keyed by the same names, are then
+    read as the turns' own. With no free joint it is `s.q`."""
+    q = {}
+    for c in COORDINATES:
+        joint, _, part = c.partition(":")
+        place = s.q.get(joint) if part else None
+        q[c] = (s.q[c] if place is None
+                else place.position["xyz".index(part)] if len(part) == 1
+                else Rotation.from_matrix(place.rotation).as_euler(
+                    "XYZ")["xyz".index(part[1])])
+    return q
+
+
 def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The mandatory Milestone 2 truth check: tau = M qdd + C qd + g against
     the truth model's inverse dynamics, `s.inverse(qdd)`, at sampled states.
 
     This is the check that makes the dynamics *right*, as against
     self-consistent. Everything else in this file holds M, C and g against each
-    other or against a property every correct Lagrangian has, and a term
-    missing from T or V is missing from both sides of all of them. The engine's
-    explicit solve never saw T, V or this file — it reads MuJoCo's mass matrix
-    and bias forces — so a missing term, or a rotor the derivation forgot to
-    reflect, shows up here as a torque that does not match. `generalised` is
-    the torque each coordinate needs, whatever its actuators' gearing.
+    other or against a property every correct set of equations has, and a
+    term missing from these equations is missing from both sides of all of
+    them. The engine's explicit solve never saw them or this file — it reads
+    MuJoCo's mass matrix and bias forces — so a missing term, or a rotor the
+    derivation forgot to reflect, shows up here as a torque that does not
+    match. `generalised` is the torque each coordinate needs, whatever its
+    actuators' gearing.
 
     Sampled *states*, not postures: at rest C multiplies zero and the whole
     Coriolis matrix goes unexercised. Velocity and acceleration come from the
     rate envelope in the parameter block, both signs.
+
+    In the view's coordinates (`at(view=True)`): a free joint's rates there
+    are its turns', where the truth model's are the angular velocity, and the
+    two agree only at home. With no free joint the state is the sampled one.
     """
     samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
                                      qdd_limits=QDD_LIMITS)
     worst, worst_at = 0.0, None
     for s, accel in zip(samples, samples.qdd):
-        qv, qdv, qddv = vector(s.q), vector(s.qd), vector(accel)
+        qv, qdv, qddv = vector(in_view(s)), vector(s.qd), vector(accel)
         Mn = np.asarray(M_num(*qv), dtype=float)
-        Cn = np.asarray(C_num(*qv, *qdv), dtype=float)
+        cqd = np.asarray(Cqd_num(*qv, *qdv), dtype=float).flatten()
         gn = np.asarray(g_num(*qv), dtype=float).flatten()
-        tau_model = Mn @ qddv + Cn @ qdv + gn
-        tau_truth = vector(s.inverse(qdd=accel).generalised)
+        tau_model = Mn @ qddv + cqd + gn
+        viewed = truth().at(q=named(qv), qd=named(qdv), view=True)
+        tau_truth = vector(viewed.inverse(qdd=named(qddv)).generalised)
         gap = float(np.max(np.abs(tau_model - tau_truth)))
         if gap > worst:
             worst, worst_at = gap, (qv, qdv)

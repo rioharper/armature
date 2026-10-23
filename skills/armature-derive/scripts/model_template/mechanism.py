@@ -22,8 +22,6 @@ import functools
 import math
 
 import numpy as np
-import sympy as sp
-from sympy.physics.mechanics import dynamicsymbols
 
 import armature
 from armature import actuator, body, gravity, joint, site
@@ -115,6 +113,15 @@ def view():
     return armature.symbolic(DERIVED, PARAMS)
 
 
+@functools.cache
+def equations():
+    """M q̈ + C q̇ + g = τ of `DERIVED`, formed by the engine on the view
+    (`armature.equations`, ADR 0012), BANDS kept as keywords: what
+    dynamics/equations.py adds this machine's rotors to, and whose `numeric`
+    every numeric function here is."""
+    return armature.equations(DERIVED, PARAMS, BANDS)
+
+
 # The derivation's coordinates, in the order every numeric function below takes
 # them. The names are the description's joints: `s.q["elbow"]` on the truth
 # side is the `elbow(t)` in the equations.
@@ -127,27 +134,9 @@ def numeric(expr, rates=False):
     when `rates` — with PARAMS substituted for the parameters. A parameter
     with a tolerance band in BANDS stays a keyword, at its nominal unless
     given, so a margin evaluates the derivation at the band value its truth
-    model was compiled with: `g_num(*q, m2=0.88)`."""
-    v = view()
-    t = dynamicsymbols._t
-    qs = sp.symbols(f"x0:{len(COORDINATES)}")
-    vs = sp.symbols(f"v0:{len(COORDINATES)}")
-    # Rates first: substituting a coordinate first would turn its rate into
-    # the derivative of a plain symbol, which is zero.
-    swap = ([(c.diff(t), s) for c, s in zip(v.q.values(), vs)]
-            + [(c, s) for c, s in zip(v.q.values(), qs)])
-    values = v.numbers({k: x for k, x in PARAMS.items() if k not in BANDS})
-    f = sp.lambdify(list(qs + vs if rates else qs)
-                    + [v.params[k] for k in BANDS],
-                    sp.sympify(expr).subs(swap).subs(values), "numpy")
-
-    def at(*x, **band):
-        unknown = sorted(set(band) - set(BANDS))
-        if unknown:
-            raise TypeError(f"{unknown} have no band; the banded parameters "
-                            f"are {sorted(BANDS)}")
-        return f(*x, *(band.get(k, PARAMS[k]) for k in BANDS))
-    return at
+    model was compiled with: `g_num(*q, m2=0.88)`. The engine's, which swaps
+    by `xreplace` and lambdifies with `cse=True`."""
+    return equations().numeric(expr, rates)
 
 
 def bands():

@@ -9,10 +9,12 @@ the note cites are printed by report_results.py. Depends on kinematics.py
 declared once, over every posture in WORKSPACE, every row of the load-case
 table, every heading of a case that names a plane, and every tolerance band,
 and `run_all.py` hands it to `armature.search` (ADR 0005): a seeded Sobol set,
-every corner, then a Powell polish. Its check re-derives the worst point's
-torques in the truth model and holds them there under the load as a real
-force. Over a plane of headings the answer is also exact, a norm
-(`worst_tip_force`), and a check holds the search to it.
+every corner, then a Powell polish. It is searched on the truth model, with
+the load as a real force at the tool (ADR 0012), and its check is the
+derivation's g - J_v^T f at the worst point; verification_checks.py holds
+each case's worst torque in the truth model. Over a plane of headings the
+answer is also exact, a norm (`worst_tip_force`), and a check holds the
+search to it.
 """
 
 import numpy as np
@@ -37,8 +39,8 @@ CASES = {case.name: case for case in LOAD_CASES}
 # derated torque limit through its gear.
 LIMITS = {a.joint: float(a.torque_limit) * float(a.gear)
           for a in truth().description.actuators}
-# The truth hold: released for at least this many steps, it must stay within
-# HOLD_DRIFT [rad] of the posture.
+# The truth hold, each case's worst torque's confirmation: released for at
+# least this many steps, it must stay within HOLD_DRIFT [rad] of the posture.
 HOLD_STEPS = 500
 HOLD_DRIFT = 1e-3
 
@@ -108,51 +110,42 @@ def joint_slack(tau):
     return min(LIMITS[c] - abs(float(t)) for c, t in zip(COORDINATES, tau))
 
 
-def holding_slack(p):
+def holding_truth(p):
     """The holding margin [N m]: the least torque any joint's actuator has
-    left, holding `p.state` against gravity and `p.case`'s tool force, at the
-    point's band values. The limit is the description's derated torque limit,
-    and the derivation's g(q) and J_v give the torque."""
+    left, holding `p.state` against gravity and `p.case`'s tool force, in the
+    truth model's own inverse dynamics, the force applied at the tool, in the
+    state compiled at the point's band values. The limit is the
+    description's derated torque limit. It never saw g(q), J_v or the sign
+    in `holding_torque`."""
+    s, force = p.state, tool_force(CASES[p.case], p.load)
+    inv = s.inverse(loads={TOOL: force})
+    tau = {a.joint: inv.torque[a.name] * float(a.gear)
+           for a in s.compiled.description.actuators}
+    return joint_slack(tau[c] for c in COORDINATES)
+
+
+def holding_slack(p):
+    """The same margin from the derivation, g(q) - J_v^T f, at the point's
+    band values."""
     q, band = vector(p.state.q), band_values(p)
     Jv = np.asarray(J_num(*q, **band), dtype=float)[:3, :]
     return joint_slack(holding_torque(static_torques(q, **band), Jv,
                                       tool_force(CASES[p.case], p.load)))
 
 
-def holding_truth(p):
-    """The holding margin from the truth model, which never saw g(q), J_v or
-    the sign in `holding_torque`: its own inverse dynamics with the case's
-    force applied at the tool, in the state compiled at the point's band
-    values. Then the torque is **held** — released for HOLD_STEPS under the
-    same force, the arm must stay put — so a torque that only reproduces is
-    not a torque that holds. A settle clamps at the torque limit, so a hold
-    beyond it falls here too."""
-    s, force = p.state, tool_force(CASES[p.case], p.load)
-    inv = s.inverse(loads={TOOL: force})
-    tau = {a.joint: inv.torque[a.name] * float(a.gear)
-           for a in s.compiled.description.actuators}
-    out = s.settle(hold=inv.torque, loads={TOOL: force}, min_steps=HOLD_STEPS)
-    drift = max(abs(v) for v in out.moved.values())
-    assert out.stable and drift < HOLD_DRIFT, (
-        f"{p.case}: holding {dict(inv.torque)} N m under a "
-        f"{np.round(force, 3)} N tool force, the truth model left "
-        f"{dict(s.q)} for {dict(out.q)} — the torque that sizes this "
-        f"actuator does not hold the machine there")
-    return joint_slack(tau[c] for c in COORDINATES)
-
-
 # The actuators' holding margin, worst over every row of the load-case table
 # (both signs of a signed class are rows, so both are searched), every heading
 # where a case names a plane, every tolerance band, and every posture in
 # WORKSPACE. `load` is read only by a plane case; the others carry it unused.
-# The default budget (64 Sobol points per continuous dimension, every corner,
-# three Powell starts) costs about 3,200 evaluations over the five rows, two
-# seconds with the band recompiling the truth model per point, so none is set.
+# Searched on the truth model, its check the derivation (ADR 0012). The default
+# budget (64 Sobol points per continuous dimension, every corner, three Powell
+# starts) costs about 3,200 evaluations over the five rows, a few seconds with
+# the band recompiling the truth model per point, so none is set.
 HOLDING = Margin(
-    "holding torque", holding_slack, "N m",
+    "holding torque", holding_truth, "N m",
     over=Space(case=Choice(list(CASES)), load=Direction("xy"), **bands(),
                state=Coordinates(mechanism, PARAMS, within=WORKSPACE)),
-    check=holding_truth, agree=1e-6)
+    check=holding_slack, agree=1e-6)
 
 
 def inverse_kinematics(target_xyz, q0=None, tol=1e-12):

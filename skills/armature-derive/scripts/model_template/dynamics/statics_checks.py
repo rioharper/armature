@@ -97,7 +97,7 @@ def test_truth_moment_arm_form(n=24, seed=DEFAULT_SEED, tol=1e-9):
 
 
 def test_static_torques_match_moment_arms(n=24, seed=DEFAULT_SEED, tol=1e-9):
-    """Self-consistency: g(q) from the Lagrangian against the same closed form.
+    """Self-consistency: g(q) from the equations against the same closed form.
 
     Worth having for the arithmetic slip it catches the moment it lands, and
     not evidence of anything else — both sides are this project's own reading
