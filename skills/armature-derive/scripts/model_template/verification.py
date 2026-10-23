@@ -9,7 +9,7 @@ the note cites are printed by report_results.py. Depends on kinematics.py
 declared once, over every posture in WORKSPACE, every row of the load-case
 table, every heading of a case that names a plane, and every tolerance band,
 and `run_all.py` hands it to `armature.search` (ADR 0005): a seeded Sobol set,
-every corner, then a Powell polish. Its truth re-derives the worst point's
+every corner, then a Powell polish. Its check re-derives the worst point's
 torques in the truth model and holds them there under the load as a real
 force. Over a plane of headings the answer is also exact, a norm
 (`worst_tip_force`), and a check holds the search to it.
@@ -152,7 +152,7 @@ HOLDING = Margin(
     "holding torque", holding_slack, "N m",
     over=Space(case=Choice(list(CASES)), load=Direction("xy"), **bands(),
                state=Coordinates(mechanism, PARAMS, within=WORKSPACE)),
-    truth=holding_truth, agree=1e-6)
+    check=holding_truth, agree=1e-6)
 
 
 def inverse_kinematics(target_xyz, q0=None, tol=1e-12):

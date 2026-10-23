@@ -10,7 +10,7 @@ The plan hands derive one decision: does the knee's skid pad stay clear of the f
 
 ## Method
 
-`analysis/model/skid.py` (rev 1) adds the skid pad to the description as a contact, a sphere of radius `R_SKID` round the knee B on l1 against the floor, and stands the leg on its tyre at each posture by lowering the torso by the tyre's gap. By A3 the first contact is checked at α = 0: `skid.straight()` walks hip A out from home to each end of its range in 40 steps, solving at each for the E that puts the pin C straight under the hips, and keeps the 81 postures inside `WORKSPACE`. `SKID_AT_ALPHA_ZERO` is the clearance margin over them, which `run_all.py` searches; its truth is (1) of 00_setup.md at the worst posture, and it agrees to 1e-3 mm. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
+`analysis/model/skid.py` (rev 1) adds the skid pad to the description as a contact, a sphere of radius `R_SKID` round the knee B on l1 against the floor, and stands the leg on its tyre at each posture by lowering the torso by the tyre's gap. By A3 the first contact is checked at α = 0: `skid.straight()` walks hip A out from home to each end of its range in 40 steps, solving at each for the E that puts the pin C straight under the hips, and keeps the 81 postures inside `WORKSPACE`. `SKID_AT_ALPHA_ZERO` is the clearance margin over them, which `run_all.py` searches; its check is (1) of 00_setup.md at the worst posture, and it agrees to 1e-3 mm. The tables below are printed by `uv run python report_dr01.py`; `uv run python run_all.py` runs every check behind them.
 
 ## The decision: R-5 holds
 

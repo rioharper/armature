@@ -98,4 +98,4 @@ def closed_form_mm(ya, ye):
 SKID_AT_ALPHA_ZERO = Margin(
     "skid clearance at α = 0", lambda p: skid_mm(*p.hips), "mm",
     over=Space(hips=Choice(list(straight()))),
-    truth=lambda p: closed_form_mm(*p.hips), agree=1e-3)
+    check=lambda p: closed_form_mm(*p.hips), agree=1e-3)

@@ -45,9 +45,9 @@ search and the sampler mean one set of states by "over the envelope". A
 point the map refuses is `Infeasible`, under the loop, joint, envelope or
 `rest_on` contact that refused it.
 
-A margin with a `truth` is confirmed where the search ends: `truth` is
+A margin with a `check` is confirmed where the search ends: `check` is
 evaluated at the worst point and at the pre-polish best, each the very
-`Point` `fn` read there, and `Worst.truth` records both values and whether
+`Point` `fn` read there, and `Worst.check` records both values and whether
 they match `fn` within `agree`. A disagreement is recorded, never raised:
 the search reports, and the caller's check fails on it.
 
@@ -504,10 +504,12 @@ class Margin:
     over the space `over`; slack ≥ 0 passes, or slack > 0 where `strict`,
     for a limit that reaching is itself the failure, such as a trip that
     latches at its level. The derating and its reason sit
-    in `fn`'s docstring. `truth(point)`, when set, re-evaluates a point in
-    the truth model, and `agree` is the absolute tolerance in `unit` it must
-    match `fn` within; it is required with `truth`. The search evaluates
-    `truth` at its worst point and its pre-polish best (`Worst.truth`).
+    in `fn`'s docstring. `check(point)`, when set, is the second evaluation
+    of a point, the truth model where `fn` is the derivation or the
+    derivation where `fn` is the truth model, and `agree` is the absolute
+    tolerance in `unit` it must match `fn` within; it is required with
+    `check`. The search evaluates `check` at its worst point and its
+    pre-polish best (`Worst.check`).
     `budget` defaults to `Budget()`.
 
     A margin whose inputs are missing is `unchecked`: a tuple naming each
@@ -520,7 +522,7 @@ class Margin:
     fn: object
     unit: str
     over: Space
-    truth: object = None
+    check: object = None
     agree: float = None
     budget: Budget = None
     unchecked: tuple = None
@@ -534,12 +536,12 @@ class Margin:
         if not isinstance(self.over, Space):
             raise TypeError(f"margin {self.name!r} is searched over a Space; "
                             f"got {self.over!r}")
-        if self.truth is not None:
-            if not callable(self.truth):
-                raise TypeError(f"margin {self.name!r}: truth is a callable "
-                                f"taking a point; got {self.truth!r}")
+        if self.check is not None:
+            if not callable(self.check):
+                raise TypeError(f"margin {self.name!r}: check is a callable "
+                                f"taking a point; got {self.check!r}")
             if self.agree is None or not float(self.agree) > 0:
-                raise ValueError(f"margin {self.name!r} has a truth, so it "
+                raise ValueError(f"margin {self.name!r} has a check, so it "
                                  f"needs agree=, the tolerance in "
                                  f"{self.unit} it must match within")
         if self.unchecked is not None:
@@ -561,9 +563,9 @@ class Margin:
 
 
 class Confirmed(NamedTuple):
-    """A margin's `truth` at the search's worst point (`value`) and at its
+    """A margin's `check` at the search's worst point (`value`) and at its
     pre-polish best (`pre_polish`), in the margin's unit. `gap` is the
-    larger distance from `fn` at those points, nan where `truth` read nan,
+    larger distance from `fn` at those points, nan where `check` read nan,
     and `agrees` is `gap ≤ agree`."""
     value: float
     pre_polish: float
@@ -591,8 +593,8 @@ class Worst:
     `pre_polish_at`, so a reviewer sees whether the polish moved it.
     `rejected` counts the `Infeasible` points by reason, and `coverage` is
     the fraction of the global set's feasible points that pass, pooled over
-    every combination; a `Case` carries none. `truth`
-    is the `Confirmed` record of the margin's truth at `at` and at
+    every combination; a `Case` carries none. `check`
+    is the `Confirmed` record of the margin's check at `at` and at
     `pre_polish_at`, or None for a margin without one. Print it for the
     one-line row a note cites.
 
@@ -612,7 +614,7 @@ class Worst:
     pre_polish_at: dict
     rejected: MappingProxyType
     coverage: float
-    truth: Confirmed = None
+    check: Confirmed = None
     unchecked: tuple = None
     against: str = None
 
@@ -630,9 +632,9 @@ class Worst:
             text += (f"; {sum(self.rejected.values())} rejected ("
                      + ", ".join(f"{r}: {k}" for r, k in self.rejected.items())
                      + ")")
-        if self.truth is not None:
-            t = self.truth
-            text += (f"; truth {t.value:.7g} at the worst, {t.pre_polish:.7g} "
+        if self.check is not None:
+            t = self.check
+            text += (f"; check {t.value:.7g} at the worst, {t.pre_polish:.7g} "
                      f"at the pre-polish best, "
                      + (f"agrees within {t.agree:g}" if t.agrees else
                         f"DISAGREES by {t.gap:.3g} beyond {t.agree:g}"))
@@ -649,15 +651,15 @@ def search(margin, seed=DEFAULT_SEED):
     `budget.polish_evals`. Returns a `Worst`, the minimum over every point
     evaluated. A −∞ ends its combination's polish, since nothing is worse.
 
-    Where the margin has a `truth`, evaluates it at the worst point and at
+    Where the margin has a `check`, evaluates it at the worst point and at
     the pre-polish best, the `Point`s `fn` read there, and records the
-    result in `Worst.truth`; those evaluations are not counted in `n`.
+    result in `Worst.check`; those evaluations are not counted in `n`.
 
     An UNCHECKED margin is not evaluated: its `Worst` names what is
     missing, and fails.
 
     Raises when `fn` returns nan, naming the point, when a combination has
-    no point `fn` could evaluate, giving the reasons, and when `truth`
+    no point `fn` could evaluate, giving the reasons, and when `check`
     raises `Infeasible` at a point `fn` evaluated.
     """
     if not isinstance(margin, Margin):
@@ -709,26 +711,26 @@ def _passes(margin, slack):
 
 
 def _confirm(margin, worst, pre):
-    """`margin.truth` at the worst and the pre-polish best, each a
-    (value, at, point) triple, as a `Confirmed`; None without a truth. The
+    """`margin.check` at the worst and the pre-polish best, each a
+    (value, at, point) triple, as a `Confirmed`; None without a check. The
     same point is evaluated once."""
-    if margin.truth is None:
+    if margin.check is None:
         return None
     read = {}
     for value, at, point in (worst, pre):
         if id(point) in read:
             continue
         try:
-            read[id(point)] = float(margin.truth(point))
+            read[id(point)] = float(margin.check(point))
         except Infeasible as refused:
-            raise ValueError(f"margin {margin.name!r}: its truth cannot "
+            raise ValueError(f"margin {margin.name!r}: its check cannot "
                              f"evaluate {_written(at)}, where fn read "
                              f"{value:.7g}: {refused.reason}") from None
-    truth = read[id(worst[2])], read[id(pre[2])]
-    gaps = [abs(t - v) for t, v in zip(truth, (worst[0], pre[0]))]
+    checked = read[id(worst[2])], read[id(pre[2])]
+    gaps = [abs(c - v) for c, v in zip(checked, (worst[0], pre[0]))]
     gap = math.nan if any(math.isnan(g) for g in gaps) else max(gaps)
     agree = float(margin.agree)
-    return Confirmed(*truth, gap, agree, gap <= agree)
+    return Confirmed(*checked, gap, agree, gap <= agree)
 
 
 class _Found(Exception):

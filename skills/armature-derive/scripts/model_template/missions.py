@@ -42,7 +42,7 @@ PRESSING = Mission("press", [
 # back-EMF brakes the joint, as a damping c = Kt Ke / R. STOP_TIME is long
 # enough for the arm to come to rest against it. STOP_STEP is the
 # simulation's timestep, a twentieth of the shorted shoulder's time constant
-# J R / (Kt Ke), about 20 ms; each margin's truth re-runs it at half the step.
+# J R / (Kt Ke), about 20 ms; each margin's check re-runs it at half the step.
 STOP_TIME = 0.3  # s
 STOP_STEP = 1e-3  # s
 SHORTED = {a: "short" for a in truth().actuators}

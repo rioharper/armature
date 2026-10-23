@@ -37,16 +37,18 @@ EXEMPT = "LAYOUT_EXEMPT"
 TRUTH_EXEMPT = "TRUTH_EXEMPT"
 TRUTH_PREFIX = "test_truth_"
 # A margin is held to the same gate: every module-level `Margin(...)` call in a
-# gated directory, in any module, passes `truth=`, or its module says in
-# TRUTH_EXEMPT why its claims need none. Read from the source like the prefix:
-# an assignment whose value calls `Margin` or `armature.Margin`.
+# gated directory, in any module, passes `check=` and `agree=`, or its module
+# says in TRUTH_EXEMPT why its claims need none. The truth model is on one side
+# of each margin, `fn` or `check`; which side is the text's rule and the
+# review's probe, since the source cannot say. Read from the source like the
+# prefix: an assignment whose value calls `Margin` or `armature.Margin`.
 MARGIN = "Margin"
 # The drive margins (ADR 0006) are declared by one call that returns them all,
-# `armature.drive.margins(...)`, and each carries its truth, by construction:
+# `armature.drive.margins(...)`, and each carries its check, by construction:
 # the resolution check, its worst case re-run at 1 kHz and every event at half
 # its timestep. An assignment whose value calls `margins` is read as that, but
 # only where the module imports it from there; any other `margins(...)` is a
-# look-alike, held to the gate as a margin with no truth.
+# look-alike, held to the gate as a margin with no check.
 DRIVE_MARGINS = "margins"
 DRIVE_MODULE = "armature.drive"
 # What says a directory has a truth model: the mechanism description it is
@@ -58,12 +60,14 @@ HERE = Path(__file__).resolve().parent
 # no budget.
 NOTES = HERE
 
-# `truth` is the list of truth checks the gate found, or None where the gate
-# does not apply — a module that is not a checks module, or a directory with no
-# mechanism description at all. `bare` is the margins the module declares with
-# no truth, by name, or None in a directory with no mechanism description.
-# `drive` is the drive margins it declares, by name, whose truth is theirs.
-Row = namedtuple("Row", "where lines exempt truth truth_exempt bare drive")
+# `truth_checks` is the list of truth checks the gate found, or None where the
+# gate does not apply — a module that is not a checks module, or a directory
+# with no mechanism description at all. `bare` is the margins the module declares
+# without both `check=` and `agree=`, by name, or None in a directory with no
+# mechanism description. `drive` is the drive margins it declares, by name,
+# whose check is theirs.
+Row = namedtuple("Row",
+                 "where lines exempt truth_checks truth_exempt bare drive")
 
 _NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
              tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER}
@@ -190,17 +194,27 @@ def drive_margins(source):
     return _drive_calls(source)[0]
 
 
+def _argument(call, name, position):
+    """The call's argument `name`, by keyword or at `position`, or None where
+    it is absent or passed as None."""
+    given = [k.value for k in call.keywords if k.arg == name] \
+        or call.args[position:position + 1]
+    if not given or (isinstance(given[0], ast.Constant)
+                     and given[0].value is None):
+        return None
+    return given[0]
+
+
 def bare_margins(source):
-    """The module-level margins declared with no `truth=`, by the name each is
-    bound to: an assignment whose value calls `Margin` or `armature.Margin`
-    with no truth, by keyword or as the fifth argument, or with None; and
-    one that calls a `margins` that is not armature.drive's."""
+    """The module-level margins declared without both `check=` and `agree=`,
+    by the name each is bound to: an assignment whose value calls `Margin` or
+    `armature.Margin` missing either, by keyword or as the fifth and sixth
+    arguments, or passing None; and one that calls a `margins` that is not
+    armature.drive's."""
     bare = []
     for targets, call in _assigned_calls(source, MARGIN):
-        truth = [k.value for k in call.keywords if k.arg == "truth"] \
-            or call.args[4:5]
-        if not truth or (isinstance(truth[0], ast.Constant)
-                         and truth[0].value is None):
+        if _argument(call, "check", 4) is None \
+                or _argument(call, "agree", 5) is None:
             bare += [ast.unparse(t) for t in targets]
     return bare + _drive_calls(source)[1]
 
@@ -265,12 +279,13 @@ def size_table(root=HERE):
 
 def unchecked_claims(rows):
     """The gated checks modules carrying neither a truth check nor a reason."""
-    return [row.where for row in rows if row.truth == [] and not row.truth_exempt]
+    return [row.where for row in rows
+            if row.truth_checks == [] and not row.truth_exempt]
 
 
 def unconfirmed_margins(rows):
-    """The margins, `module: NAME`, declared with no truth in a gated
-    directory, in a module that gives no reason."""
+    """The margins, `module: NAME`, declared without both `check=` and
+    `agree=` in a gated directory, in a module that gives no reason."""
     return [f"{row.where}: {name}" for row in rows if not row.truth_exempt
             for name in row.bare or []]
 
@@ -280,12 +295,13 @@ if __name__ == "__main__":
     for row in size_table():
         flag = ("  exempt: " + row.exempt if row.exempt
                 else "  OVER BUDGET" if row.lines > BUDGET else "")
-        truth = ("n/a" if row.truth is None
-                 else str(len(row.truth)) if row.truth
+        truth = ("n/a" if row.truth_checks is None
+                 else str(len(row.truth_checks)) if row.truth_checks
                  else f"exempt: {row.truth_exempt}" if row.truth_exempt
                  else "NONE")
         if row.bare and not row.truth_exempt:
-            truth += f"; MARGINS WITH NO TRUTH: {', '.join(row.bare)}"
+            truth += (f"; MARGINS WITHOUT check= AND agree=: "
+                      f"{', '.join(row.bare)}")
         print(f"{row.where:<34}{row.lines:>11}   {truth}{flag}")
     if NOTES.is_dir():
         print(f"\n{'document (information only)':<34}{'lines':>11}")
@@ -294,7 +310,7 @@ if __name__ == "__main__":
             print(f"{note.name:<34}{lines:>11}")
     print("")
     from layout_checks import (test_checks_modules_are_paired,
-                               test_every_margin_carries_a_truth,
+                               test_every_margin_carries_a_check,
                                test_milestone_checks_carry_a_truth_check,
                                test_modules_within_budget,
                                test_the_truth_gate_has_teeth)
@@ -302,7 +318,7 @@ if __name__ == "__main__":
         test_modules_within_budget()
         test_checks_modules_are_paired()
         test_milestone_checks_carry_a_truth_check()
-        test_every_margin_carries_a_truth()
+        test_every_margin_carries_a_check()
         test_the_truth_gate_has_teeth()
     except AssertionError as failure:
         sys.exit(f"FAIL: {failure}")

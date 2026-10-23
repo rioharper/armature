@@ -45,7 +45,7 @@ from .electrical import (Checked, Current, Curve, Driver, DriveError,
                          envelope, kt_from_kv)
 from .event import (EVENT_STEP, After, Event, Moved, Run, Simulated, Snap,
                     after, event)
-from .margins import TRUTH_AGREE, Energy, Reviewed, energy, margins, review
+from .margins import CHECK_AGREE, Energy, Reviewed, energy, margins, review
 from .needed import Needed, capacitance_needed
 from .mission import (CONFIRM_RATE, SEARCH_RATE, Duty, Follow, Hold, Limits,
                       Mission, Move, Trace, follow, hold, move, trace)
@@ -62,6 +62,6 @@ __all__ += ["EVENT_STEP", "After", "Event", "Moved", "Run", "Simulated",
             "Snap", "after", "event"]
 __all__ += ["AGREE", "BrakeResistor", "Bus", "Charged", "Drive", "Source",
             "charge"]
-__all__ += ["Energy", "Reviewed", "TRUTH_AGREE", "energy", "margins",
+__all__ += ["CHECK_AGREE", "Energy", "Reviewed", "energy", "margins",
             "review"]
 __all__ += ["Needed", "capacitance_needed"]

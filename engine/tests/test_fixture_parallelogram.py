@@ -438,7 +438,7 @@ def test_the_stop_trips_a_source_that_cannot_sink_and_not_one_that_can(
     assert worst.at["drive"] == "PSU" and not worst.passes
     assert cases["PSU"] <= 0
     assert cases["sinking"] == pytest.approx(TRIP - V0, abs=1e-9)
-    assert worst.truth.agrees
+    assert worst.check.agrees
 
 
 def test_the_stop_forward_simulated_holds_phi_and_lifts_the_bus(m):

@@ -544,7 +544,7 @@ def test_the_holds_peak_current_is_the_largest_static_torque(hold_margins,
     assert written["stand"] == pytest.approx(I_PEAK - held / (KT * DQ),
                                              rel=1e-7)
     assert worst.at["mission"] == "holding"
-    assert worst.truth.agrees
+    assert worst.check.agrees
     # the grid's largest torque is a lower bound, so the search lands on
     # its slack or a hair below
     assert worst.value <= answer + 1e-9

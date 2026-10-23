@@ -57,7 +57,7 @@ def test_milestone_checks_carry_a_truth_check():
     which is the only way it ever gets skipped.
     """
     rows = size_table()
-    if all(row.truth is None for row in rows):
+    if all(row.truth_checks is None for row in rows):
         print("  [PASS] no mechanism description here; the truth gate is n/a")
         return
     missing = unchecked_claims(rows)
@@ -65,22 +65,24 @@ def test_milestone_checks_carry_a_truth_check():
         f"checks modules with no {TRUTH_PREFIX}* check: {', '.join(missing)}; "
         f"add one, or declare {TRUTH_GATE} with the reason this module's "
         f"claims need none")
-    found = sum(len(row.truth or []) for row in rows)
-    excused = [row.where for row in rows if row.truth == [] and row.truth_exempt]
+    found = sum(len(row.truth_checks or []) for row in rows)
+    excused = [row.where for row in rows
+               if row.truth_checks == [] and row.truth_exempt]
     print(f"  [PASS] {found} truth check(s) across the gated checks modules"
           + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
 
 
-def test_every_margin_carries_a_truth():
+def test_every_margin_carries_a_check():
     """
-    Every margin declared beside a mechanism description passes `truth=`, or
-    its module says why its claims need none.
+    Every margin declared beside a mechanism description passes `check=` and
+    `agree=`, or its module says why its claims need none.
 
-    A margin computed from the derivation is the derivation's claim at the
-    point the search found, and the worst point is the one place a wrong
-    assumption costs the most. `run_all.py` confirms it there in the truth
-    model, within the margin's `agree`; this gate is what stops a margin
-    being declared without one in silence.
+    A margin is evaluated twice, the truth model on one side and, usually,
+    the derivation on the other, and the worst point the search found is the
+    one place a wrong equation costs the most. `run_all.py` holds the two
+    together there, within the margin's `agree`; this gate is what stops a
+    margin being declared without its second evaluation in silence. Which
+    side the truth model is on, the source cannot say: the review asks.
     """
     rows = size_table()
     if all(row.bare is None for row in rows):
@@ -88,13 +90,13 @@ def test_every_margin_carries_a_truth():
         return
     missing = unconfirmed_margins(rows)
     assert not missing, (
-        f"margins with no truth=: {', '.join(missing)}; pass truth= and agree=, "
+        f"margins without check= and agree=: {', '.join(missing)}; pass both, "
         f"or declare {TRUTH_GATE} in the module with the reason its claims "
         f"need none")
     excused = [f"{row.where}: {name}" for row in rows if row.truth_exempt
                for name in row.bare or []]
     drive = [f"{row.where}: {name}" for row in rows for name in row.drive]
-    print("  [PASS] every margin carries a truth"
+    print("  [PASS] every margin carries a check and agree="
           + (f"; the drive margins' is the resolution check: "
              f"{', '.join(drive)}" if drive else "")
           + (f"; exempt with a reason: {', '.join(excused)}" if excused else ""))
@@ -103,7 +105,7 @@ def test_every_margin_carries_a_truth():
 def test_the_truth_gate_has_teeth():
     """
     The gate against fixtures: it fails a bare checks module and a margin with
-    no truth, passes an argued exemption for each, refuses an unargued one,
+    no check or no agree, passes an argued exemption for each, refuses an unargued one,
     and stands down with no mechanism description.
 
     Built in a temporary directory rather than asserted against this one,
@@ -119,7 +121,7 @@ def test_the_truth_gate_has_teeth():
         module = root / "alpha.py"
         module.write_text(margin.format(""), encoding="utf-8")
         checks.write_text(bare, encoding="utf-8")
-        assert all(row.truth is None and row.bare is None
+        assert all(row.truth_checks is None and row.bare is None
                    for row in size_table(root)) \
             and not unchecked_claims(size_table(root)), \
             "the truth gate fired in a directory with no mechanism description"
@@ -128,11 +130,13 @@ def test_the_truth_gate_has_teeth():
                                         encoding="utf-8")
         assert unchecked_claims(size_table(root)) == ["alpha_checks.py"], \
             "a checks module with no truth check and no exemption passed"
-        for truthless in ("", ", truth=None", ", None, None"):
-            module.write_text(margin.format(truthless), encoding="utf-8")
+        for unchecked in ("", ", check=None", ", None, None", ", check=t",
+                          ", t", ", check=t, agree=None", ", agree=1e-9"):
+            module.write_text(margin.format(unchecked), encoding="utf-8")
             assert unconfirmed_margins(size_table(root)) == ["alpha.py: A"], \
-                f"a margin declared with {truthless or 'no truth'} passed"
-        for confirmed in (", truth=t, agree=1e-9", ", t, 1e-9"):
+                f"a margin declared with {unchecked or 'no check'} passed"
+        for confirmed in (", check=t, agree=1e-9", ", t, 1e-9",
+                          ", t, agree=1e-9"):
             module.write_text(margin.format(confirmed), encoding="utf-8")
             assert not unconfirmed_margins(size_table(root)), \
                 f"a margin declared with {confirmed} did not clear the gate"
@@ -148,7 +152,7 @@ def test_the_truth_gate_has_teeth():
                 row.drive for row in size_table(root)
                 if row.where == "alpha.py"] == [["D"]], \
                 f"armature.drive's margins, {imported.splitlines()[0]!r}, " \
-                f"were not read as carrying their resolution truth"
+                f"were not read as carrying their resolution check"
         for lookalike in ("def margins(*a):\n    return ()\nD = margins(",
                           "import helpers\nD = helpers.margins(",
                           "D = armature.drive.margins("):
@@ -164,7 +168,7 @@ def test_the_truth_gate_has_teeth():
         checks.write_text(f"{TRUTH_PREFIX}settle = None\n"
                           f"def {TRUTH_PREFIX}settle_():\n    pass\n",
                           encoding="utf-8")
-        assert [row.truth for row in size_table(root) if row.where ==
+        assert [row.truth_checks for row in size_table(root) if row.where ==
                 "alpha_checks.py"] == [[f"{TRUTH_PREFIX}settle_"]], \
             "the gate counted a name that is not a callable"
 
@@ -176,5 +180,5 @@ def test_the_truth_gate_has_teeth():
                 continue
             raise AssertionError(f"{unargued.strip()} passed as a reason")
     print("  [PASS] the truth gate fails a bare checks module and a margin with "
-          "no truth, passes an argued exemption, and is n/a with no mechanism "
+          "no check or no agree, passes an argued exemption, and is n/a with no mechanism "
           "description")

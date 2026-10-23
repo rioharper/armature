@@ -153,7 +153,7 @@ def exempt_row(worst, exempt):
 
 def margin_check(margin, exempt=None):
     """The check a discovered margin runs as: search it, print its row, and
-    fail where it does not pass, or where its truth disagrees beyond
+    fail where it does not pass, or where its check disagrees beyond
     `agree`. An UNCHECKED margin, whose inputs are missing, fails too,
     unless `exempt` gives the reason it may stand: then its `exempt_row`,
     the inputs it lacks and the reason, prints. The margin rides on the
@@ -167,8 +167,8 @@ def margin_check(margin, exempt=None):
             print(f"  [EXEMPT] {exempt_row(worst, exempt)}")
             return
         assert worst.passes, f"a margin fails: {worst}"
-        assert worst.truth is None or worst.truth.agrees, (
-            f"a margin's truth disagrees with it: {worst}")
+        assert worst.check is None or worst.check.agrees, (
+            f"a margin's check disagrees with it: {worst}")
         print(f"  [PASS] {worst}")
     check.__name__ = check.__qualname__ = f"margin[{margin.name}]"
     check.margin, check.exempt = margin, exempt

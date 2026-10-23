@@ -45,9 +45,9 @@ a Powell polish, with where, n, the seed, the pre-polish best and the coverage.
 `state=Coordinates(mechanism, PARAMS, within=, poses=, rest_on=)` gives `fn`
 a ready `p.state`, compiled with the point's band values and each `rest_on`
 contact touching; a point that cannot close is rejected under the loop that
-refused it. A margin's `truth=` is evaluated at the worst point and the
-pre-polish best, and `worst.truth` says whether it agrees with `fn` within
-`agree=`.
+refused it. A margin's `check=`, its second evaluation, is evaluated at the
+worst point and the pre-polish best, and `worst.check` says whether it agrees
+with `fn` within `agree=`.
 
 `armature.drive` sizes actuators from a mission (ADR 0006). A `Motor`
 names the basis of every constant: `Kt(1.22, per="A_rms", side="output")`,

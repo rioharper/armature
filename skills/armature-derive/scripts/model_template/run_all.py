@@ -22,7 +22,7 @@ A margin is discovered the same way, by type: every module-level
 `armature.Margin` in a milestone module or its checks module is one more
 check, run after the module's `test_*` callables. The check searches it
 (`armature.search`), prints the `Worst` row a note cites, and fails where
-the margin does not pass, or where its `truth=` disagrees with it beyond
+the margin does not pass, or where its `check=` disagrees with it beyond
 `agree=` at the worst point or the pre-polish best. A check that reads the
 same worst calls `searched(margin)`, so each margin is searched once per run.
 A module-level tuple of margins is found too, which is how `drive.py`
@@ -175,7 +175,7 @@ def exempt_row(worst, exempt):
 
 def margin_check(margin, exempt=None):
     """The check a discovered margin runs as: search it, print its row, and
-    fail where it does not pass, or where its truth disagrees beyond
+    fail where it does not pass, or where its check disagrees beyond
     `agree`. An UNCHECKED margin, whose inputs are missing, fails too,
     unless `exempt` gives the reason it may stand: then its `exempt_row`,
     the inputs it lacks and the reason, prints. The margin rides on the
@@ -189,8 +189,8 @@ def margin_check(margin, exempt=None):
             print(f"  [EXEMPT] {exempt_row(worst, exempt)}")
             return
         assert worst.passes, f"a margin fails: {worst}"
-        assert worst.truth is None or worst.truth.agrees, (
-            f"a margin's truth disagrees with it: {worst}")
+        assert worst.check is None or worst.check.agrees, (
+            f"a margin's check disagrees with it: {worst}")
         print(f"  [PASS] {worst}")
     check.__name__ = check.__qualname__ = f"margin[{margin.name}]"
     check.margin, check.exempt = margin, exempt

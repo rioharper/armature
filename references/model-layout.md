@@ -140,15 +140,18 @@ standard library: it reads the source's function names with `ast`, so it works o
 where MuJoCo will not import, which is exactly the machine most likely to have skipped the
 truth model.
 
-**Every module-level `Margin` in such a model passes `truth=` and `agree=`, or its module
-says why it does not**, with the same exemption below. A margin computed from the
-derivation is the derivation's claim at the one point that sizes the design; the search
-evaluates `truth` at its worst point and its pre-polish best, and `run_all.py` fails a
-disagreement beyond `agree`. `layout.py` reads a margin from the source as it reads a check's
-name, as an assignment whose value calls `Margin` or `armature.Margin`. An assignment
-calling armature.drive's `margins`, imported from `armature.drive`, carries its own truth,
-the resolution check, and passes; a `margins(...)` imported from anywhere else is held as
-a bare margin.
+**Every module-level `Margin` in such a model passes `check=` and `agree=`, and the truth
+model is on one side of it, or its module says why it does not**, with the same exemption
+below. A margin is evaluated twice, `fn` and its `check`, at the one point that sizes the
+design: the search evaluates `check` at its worst point and its pre-polish best, and
+`run_all.py` fails a disagreement beyond `agree`. With the derivation on both sides, the
+margin checks the derivation against itself. `layout.py` reads a margin from the source as
+it reads a check's name, as an assignment whose value calls `Margin` or `armature.Margin`,
+and fails one missing either argument. Which side the truth model is on, the source cannot
+say, so the review asks (`references/review-checklist.md`). An assignment calling
+armature.drive's `margins`, imported from `armature.drive`, carries its own check, the
+resolution check, the truth model on both sides, and passes; a `margins(...)` imported from
+anywhere else is held as a bare margin.
 
 Two things sit outside the gate by nature, and the check knows it: `layout.py` itself, whose
 `layout_checks.py` argues its `TRUTH_EXEMPT`, and

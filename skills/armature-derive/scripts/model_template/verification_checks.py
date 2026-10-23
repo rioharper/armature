@@ -5,7 +5,7 @@ The holding margin itself is not a check here: `run_all.py` discovers
 verification.HOLDING, searches it, fails it where it does not pass, and
 confirms its worst point in the truth model. What is here is what holds the
 search to account: the exact answer over a plane of headings, the load-case
-table searched whole, and a truth that can disagree.
+table searched whole, and a check that can disagree.
 """
 
 from dataclasses import replace
@@ -95,11 +95,11 @@ def test_the_search_agrees_with_the_exact_plane_answer(tol=1e-6):
 
 def test_truth_holding_sees_a_flipped_force(budget=Budget(global_points=16,
                                                           polish_starts=0)):
-    """The truth confirmation's teeth: the holding margin with its force's sign
-    flipped in the derivation, as `g + J^T f` would have it, must disagree
-    with its truth beyond `agree`. The truth applies the force to the truth
-    model as a force, so it cannot share the flip; a truth that agreed here
-    would agree with anything."""
+    """The check's teeth: the holding margin with its force's sign flipped
+    in the derivation, as `g + J^T f` would have it, must disagree with its
+    check, the truth model, beyond `agree`. The check applies the force to
+    the truth model as a force, so it cannot share the flip; a check that
+    agreed here would agree with anything."""
     def flipped(p):
         q, band = vector(p.state.q), band_values(p)
         Jv = np.asarray(J_num(*q, **band), dtype=float)[:3, :]
@@ -107,7 +107,7 @@ def test_truth_holding_sees_a_flipped_force(budget=Budget(global_points=16,
         return joint_slack(static_torques(q, **band) + Jv.T @ force)
 
     worst = armature.search(replace(HOLDING, fn=flipped, budget=budget))
-    assert not worst.truth.agrees, (
+    assert not worst.check.agrees, (
         f"a flipped tool force agrees with the truth model: {worst}")
     print(f"  [PASS] a flipped tool force disagrees with the truth model by "
-          f"{worst.truth.gap:.3f} N m, beyond {worst.truth.agree:g}")
+          f"{worst.check.gap:.3f} N m, beyond {worst.check.agree:g}")

@@ -77,7 +77,7 @@ def test_the_capacitance_band_collapsed_fails_the_energy_relation():
 
 
 def test_an_event_never_halved_fails_the_resolution_check(monkeypatch):
-    """The margins' truth re-running each event at the search's own
+    """The margins' check re-running each event at the search's own
     timestep: a resolution check that resolves nothing."""
     monkeypatch.setattr(MARGINS, "_halved", lambda mission: mission)
     with pytest.raises(AssertionError, match="half its timestep"):

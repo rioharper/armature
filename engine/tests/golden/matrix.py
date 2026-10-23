@@ -158,7 +158,7 @@ ARM_2R = {
     "margins": Known("I", _in(
         "test_drive_margins", "test_the_searched_move_finds_a_direction_a_"
                               "named_move_misses",
-        "test_the_worst_case_agrees_with_its_truth_at_1_kHz"),
+        "test_the_worst_case_agrees_with_its_check_at_1_kHz"),
         note="a brute-force sweep of 72 directions × 5 distances, run "
              "through trace and electrical, never through margins"),
     "capacitance_needed": Covered(("parallelogram", "capacitance_needed"),

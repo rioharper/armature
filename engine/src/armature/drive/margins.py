@@ -69,7 +69,7 @@ with each winding at its `t_max`, which draws the most, for the minimum
 voltage, the source's power, the flux brakes' heat and the envelope,
 whose V_min it is. The envelope reads the winding hot too.
 
-Each margin's `truth` re-runs its point at `confirm` (1 kHz) with each
+Each margin's `check` re-runs its point at `confirm` (1 kHz) with each
 event at half its timestep, and must agree within `agree` of the limit the
 margin is checked against, a fraction.
 
@@ -103,7 +103,7 @@ from .event import Event
 from .mission import CONFIRM_RATE, SEARCH_RATE, Mission, _actuators, trace
 from .thermal import heat, repeat, rms_torque
 
-TRUTH_AGREE = 0.01  # a margin's truth agrees within this fraction of its
+CHECK_AGREE = 0.01  # a margin's check agrees within this fraction of its
                     # limit: the trip, the rating, the stall torque
 RESERVED = ("mission", "drive", "capacitance", "v_source")
 PEAK, DUTY = "peak", "duty"
@@ -115,7 +115,7 @@ KEPT_TRACES = 32   # written missions' traces, kept the same way
 
 def margins(drive, missions, over=None, *, model=None, params=None,
             gear=None, rate=SEARCH_RATE, confirm=CONFIRM_RATE,
-            agree=TRUTH_AGREE, budget=None):
+            agree=CHECK_AGREE, budget=None):
     """The drive margins of `drive` over `missions`, searched over `over`:
     a tuple of `Margin`s, the peak margins first, then the duty margins.
 
@@ -124,7 +124,7 @@ def margins(drive, missions, over=None, *, model=None, params=None,
     drive's parameters, which a callable `drive(p)` is called with. `gear`
     gives an actuation seam's actuators their ratio, as `charge` takes it.
     Missions are traced at `rate` (Hz) in the search and at `confirm` for
-    the truth, which must agree within `agree` of each margin's limit.
+    the check, which must agree within `agree` of each margin's limit.
     `budget` is each margin's search budget."""
     setup = _Setup(drive, missions, over, model, params, gear)
     rate = _rate(rate, "rate")
@@ -143,7 +143,7 @@ def margins(drive, missions, over=None, *, model=None, params=None,
                 continue
             out.append(Margin(
                 check.name, _Slack(evaluator, check, False), check.unit,
-                over=space, truth=_Slack(evaluator, check, True),
+                over=space, check=_Slack(evaluator, check, True),
                 agree=agree * check.limit, budget=budget,
                 against=check.against, strict=check.what == "peak V"))
     return tuple(out)
@@ -165,7 +165,7 @@ def _rate(value, name):
 class _Check:
     """One margin's identity: its `name`, `unit`, `kind` (peak or duty),
     what it reads (`what`), its `actuator` or None for the bus, the `limit`
-    (in `unit`) its truth's tolerance is a fraction of, the plot that
+    (in `unit`) its check's tolerance is a fraction of, the plot that
     reviews it, the inputs it is `missing`, if any, and what its row says
     it is held `against`, if anything."""
     name: str
@@ -769,7 +769,7 @@ class _Evaluator:
 
 
 class _Slack:
-    """A drive margin's `fn` (or, confirming, its `truth`): its check's
+    """A drive margin's `fn` (or, confirming, its `check`): its check's
     slack at a point, from the evaluation its space shares."""
 
     def __init__(self, evaluator, check, confirm):
@@ -779,7 +779,7 @@ class _Slack:
         return self.evaluator.slacks(point, self.confirm)[self.check.name]
 
     def __repr__(self):
-        return (f"<{'truth' if self.confirm else 'slack'} of "
+        return (f"<{'check' if self.confirm else 'slack'} of "
                 f"{self.check.name!r}>")
 
 
@@ -879,7 +879,7 @@ class Reviewed:
 
 
 def review(margins, directory="review", worsts=None):
-    """Plot each drive margin's worst case at its truth's resolution into
+    """Plot each drive margin's worst case at its check's resolution into
     `directory`, one PNG per margin, and return a `Reviewed` for each:
 
     - an actuator's envelope, current and RMS-torque margins: its (τ, ω)

@@ -198,10 +198,10 @@ def test_truth_the_bus_peak_is_the_energy_relation(tol=0.05):
 
 
 def test_truth_an_event_is_confirmed_at_half_its_timestep():
-    """Each drive margin's truth is a resolution check, every event re-run
+    """Each drive margin's check is a resolution check, every event re-run
     at half its timestep. An event alone, the arm shorted at full speed, is
     sampled at its own timestep and the shoulder driver's RMS current
-    integrated over those samples, so a truth that did not halve the step
+    integrated over those samples, so a check that did not halve the step
     would read the search's value back exactly."""
     at_speed = Mission("stopped at speed", [event(
         truth().at(q=REST, qd=QD_LIMITS), SHORTED, STOP_TIME,
@@ -210,13 +210,13 @@ def test_truth_an_event_is_confirmed_at_half_its_timestep():
         drive, [at_speed], model=truth(), params=DRIVE,
         budget=Budget(global_points=4, polish_starts=0))}
     worst = search(found["shoulder_motor: driver RMS current"])
-    assert worst.truth.agrees, f"the event has not converged: {worst}"
-    assert worst.truth.value != worst.value, (
-        "the truth read the search's own value back: it never re-ran the "
+    assert worst.check.agrees, f"the event has not converged: {worst}"
+    assert worst.check.value != worst.value, (
+        "the check read the search's own value back: it never re-ran the "
         "event at half its timestep")
-    print(f"  [PASS] the shorted stop's truth, at half its timestep, moves "
-          f"its RMS current by {abs(worst.truth.value - worst.value):.2g} "
-          f"A_rms, within {worst.truth.agree:g}")
+    print(f"  [PASS] the shorted stop's check, at half its timestep, moves "
+          f"its RMS current by {abs(worst.check.value - worst.value):.2g} "
+          f"A_rms, within {worst.check.agree:g}")
 
 
 def _discovered(exempt=None, params=None):

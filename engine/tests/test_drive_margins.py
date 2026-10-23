@@ -140,19 +140,19 @@ def test_the_searched_move_finds_a_direction_a_named_move_misses(
     assert case["elbow only"] > arm_worst.value + 0.05 * I_PEAK
 
 
-def test_the_worst_case_agrees_with_its_truth_at_1_kHz(arm_worst):
-    assert arm_worst.truth.agrees
-    assert arm_worst.truth.agree == pytest.approx(0.01 * I_PEAK)
+def test_the_worst_case_agrees_with_its_check_at_1_kHz(arm_worst):
+    assert arm_worst.check.agrees
+    assert arm_worst.check.agree == pytest.approx(0.01 * I_PEAK)
 
 
 def test_a_coarse_rate_shows_the_disagreement(arm_model):
-    """At 5 Hz the samples straddle the move's peaks, so its truth at
+    """At 5 Hz the samples straddle the move's peaks, so its check at
     1 kHz reads more current than the search did."""
     ms = named(margins(on_a_bus(ARM_MOTORS), [ELBOW_ONLY],
                        model=arm_model, rate=5.0))
     worst = search(ms[CURRENT])
-    assert not worst.truth.agrees
-    assert worst.truth.value < worst.value - worst.truth.agree
+    assert not worst.check.agrees
+    assert worst.check.value < worst.value - worst.check.agree
 
 
 def test_the_margins_name_every_check(arm_margins):
@@ -199,7 +199,7 @@ def test_the_least_capacitance_and_the_most_efficient_gearbox_peak_the_bus(
     worst = search(margin)
     assert worst.at["capacitance"] == 220e-6
     assert worst.at["eta"] == 0.95
-    assert worst.truth.agrees
+    assert worst.check.agrees
 
 
 # --- the lowest trip on the bus ----------------------------------------------
@@ -352,7 +352,7 @@ def test_a_thermal_margin_takes_the_hotter_mission_as_written():
     light = {c.choices["mission"]: c.value for c in worst.cases}["light"]
     assert light == pytest.approx(
         THERMAL.t_max - periodic_peak(R * hold_current(0.3) ** 2), abs=0.12)
-    assert worst.truth.agrees
+    assert worst.check.agrees
 
 
 def test_the_rms_fallback_reads_the_duty_against_the_continuous_rating():
@@ -453,8 +453,8 @@ def test_a_flux_braked_driver_takes_its_own_regeneration():
     regenerated = swing_regenerated(m)
     assert regenerated > 1.0
     assert worst.value == pytest.approx(capacity - regenerated, rel=1e-9)
-    assert worst.truth.agrees
-    assert worst.truth.agree == pytest.approx(0.01 * capacity)
+    assert worst.check.agrees
+    assert worst.check.agree == pytest.approx(0.01 * capacity)
     plain = on_a_bus(["motor"], motors={"motor": warm_motor()})
     assert not any("flux brake" in name for name in named(
         margins(plain, [SWING_MISSION], model=m)))
@@ -658,7 +658,7 @@ def test_an_e_stops_trigger_is_searched():
     assert worst.at["fraction"] == pytest.approx(sweep[1], abs=0.03)
     assert worst.at["fraction"] > 0.5
     assert worst.at["drive"] == "plain"
-    assert worst.truth.agrees  # at half the event's timestep
+    assert worst.check.agrees  # at half the event's timestep
 
 
 def test_an_event_runs_on_a_bus_with_no_source():
@@ -678,7 +678,7 @@ def test_an_event_runs_on_a_bus_with_no_source():
 
 def test_an_events_capacitance_is_bisected_with_the_event_rerun():
     """The e-stop's motion depends on the bus, so each capacitance tried
-    re-runs it, at the truth's half timestep: the one reported holds the
+    re-runs it, at the check's half timestep: the one reported holds the
     peak under the 30 V board, and one a tolerance less does not."""
     d = on_a_bus(["motor"], eta=1.0, capacitance=1e-4, sinks=False)
     d = replace(d, bus=replace(d.bus, ratings={"power board": 30.0}))

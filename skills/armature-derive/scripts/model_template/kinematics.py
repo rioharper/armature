@@ -113,4 +113,4 @@ def sigma_truth(p):
 SIGMA = Margin("sigma_min(J_v) over WORKSPACE", sigma_slack, "m/rad",
                over=Space(state=Coordinates(mechanism, PARAMS,
                                             within=WORKSPACE)),
-               truth=sigma_truth, agree=1e-9)
+               check=sigma_truth, agree=1e-9)

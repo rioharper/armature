@@ -59,7 +59,7 @@ class Needed:
 def capacitance_needed(margins, worsts=None, *, tolerance=TOLERANCE):
     """The `Needed` capacitance of each searched worst case of the bus's
     peak V, one per mission and bus configuration, from `margins`, the
-    drive margins `armature.drive.margins` returns, at its truth's
+    drive margins `armature.drive.margins` returns, at its check's
     resolution. `worsts` are the margins' `Worst`s, a sequence or a mapping
     by name, as `review` takes them; the peak-V margin's is searched where
     none is given. `tolerance` is the bisection's width, a fraction of C.
