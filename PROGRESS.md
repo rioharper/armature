@@ -2,6 +2,52 @@
 
 <!-- Newest entries first. Start here when resuming this project. -->
 
+## Overhaul 10: designed and ticketed — 2026-10-23
+
+**Status:** Grilled in one round of 11 questions, all recommendations accepted, plus five items settled at confirmation. Recorded as:
+- ADR 0012, committed locally on `main` behind the unpushed 3.0.0 bump `8905cb3`, so it goes out with 3.0.0's push;
+- spec **#161**, labelled `ready-for-agent`;
+- tickets **#162–#166** as its sub-issues, with native blocked-by edges.
+
+No plugin code has changed. This replaces the 2026-10-11 Overhaul 10 entry below, whose timings and line citations predate Overhaul 01's symbolic view.
+
+**Found (re-measured 2026-10-23, Python 3.14.7, SymPy 1.14.0, MuJoCo 3.15.0):**
+- **The cost was the template's shape, not SymPy.** The template's equations take:
+  - 93 s at planar 4;
+  - a timeout (300 s) at planar 5 and 6 and at a spatial 6R;
+  - at a spatial 4R, `simplify` cannot prove its own C·q̇ assert (`lagrangian.py:88`), and the run fails after about 290 s.
+- **Kane via `System`, with no simplify and `xreplace`+`cse`,** takes:
+  - planar 4: about 2 s;
+  - spatial 6R: about 31 s, 26 s of it the Christoffel C;
+  - wheel_leg, with its loop: 0.8 s.
+
+  Every method matched `mj_fullM` and `qfrc_bias` to 1e-14.
+- **The template ignores the view's closures.** On wheel_leg it formed open-tree equations, and on cable_platform a platform in free fall.
+- **`numeric()`'s `.subs` was the second cost:** 27.5 s against 0.4 s on planar 5.
+- **The derivation already sized almost nothing.** The drive margins read the truth model alone. Only `SIGMA` and `HOLDING` read the lambdified derivation.
+
+**Decided:**
+- **The truth model sizes every margin.** The derivation's expression is the `check=` at the worst point and the pre-polish best. `Margin`'s `truth=` becomes `check=`.
+- **Milestone 2's equations stay mandatory at every size.** The engine forms them: `armature.equations(variant, params)` is Kane via `System`, with closures as constraints and springs and elastic cables as `LinearSpring`s.
+- **No simplify in the build.** Reports simplify what they print, under a cap.
+- **The Christoffel C on demand only.**
+- **A fast `numeric` in the engine.**
+- **A floating base answers in the view's coordinates.**
+- **Contact is never symbolic,** and a subsystem is a variant.
+- **The 6R is an engine fixture,** not a seventh golden mechanism. `equations` gets a verb-matrix row.
+
+**Order:**
+- #162 (`equations`) and #164 (`check=`) have no blockers.
+- Then #163 (floating base).
+- Then #165 (the template).
+- Then #166 (skill text and the CHANGELOG).
+
+**Flagged:**
+- It ships as **4.0.0** after 3.0.0's release run, a major because of `check=`. 4.0.0 needs its own release run.
+- Ibex meets it at its Milestone 2.
+
+**Left before the pre-CAD pipeline is finished** (replaces item 7 of the entry below): build #162–#166 after 3.0.0 is released, then 4.0.0's release run, before Ibex reaches derive Milestone 2.
+
 ## What's left before the pre-CAD pipeline is finished — 2026-10-22
 
 **Status:** Overhauls 01–07 are built. 01–06 and #147 are on `main` and pushed. 07 is only on the local branch `overhaul-07` (`d8dd4d6`), 30 commits ahead of `main` and a fast-forward of it. `main` is itself 2 commits ahead of `origin/main` (`3da75a3` ADR 0011, `378c5dd` its log entry), and neither is pushed. Open issues: #154 (07's spec), #147, #138, #137, #152, #153. Nothing since 2.0.0 is released. This replaces the list in the entry below and in the 2026-10-21 one.
