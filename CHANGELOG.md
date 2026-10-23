@@ -1,5 +1,44 @@
 # Changelog
 
+## Unreleased
+
+### The truth model sizes a part; the derivation explains it and checks it
+
+Overhaul 10 ([#161](https://github.com/rioharper/armature/issues/161), [ADR 0012](docs/adr/0012-the-truth-model-sizes-the-derivation-explains.md)). Milestone 2's equations were formed in each project's copy of `dynamics/lagrangian.py`, and that copy failed three ways. It did not scale: with `simplify` and `trigsimp` in the build path, planar 4 took 93 s, planar 6 timed out at 300 s, a spatial 6R timed out, and a spatial 4R failed its Christoffel assert after ~290 s. It ignored the view's closures, so on wheel_leg it formed an open tree and on cable_platform a platform in free fall, and a free joint's rates were not MuJoCo's. And `SIGMA` and `HOLDING` were sized on the derivation's reduced variant, with MuJoCo evaluated only at the worst point and the pre-polish best. Now the engine forms the equations, a truth-model state answers in the view's coordinates, the truth model sizes both margins with the derivation as their `check=`, and nothing in the build simplifies. The symbolic derivation stays mandatory at every size. Editing derive re-gates the release (`evals/README.md`), so 4.0.0 gets its own run.
+
+**Breaking.**
+- **`Margin`'s `truth=` is `check=`,** `Worst.truth` is `Worst.check`, and `agree=` is required with `check=`. `armature.drive.TRUTH_AGREE` is `CHECK_AGREE`.
+- **The truth gate asks for both arguments:** `layout.py` fails a module-level `Margin` missing `check=` or `agree=`, in both templates.
+- **The model template's `dynamics/lagrangian.py` is `dynamics/equations.py`,** and `lagrangian_checks.py` is `equations_checks.py`. It exposes `M_SYM`, `CQD_SYM`, `G_SYM` and `V_SYM`, and forms the Christoffel C only where the note uses C as a matrix.
+- **A project upgrades by hand:** rename its imports of `dynamics.lagrangian` to `dynamics.equations`, and every margin's `truth=` to `check=`. A project on 3.x meets this as `behind … (major)` at its next checkpoint. Plumb and CineWave V2 are not migrated; Ibex meets it at its Milestone 2 on 4.0.0.
+
+- **`armature.equations(variant, params, bands=())`** ([#162](https://github.com/rioharper/armature/issues/162)).
+  - **Kane's method through `System`,** on a `RigidBody` hung on each of the symbolic view's frames, with each generalized speed set to its coordinate's rate, so M is Lagrange's M.
+  - **Closures** (loops, couples, rigid cables) are holonomic constraints, and the equations are reduced onto the independent coordinates the compiled model chooses: M q̈ᵢ + C q̇ + g = Gᵀ τ, the constraint forces dropped out. A closure row is kept while it adds rank on the dependent coordinates at home.
+  - **Springs:** a joint spring is a torque pair across a hinge or a force pair across a slide, on its coordinate alone; an elastic cable is a `LinearSpring` of EA/L between its end sites, taut, its deadband not symbolic. A free joint's spring raises.
+  - **Contact:** a rigid contact's force sits with τ, and `contacts` names each one; a compliant contact raises, naming the `rigid(...)` that would put its force there.
+  - **Nothing in the build simplifies.** Rotor inertia is the derivation's to add.
+  - **It returns an `Equations`:** `M`, `Cqd` and `g` over the independent coordinates; `coordinates`, `independent` and `dependent`; `numeric(expr, rates=False)`, which swaps symbols by `xreplace`, lambdifies with `cse=True` and keeps the banded parameters as keywords at nominal, an unknown one a `TypeError`; and `christoffel()`, formed on the first call only, its ∂/∂q the total derivative along the closures.
+  - **The verb matrix gains an `equations` row** across the six golden mechanisms: the 2R arm and the spring against their closed forms, the others against `mj_fullM` and `qfrc_bias` at sampled states. `test_fixture_arm_6r.py` holds a spatial 6R and a spatial 4R, not golden mechanisms: the 6R forms in 6.0 s and the 4R in 1.2 s, both to 1e-10 at 20 states.
+- **A floating base answers in the view's coordinates** ([#163](https://github.com/rioharper/armature/issues/163)).
+  - **`Compiled.at(q=None, qd=None, *, view=False)`.** With `view=True`, `q` and `qd` are in the symbolic view's coordinates: a free joint is its six components `<joint>:x` … `<joint>:rz`, and its turn rates are Euler-angle rates. With no free joint it returns the plain state, so the mapping costs nothing.
+  - **That state's `inverse(qdd=..., loads=...)`** takes `qdd` and reports `generalised` in the view's coordinates: ω = E φ̇ and ω̇ = E φ̈ + Ė φ̇, the rows turned by Eᵀ. Only `inverse()` answers in them; the state's `q`, `qd`, `wrench`, `jacobian` and `linearise` stay in the dofs. The angles are kept as given, not read back from the rotation.
+  - `State` gains a `view` field, and `rotations.py` gains `turn_axes` (E) and `turn_drift` (Ė φ̇). cable_platform's `equations` row checks the full free joint, to 1e-9 at 20 states away from home; read unmapped, the same numbers disagree.
+- **`truth=` is `check=`** ([#164](https://github.com/rioharper/armature/issues/164)).
+  - `Margin.truth` is `Margin.check` and `Worst.truth` `Worst.check`, with `agree=` required beside `check=`. `armature.drive.TRUTH_AGREE` is `CHECK_AGREE`, and `_Slack`'s repr reads `<check of …>`.
+  - **Both templates' `layout.py`** asks every module-level `Margin` for `check=` and `agree=`, by keyword or as the 5th and 6th positional arguments, neither None. `Row.truth` is `Row.truth_checks`, and the gate check `test_every_margin_carries_a_truth` is `test_every_margin_carries_a_check`.
+  - **Which side of a margin the truth model is on,** the source cannot say: `model-layout.md` states the rule, and the review checklist and the red team ask it of every `Worst` row. Every caller is renamed.
+- **The model template calls the engine** ([#165](https://github.com/rioharper/armature/issues/165)).
+  - **`dynamics/equations.py`** calls `armature.equations(DERIVED, PARAMS)` and adds reflected rotor inertia N²J where a geared actuator has one. It exposes `M_SYM`, `CQD_SYM`, `G_SYM` and `V_SYM`, with their numeric versions, never simplifies, and forms `christoffel()` only where the note uses C as a matrix.
+  - **`equations_checks.py`** keeps the 1e-12 closed-form check, and the old symbolic C assert is a numeric C q̇ check at sampled states.
+  - **`kinematics.py`** has no `trigsimp`, and `mechanism.py`'s `numeric()` delegates to the engine's.
+  - **`SIGMA`:** `fn` is the SVD of the truth model's `s.jacobian(TOOL)` position rows, and `check=` the lambdified J's. **`HOLDING`:** `fn` is the truth model's `s.inverse(loads={site: force})`, and `check=` the derivation's g − J_vᵀ f. The `settle` hold stays.
+  - **`report_results.py` prints M and g entry by entry:** an entry with `sympy.count_ops` at or under 200, the report cap, is `trigsimp`'d, and one over it prints as the coordinates it depends on.
+  - run_all.py: TBD s, against 68 s.
+- **The skill text** ([#166](https://github.com/rioharper/armature/issues/166)).
+  - **Derive's SKILL.md:** the engine forms the equations (`armature.equations`), never by hand, and the derivation adds rotor N²J. The truth model sizes `SIGMA` and `HOLDING`, and the derivation is their `check=`; the transpose sitting on both sides is now why `HOLDING`'s `fn` is `inverse()`. A floating body is compared in the view's coordinates, `at(..., view=True)`, with contact reduced away first. FK is no longer simplified.
+  - **`derivation-standards.md`:** printing is a report module's job, under the 200-op cap, and a margin that sizes a part has the truth model as `fn`. `model-layout.md`'s layout names `equations.py`, and CONTEXT's **Truth model** is what every margin sizing a part evaluates.
+
 ## 3.0.0 — 2026-10-22
 
 Three changes, the first breaking: two actions, `merge` and `buy`, are gated and recomputed from the repo, with the plugin's first hook as their backstop, and the Stage line is gone; every input number lives once in a root `ledger.toml`, with its unit, band and provenance; and a plan task's report is red-teamed, with derive loading for one. The first two are recorded as ADRs: [0011](docs/adr/0011-actions-are-gated-not-stages.md) and [0010](docs/adr/0010-every-input-number-lives-once-in-the-ledger.md). The eval suite gains three traps that survive a passing `run_all.py` ([#147](https://github.com/rioharper/armature/issues/147)). A project on 2.0.0 upgrades by hand, as *The gates* says below.

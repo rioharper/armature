@@ -20,8 +20,8 @@ three substantive sections gets a package from the start:
 ```
 dynamics/
   __init__.py            MILESTONE = (2, "Milestone 2: dynamics") — the identity, nothing else
-  lagrangian.py          note §1–2
-  lagrangian_checks.py
+  equations.py           note §1–2
+  equations_checks.py
   statics.py             note §3
   statics_checks.py
 ```

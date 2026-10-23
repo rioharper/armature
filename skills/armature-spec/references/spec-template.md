@@ -187,7 +187,7 @@ machine: the `mechanism` and `drive` entries in the project's ledger,
 from §6.4, and `drive_checks.py`'s hand-worked answers. The template's
 `test_spec_stage.py` runs this same set. Run
 `uv run python run_all.py` there and table each drive margin's worst-case
-row: value, where it sits, the band values, and the truth's agreement.
+row: value, where it sits, the band values, and the check's agreement.
 List every `DRIVE_EXEMPT` entry with its reason. The rules are armature-derive's
 `references/derivation-standards.md`, *Actuators and the bus*.
 
