@@ -543,3 +543,51 @@ def test_symbolic_variant_drops_the_locked_coordinate():
     numbers = {**{p[k]: v for k, v in PARAMS.items()}, q1: 0.3}
     assert np.array((got - closed).subs(numbers), dtype=float) == \
         pytest.approx(np.zeros((3, 1)), abs=1e-14)
+
+
+# --- the equations -------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def equations():
+    return armature.equations(arm, PARAMS)
+
+
+@pytest.mark.parametrize("q, qd, qdd", list(sampled_states(6)))
+def test_equations_are_the_closed_form(equations, q, qd, qdd):
+    """M, C q̇ and g, formed by the engine, against the closed forms above
+    (without rotors, which the derivation adds from the actuators)."""
+    e = equations
+    assert e.coordinates == ("shoulder", "elbow")
+    got_m = np.asarray(e.numeric(e.M)(*q), dtype=float)
+    got_c = np.asarray(e.numeric(e.Cqd, rates=True)(*q, *qd),
+                       dtype=float).ravel()
+    got_g = np.asarray(e.numeric(e.g)(*q), dtype=float).ravel()
+    assert got_m == pytest.approx(mass_matrix(q[1], rotors=False), abs=1e-12)
+    assert got_c == pytest.approx(coriolis(q[1], *qd), abs=1e-12)
+    assert got_g == pytest.approx(gravity_torque(*q), abs=1e-12)
+
+
+@pytest.mark.parametrize("q, qd, qdd", list(sampled_states(3)))
+def test_christoffel_is_the_closed_form(equations, q, qd, qdd):
+    """C, formed on demand, against the planar elbow's Christoffel form
+    (Spong, Hutchinson and Vidyasagar, ch. 7)."""
+    e = equations
+    h = -P["m2"] * P["l1"] * P["lc2"] * math.sin(q[1])
+    closed = np.array([[h * qd[1], h * (qd[0] + qd[1])], [-h * qd[0], 0.0]])
+    got = np.asarray(e.numeric(e.christoffel(), rates=True)(*q, *qd),
+                     dtype=float)
+    assert got == pytest.approx(closed, abs=1e-12)
+    assert e.christoffel() is e.christoffel()
+
+
+def test_numeric_takes_a_band_and_refuses_an_unknown_one():
+    e = armature.equations(arm, PARAMS, bands=("m2",))
+    g = e.numeric(e.g)
+    q = (0.3, 0.9)
+    heavier = {**PARAMS, "m2": PARAMS["m2"] * 1.1}
+    want = P["g"] * heavier["m2"] * P["lc2"] * math.cos(q[0] + q[1])
+    assert float(np.ravel(g(*q, m2=heavier["m2"]))[1]) == \
+        pytest.approx(want, rel=1e-12)
+    assert np.ravel(g(*q)) == pytest.approx(gravity_torque(*q), abs=1e-12)
+    with pytest.raises(TypeError, match="no band"):
+        g(*q, m1=1.0)

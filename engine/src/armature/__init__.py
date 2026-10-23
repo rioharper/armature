@@ -17,6 +17,12 @@ mu=...)`; `s.inverse()` reports what each touching contact carries.
     armature.compile(rigid, PARAMS).at().release(hold)
     armature.symbolic(rigid, PARAMS)
 
+`armature.equations(rigid, PARAMS)` forms M q̈ + C q̇ + g = τ on that view
+by Kane's method (ADR 0012): closures as holonomic constraints, the
+equations reduced onto the independent coordinates, springs and elastic
+cables carried, nothing simplified; `numeric` lambdifies an expression and
+`christoffel()` forms C on demand.
+
 The reductions are `lock`, `couple`, `planar`, `lump` and `rigid`;
 `release(hold, quantity=...)` sizes each one by name, and
 `armature.account(m, coordinates)` fails a derivation whose coordinates are
@@ -89,6 +95,7 @@ _FROM = {
     "description": ["Description", "describe"],
     "elements": ["DescriptionError", "actuator", "body", "cable", "contact",
                  "gravity", "joint", "loop", "shape", "site"],
+    "equations": ["Equations", "equations"],
     "review": ["Frames", "Review", "frames", "render", "review"],
     "sampler": ["PoseEnvelope", "Rejected", "Samples", "clearance",
                 "pose_envelope", "sample", "sample_states"],
@@ -147,3 +154,4 @@ __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
             "Margin", "Point", "Space", "Worst", "search"]
 __all__ += ["Band", "Confirmed", "Coordinates"]
+__all__ += ["Equations", "equations"]

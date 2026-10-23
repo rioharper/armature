@@ -493,3 +493,12 @@ def test_a_compliant_tyre_keeps_its_own_mode():
     assert len(lin.frequencies) == 3  # rocking, servo and the tyre's bounce
     assert lin.frequencies[-1] > 10.0
     assert len(lin.discarded) == 0
+
+def test_equations_refuse_a_compliant_contact_and_carry_a_rigid_one():
+    """A compliant tyre is a spring the equations do not carry, so they
+    refuse it by name; made rigid, it is a one-sided constraint whose force
+    sits with τ, and the equations name it there."""
+    with pytest.raises(ValueError, match="contact 'tyre' is compliant"):
+        armature.equations(tyre, TYRE)
+    variant = armature.reduce(tyre, armature.rigid("tyre", assumption="A9"))
+    assert armature.equations(variant, TYRE).contacts == ("tyre",)

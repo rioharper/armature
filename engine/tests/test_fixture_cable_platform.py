@@ -499,3 +499,33 @@ def test_rates_are_keyed_by_dof():
     with pytest.raises(KeyError, match="no dof named"):
         m.at(qd={"hang": 1.0})
     assert m.at(qd={"hang:rz": 1.0}).qd["hang:rz"] == 1.0
+
+
+# --- the equations -------------------------------------------------------------
+
+def test_the_level_platform_hangs_on_its_cables_in_the_equations():
+    """The level variant's equations carry the four elastic cables as
+    springs, so M, C q̇ and g are MuJoCo's at states a little below the hung
+    point, where every cable is taut; without the cables they would be a platform
+    in free fall. The full free joint's are #163's, in the view's turns."""
+    from mujoco_equations import reduced
+
+    p = params(HOME, 2.0)
+    e = armature.equations(LEVEL, p)
+    m = armature.compile(LEVEL, p)
+    mass, bias = e.numeric(e.M), e.numeric(e.Cqd + e.g, rates=True)
+    rng = np.random.default_rng(20261023)
+    for _ in range(10):
+        point = np.asarray(HOME) + rng.uniform([-5e-4, -5e-4, -3e-3],
+                                               [5e-4, 5e-4, -1e-3])
+        rates = rng.uniform(-0.5, 0.5, 3)
+        s = m.at(q=dict(zip(m.coordinates, point)),
+                 qd=dict(zip(m.dofs, rates)))
+        with s._scratch() as data:
+            assert np.all(data.ten_length > np.array(
+                [p[f"l0_{i + 1}"] for i in range(4)])), "a cable is slack"
+        want_m, want_b = reduced(s)
+        assert np.asarray(mass(*point), dtype=float) == pytest.approx(
+            want_m, abs=1e-9)
+        assert np.ravel(bias(*point, *rates)) == pytest.approx(want_b,
+                                                               abs=1e-9)

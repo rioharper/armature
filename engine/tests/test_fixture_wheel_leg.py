@@ -576,3 +576,46 @@ def test_settle_under_the_static_torques_stays(m):
         assert abs(settled.moved[name]) < 1e-5
     assert settled.contacts["tyre"].normal == pytest.approx(
         weight_carried(), rel=1e-3)
+
+
+# --- the equations -------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def equations():
+    return armature.equations(wheel_leg, PARAMS)
+
+
+def test_the_equations_carry_the_pin_loop_and_the_tyre_with_tau(m, equations):
+    """The pin closes the leg, so B and D are solved from it as the compiled
+    model solves them, and the equations are over the rest; the tyre is a
+    rigid contact, its force with τ."""
+    e = equations
+    assert e.dependent == m.dependent
+    assert e.independent == m.independent
+    assert e.M.shape == (len(m.independent),) * 2
+    assert e.contacts == ("tyre",)
+
+
+def test_the_equations_are_mujocos_on_the_loop(m, equations):
+    """M and C q̇ + g, the pin loop's and the spring kB's, against MuJoCo's
+    at sampled states, both projected onto the independent coordinates."""
+    from mujoco_equations import assert_agree, sampled
+
+    assert_agree(equations, sampled(m, 12, SEED))
+
+
+def test_the_christoffel_matrix_gives_mujocos_velocity_products(m, equations):
+    """On the loop C is formed from the reduced M by derivatives taken along
+    the closures, so C q̇ is MuJoCo's velocity products, gravity and the
+    spring taken off."""
+    from mujoco_equations import reduced, sampled
+
+    e = equations
+    c, g = e.numeric(e.christoffel(), rates=True), e.numeric(e.g)
+    for s in sampled(m, 3, SEED):
+        q = [s.q[n] for n in e.coordinates]
+        qd = [s.qd[n] for n in e.coordinates]
+        rates = np.array([s.qd[n] for n in e.independent])
+        _, want = reduced(s)
+        got = np.asarray(c(*q, *qd), dtype=float) @ rates
+        assert got == pytest.approx(want - np.ravel(g(*q)), abs=1e-9)

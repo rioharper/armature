@@ -445,3 +445,14 @@ def test_release_settles_where_the_five_bar_balances(four_bar):
     assert out.moved["E"] == pytest.approx(rest[1] - E_HELD, abs=1e-5)
     assert out.settled.moved["A"] == pytest.approx(rest[0] - ya, abs=1e-5)
     assert abs(out.moved["E"]) > 0.3  # the lock was wrong, and sized
+
+
+# --- the equations -------------------------------------------------------------
+
+def test_the_equations_are_mujocos(m):
+    """M and C q̇ + g, formed by the engine, against MuJoCo's at sampled
+    states, projected onto the independent coordinates where there is a
+    loop."""
+    from mujoco_equations import assert_agree, sampled
+
+    assert_agree(armature.equations(five_bar, PARAMS), sampled(m, 10, SEED))

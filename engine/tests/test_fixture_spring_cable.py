@@ -176,3 +176,29 @@ def test_the_imu_peak_is_the_closed_form():
     assert IMU_PEAK.value == pytest.approx(17.81, abs=1e-9)
     assert IMU_PEAK.bait == pytest.approx(8.0, abs=1e-9)
     assert IMU_PEAK.unit == "m/s²"
+
+
+# --- the equations -------------------------------------------------------------
+
+@pytest.mark.parametrize("z", [-0.05, -0.005])
+def test_the_equations_hang_the_bob_on_the_taut_cable(z):
+    """M is the bob's mass and g its weight less the cable's k·stretch, the
+    closed form; and both are MuJoCo's, whose cable pull is passive force."""
+    from mujoco_equations import reduced
+
+    e = armature.equations(on_cable, PARAMS)
+    mass = float(np.ravel(e.numeric(e.M)(z))[0])
+    g = float(np.ravel(e.numeric(e.g)(z))[0])
+    assert mass == pytest.approx(PARAMS["m"], rel=1e-12)
+    assert g == pytest.approx(WEIGHT - PARAMS["k"] * stretch(z), rel=1e-12)
+    want_m, want_b = reduced(armature.compile(on_cable, PARAMS).at(
+        q={"z": z}, qd={"z": 0.4}))
+    assert mass == pytest.approx(want_m[0, 0], rel=1e-12)
+    assert g == pytest.approx(want_b[0], rel=1e-9)
+
+
+@pytest.mark.parametrize("z", [-0.05, 0.03])
+def test_the_equations_carry_a_slides_spring(z):
+    e = armature.equations(on_spring, SPRING)
+    g = float(np.ravel(e.numeric(e.g)(z))[0])
+    assert g == pytest.approx(WEIGHT + PARAMS["k"] * z, rel=1e-12)

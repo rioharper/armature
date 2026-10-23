@@ -496,3 +496,14 @@ def test_the_capacitance_the_stop_needs_is_the_closed_form(m):
         2 * STOP_RETURNED / (TRIP ** 2 - V0 ** 2), rel=1e-12)
     assert needed["PSU"].capacitance > C_BUS
     assert needed["sinking"].capacitance == 0.0
+
+
+# --- the equations -------------------------------------------------------------
+
+def test_the_equations_are_mujocos(m):
+    """M and C q̇ + g, formed by the engine, against MuJoCo's at sampled
+    states, projected onto the independent coordinates where there is a
+    loop."""
+    from mujoco_equations import assert_agree, sampled
+
+    assert_agree(armature.equations(arm, PARAMS), sampled(m, 10, SEED))

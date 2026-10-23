@@ -76,6 +76,7 @@ VERBS = {
     "release": "`State.release` and the variants: `reduce` with `lock`, "
                "`couple`, `planar`, `lump` or `rigid`",
     "symbolic": "`symbolic`",
+    "equations": "`equations`: M, C q̇ and g, `numeric` and `christoffel`",
     "coarse": "the coarse bodies, `point`, `rod`, `box`, `cylinder`, "
               "`sphere` and `compose`",
     "sample": "`sample` and `sample_states`",
@@ -125,6 +126,10 @@ ARM_2R = {
         _ARM, "test_symbolic_fk_is_the_closed_form",
         "test_symbolic_kinetic_energy_gives_the_closed_form_mass_matrix",
         "test_symbolic_variant_drops_the_locked_coordinate")),
+    "equations": Known("C", _in(
+        _ARM, "test_equations_are_the_closed_form",
+        "test_christoffel_is_the_closed_form",
+        "test_numeric_takes_a_band_and_refuses_an_unknown_one")),
     "coarse": Known("C", _in(
         "test_coarse", "test_a_coarse_description_compiles_and_reads_"
                        "symbolically"),
@@ -197,6 +202,11 @@ CABLE_PLATFORM = {
         "test_level_platform_assumption_holds")),
     "symbolic": Known("C", _in(
         _PLATFORM, "test_symbolic_level_platform_is_three_slides")),
+    "equations": Known("I", _in(
+        _PLATFORM, "test_the_level_platform_hangs_on_its_cables_in_the_"
+                   "equations"),
+        note="on the level variant, three slides: the full free joint's "
+             "rates are the angular velocity, the view's the turns' (#163)"),
     "coarse": _coarse("joint above it, floating or hinged"),
     "sample": Known("I", _in(
         "test_sampler", "test_floating_samples_respect_the_envelope",
@@ -261,6 +271,14 @@ WHEEL_LEG = {
     "symbolic": Covered(("five_bar", "symbolic"),
                         "the symbolic view has no contact; the loop's "
                         "closure is the bare five-bar's"),
+    "equations": Known("I", _in(
+        _LEG, "test_the_equations_carry_the_pin_loop_and_the_tyre_with_tau",
+        "test_the_equations_are_mujocos_on_the_loop",
+        "test_the_christoffel_matrix_gives_mujocos_velocity_products"),
+        note="the tyre is rigid, so its force sits with τ and the loop's; a "
+             "compliant contact is refused "
+             "(test_contact.py::test_equations_refuse_a_compliant_contact_"
+             "and_carry_a_rigid_one)"),
     "coarse": _coarse("loop or contact"),
     "sample": Known("I", _in(
         _LEG, "test_resting_on_the_tyre_matches_the_closed_form_lift",
@@ -324,6 +342,8 @@ PARALLELOGRAM = {
     "symbolic": Covered(("five_bar", "symbolic"),
                         "a loop of hinges closes symbolically as the bare "
                         "five-bar's does"),
+    "equations": Known("I", _in(_PARALLELOGRAM,
+                                "test_the_equations_are_mujocos")),
     "coarse": _coarse("chain or loop"),
     "sample": Covered(("five_bar", "sample"),
                       "a loop of hinges is sampled as the bare five-bar's "
@@ -388,6 +408,10 @@ SPRING_CABLE = {
     "symbolic": Known("C", _in(
         "test_rigid", "test_the_symbolic_closure_is_the_length_less_the_"
                       "rest")),
+    "equations": Known("C", _in(
+        _SPRING, "test_the_equations_hang_the_bob_on_the_taut_cable",
+        "test_the_equations_carry_a_slides_spring"),
+        note="the cable taut: its slack deadband is not symbolic"),
     "coarse": _coarse("slide"),
     "sample": Covered(("arm_2r", "sample"),
                       "on one free slide the answer is the request, as on "
@@ -435,6 +459,8 @@ TURRET = {
                        "a lock or a reduction " + _ONE_HINGE),
     "symbolic": Covered(("arm_2r", "symbolic"), "the symbolic view " +
                         _ONE_HINGE),
+    "equations": Known("I", _in(_TURRET, "test_the_equations_are_mujocos"),
+                       note="the reflected rotor is the derivation's to add"),
     "coarse": _coarse("hinge"),
     "sample": Covered(("arm_2r", "sample"),
                       "on one hinge the answer is the request, as on the 2R "
@@ -492,6 +518,7 @@ FIVE_BAR = {
              "mpmath model with E held (#116)"),
     "symbolic": Known("I", _in(
         _FIVE_BAR, "test_symbolic_closure_vanishes_on_the_reference_loop")),
+    "equations": Known("I", _in(_FIVE_BAR, "test_the_equations_are_mujocos")),
     "coarse": _coarse("loop"),
     "sample": Known("I", _in(
         "test_sampler", "test_loop_closed_states_close_and_match_the_"

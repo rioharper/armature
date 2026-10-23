@@ -207,3 +207,14 @@ def test_the_trace_keeps_the_rotors_share_apart(slew):
     out, _, _ = slew.output("pan_motor")
     assert out == pytest.approx(J_LOAD * slew.qdd["pan"], rel=1e-9,
                                 abs=1e-12)
+
+
+# --- the equations -------------------------------------------------------------
+
+def test_the_equations_are_mujocos(m):
+    """M and C q̇ + g, formed by the engine, against MuJoCo's at sampled
+    states, projected onto the independent coordinates where there is a
+    loop."""
+    from mujoco_equations import assert_agree, sampled
+
+    assert_agree(armature.equations(turret.mechanism, PARAMS), sampled(m, 10, SEED))
