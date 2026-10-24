@@ -26,6 +26,7 @@ import math
 import mujoco
 import numpy as np
 import pytest
+import sympy as sp
 from mpmath import mp
 
 import armature
@@ -619,3 +620,26 @@ def test_the_christoffel_matrix_gives_mujocos_velocity_products(m, equations):
         _, want = reduced(s)
         got = np.asarray(c(*q, *qd), dtype=float) @ rates
         assert got == pytest.approx(want - np.ravel(g(*q)), abs=1e-9)
+
+
+def test_the_basis_differentiates_along_the_loop(m, equations):
+    """g's stiffness by the independent coordinates, `g.jacobian(q) * basis`,
+    is the derivative of g along the pin loop: against a central difference
+    over states the compiled model closes itself."""
+    from mujoco_equations import sampled
+
+    e = equations
+    q = sp.Matrix([e.view.q[n] for n in e.coordinates])
+    stiffness, g = e.numeric(e.g.jacobian(q) * e.basis), e.numeric(e.g)
+    h = 1e-6
+    for s in sampled(m, 3, SEED):
+        at = {n: s.q[n] for n in e.independent}
+        columns = []
+        for n in e.independent:
+            ends = [m.at(q={**at, n: at[n] + d}).q for d in (h, -h)]
+            up, down = ([c[k] for k in e.coordinates] for c in ends)
+            columns.append((np.ravel(g(*up)) - np.ravel(g(*down))) / (2 * h))
+        got = np.asarray(stiffness(*(s.q[n] for n in e.coordinates)),
+                         dtype=float)
+        assert got.shape == (len(e.independent),) * 2
+        assert got == pytest.approx(np.column_stack(columns), abs=1e-5)

@@ -81,7 +81,7 @@ V_num = numeric(V_SYM)
 # The stiffness of the gravity field, K = dg/dq: the matrix a small-oscillation
 # mode actually comes from. Derived from g rather than separately derived,
 # which is why it sits here rather than in a module of its own.
-K_SYM = G_SYM.jacobian(q)
+K_SYM = G_SYM.jacobian(q) * EQ.basis  # along the closures, over EQ.independent
 K_num = numeric(K_SYM)
 
 

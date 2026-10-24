@@ -121,22 +121,29 @@ def test_truth_holding_sees_a_flipped_force(budget=Budget(global_points=16,
 def test_truth_holding_sizes_on_the_truth_model(dx=0.05, seed=DEFAULT_SEED):
     """The margin's side (ADR 0012): HOLDING's `fn` reads the truth model and
     its `check` the derivation. With the forearm's COM `dx` [m] further out
-    in the truth model's state alone, which the derivation never sees, the
-    two must disagree beyond `agree`: every joint carries the forearm. A
-    `fn` pointed at the derivation agrees with its check wherever the truth
-    model is, and sizes the part on whatever a reduction left out."""
+    in the truth model's state alone, which the derivation never sees, `fn`
+    must move beyond `agree` (every joint carries the forearm) and `check`
+    must not. A `fn` pointed at the derivation stays put wherever the truth
+    model is, and sizes the part on whatever a reduction left out; a `check`
+    pointed at the truth model moves with it and checks nothing."""
     moved = armature.compile(mechanism, {**PARAMS, "lc2": PARAMS["lc2"] + dx})
     s = armature.sample(moved, 1, seed, within=WORKSPACE).states[0]
-    p = Point({"case": LOAD_CASES[0].name, "load": np.array([1.0, 0.0, 0.0]),
-               **{k: PARAMS[k] for k in BANDS}, "state": s})
-    gap = abs(HOLDING.fn(p) - HOLDING.check(p))
-    assert gap > HOLDING.agree, (
-        f"the holding margin reads {HOLDING.fn(p):.6f} N m with the "
-        f"forearm's COM {dx} m out in the truth model, as its check does on "
-        f"the derivation: its fn is not the truth model")
+    nominal = armature.compile(mechanism, PARAMS).at(q=s.q)
+    at = {"case": LOAD_CASES[0].name, "load": np.array([1.0, 0.0, 0.0]),
+          **{k: PARAMS[k] for k in BANDS}}
+    p, p0 = Point({**at, "state": s}), Point({**at, "state": nominal})
+    moves = abs(HOLDING.fn(p) - HOLDING.fn(p0))
+    assert moves > HOLDING.agree, (
+        f"the holding margin's fn moved {moves:.2e} N m with the forearm's "
+        f"COM {dx} m out in the truth model alone: its fn is not the truth "
+        f"model")
+    still = abs(HOLDING.check(p) - HOLDING.check(p0))
+    assert still <= HOLDING.agree, (
+        f"the holding margin's check moved {still:.2e} N m with the truth "
+        f"model alone: its check is not the derivation")
     print(f"  [PASS] the holding margin sizes on the truth model: a COM {dx} m "
-          f"out that the derivation never saw moves it {gap:.3f} N m from its "
-          f"check")
+          f"out that the derivation never saw moves its fn {moves:.3f} N m "
+          f"and its check not at all")
 
 
 def test_truth_the_worst_holding_torques_hold():

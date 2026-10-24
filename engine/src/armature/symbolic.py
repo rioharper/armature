@@ -16,8 +16,8 @@ the free joint whole, its rates are the angular velocity instead of these
 angles' rates; the two agree at home, and a state made with
 `at(..., view=True)` answers in the view's.
 
-The derivation hangs its own `RigidBody`s on these frames and points and runs
-`LagrangesMethod` or `KanesMethod`; the view does not form equations.
+`armature.equations` hangs a `RigidBody` on each of these frames and forms the
+equations by Kane's method; the view itself does not form equations.
 """
 
 from dataclasses import dataclass

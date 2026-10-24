@@ -54,7 +54,8 @@ class Equations:
     on an open chain those are all of `coordinates`. They are written in the
     view's coordinate functions and their rates. `contacts` names the rigid
     contacts whose forces sit with τ. `view` is the symbolic view they were
-    formed on.
+    formed on. `basis` is ∂q/∂q_i, every coordinate's row by the independent
+    ones, so `expr.jacobian(q) * basis` is the derivative along the closures.
     """
     view: object
     coordinates: tuple
@@ -66,7 +67,7 @@ class Equations:
     contacts: tuple
     _params: MappingProxyType
     _bands: tuple
-    _basis: sp.Matrix  # ∂q/∂q_i, every coordinate by the independent ones
+    basis: sp.Matrix  # ∂q/∂q_i, every coordinate by the independent ones
     _christoffel: list = field(default_factory=list, init=False, repr=False)
 
     def numeric(self, expr, rates=False):
@@ -110,8 +111,8 @@ class Equations:
             n, M = len(ind), self.M
             partial = [M.diff(c) for c in q]
             # dM/dq_i along the closures: Σ_k ∂M/∂q_k ∂q_k/∂q_i
-            dM = [sum((partial[k] * self._basis[k, i] for k in range(len(q))
-                       if self._basis[k, i] != 0), sp.zeros(n, n))
+            dM = [sum((partial[k] * self.basis[k, i] for k in range(len(q))
+                       if self.basis[k, i] != 0), sp.zeros(n, n))
                   for i in range(n)]
             self._christoffel.append(sp.Matrix(n, n, lambda k, j: sum(
                 (sp.Rational(1, 2) * (dM[i][k, j] + dM[j][k, i]
