@@ -1,6 +1,6 @@
 {
     "name": "armature-plugins",
-    "description": "Claude Code plugins for robotics engineering, from concept and spec through verified dynamics, actuator sizing, CAD and gated review.",
+    "description": "Claude Code plugins for robotics engineering.",
     "owner": {
       "name": "Rio Harper"
     },
@@ -8,7 +8,7 @@
       {
         "name": "armature",
         "source": "./",
-        "description": "Robotics engineering pipeline for Claude Code: MuJoCo truth model, symbolic dynamics, searched worst-case margins, mission-based actuator and bus sizing, a unit-checked ledger, and gated red-team review",
+        "description": "Design robots from idea to CAD, with dynamics checked against a MuJoCo model",
         "version": "3.0.0",
         "author": {
           "name": "Rio Harper"
