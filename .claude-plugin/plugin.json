@@ -1,7 +1,7 @@
 {
   "name": "armature",
   "version": "3.0.0",
-  "description": "Robotics engineering pipeline for Claude Code: init scaffolds the project, then pitch, spec, plan, derive, and CAD skills run it with budgets, traceability, datasheet provenance, and adversarial review.",
+  "description": "Robotics engineering pipeline for Claude Code, from pitch through spec, plan, dynamics and CAD. A MuJoCo truth model and symbolic equations of motion from one mechanism description, worst-case margins searched over posture, load and tolerance, motors and DC bus sized from simulated missions, every number in one unit-checked ledger, and red-team review enforced by merge and buy gates.",
   "author": {
     "name": "Rio Harper"
   },
