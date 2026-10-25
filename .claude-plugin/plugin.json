@@ -1,6 +1,6 @@
 {
   "name": "armature",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "description": "Design robots from idea to CAD, with dynamics checked against a MuJoCo model and red-team review before any merge or purchase.",
   "author": {
     "name": "Rio Harper"

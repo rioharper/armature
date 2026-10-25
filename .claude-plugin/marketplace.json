@@ -9,7 +9,7 @@
         "name": "armature",
         "source": "./",
         "description": "Design robots from idea to CAD, with dynamics checked against a MuJoCo model",
-        "version": "3.0.0",
+        "version": "4.0.0",
         "author": {
           "name": "Rio Harper"
         },
