@@ -76,20 +76,28 @@ def tangent(compiled, data, rates=None):
     angular velocity in base axes. Reads the kinematics already in `data`."""
     model = compiled.model
     out, drift = np.eye(model.nv), np.zeros(model.nv)
-    for jid in compiled._free:  # read once, at compile: every query asks
-        d = model.jnt_dofadr[jid]
-        rotation = data.xmat[model.jnt_bodyid[jid]].reshape(3, 3)
-        lever = rotation @ compiled._offset[model.joint(jid).name]  # point→COM
+    for d, body, offset in compiled._turning:  # looked up once per model
+        rotation = data.xmat[body].reshape(3, 3)
+        lever = rotation @ offset  # point→COM
         out[d:d + 3, d + 3:d + 6] = -skew(lever)  # v_COM = v + ω × lever
         out[d + 3:d + 6, d + 3:d + 6] = rotation.T
         if rates is not None:
             omega = rates[d + 3:d + 6]
-            drift[d:d + 3] = np.cross(omega, np.cross(omega, lever))
+            drift[d:d + 3] = cross(omega, cross(omega, lever))
     return out, drift
 
 
 def skew(v):
     return np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
+
+
+def cross(a, b):
+    """a × b of two 3-vectors, each component a product less a product as
+    `np.cross` forms it, so it gives the same bits, without the
+    microseconds `np.cross` spends on its checks: an event takes two at
+    every step."""
+    return np.array([a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+                     a[0] * b[1] - a[1] * b[0]])
 
 
 def rank(matrix):

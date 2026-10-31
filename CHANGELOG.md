@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### An event steps about 1.45 times faster, to the same bits
+
+Profiled on a project's falls (Ibex T1.7c): of a fall's 265 µs a step, MuJoCo's own step took 10 µs, and the rest was the event's bookkeeping. A third went to `from_solver` scanning every contact for each declared one, with a geom-name lookup each time, and a third to building the step's `State`: a joint-name lookup per coordinate, two `tangent` maps, each with two `np.cross`.
+- **`Compiled` looks up once** what `State._read` and `tangent` used to look up at every call: each coordinate's qpos address or body (`_reading`) and each free joint's dof address, body and offset (`_turning`).
+- **`from_solver` reads each MuJoCo contact once,** finding its declared contacts by its geom pair, which `_pairs` keys once per compiled model, and averages their points without `np.mean`.
+- **`tangent` forms its cross products itself** (`assembly.cross`), each component a product less a product as `np.cross` forms it.
+- **An event steps the actuators that share a motor, gear, gearbox and driver as one array** through `_electrical`, element by element, and sums their bus power in the actuators' order.
+
+Nothing computed changes: 69 of the project's stored falls, fallen again across its worlds, windings and band corners, read the same to the bit. A fall took 1.24–2.81 s against 1.81–3.90 s, the same falls timed alternately on both engines.
+
 ## 4.1.0 — 2026-11-14
 
 ### A stop that gives, a contact between two bodies, and what an event carried

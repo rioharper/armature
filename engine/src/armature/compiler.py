@@ -45,6 +45,7 @@ estimate of an inertia. A stop on a locked joint goes with the joint.
 """
 
 from contextlib import contextmanager
+from functools import cached_property
 from types import MappingProxyType
 
 import mujoco
@@ -169,6 +170,25 @@ class Compiled:
         self.dependent = self.closure.dependent if self.closure else ()
         self.independent = tuple(n for n in self.coordinates
                                  if n not in self.dependent)
+
+    @cached_property
+    def _reading(self):
+        """Where `State._read` finds each coordinate in an `MjData`, looked
+        up once: (its qpos address, False), or for a free joint (its body,
+        True). An event reads every coordinate at every step."""
+        model, free = self.model, mujoco.mjtJoint.mjJNT_FREE
+        return {model.joint(i).name: (int(model.jnt_bodyid[i]), True)
+                if model.jnt_type[i] == free
+                else (int(model.jnt_qposadr[i]), False)
+                for i in range(model.njnt)}
+
+    @cached_property
+    def _turning(self):
+        """Each free joint's (dof address, body, point-to-COM offset),
+        looked up once, for `tangent`."""
+        model = self.model
+        return tuple((int(model.jnt_dofadr[j]), int(model.jnt_bodyid[j]),
+                      self._offset[model.joint(j).name]) for j in self._free)
 
     @property
     def full(self):
