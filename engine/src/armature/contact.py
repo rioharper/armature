@@ -137,23 +137,56 @@ def selectors(points, offset, size):
 def from_solver(compiled, data):
     """Each touching contact's `ContactForce` from MuJoCo's own solution,
     read at rest by settle, where the noslip solver has made it exact."""
-    model = compiled.model
+    model, contact = compiled.model, data.contact
+    geoms, dists, frames = contact.geom, contact.dist, contact.frame
+    found = {}  # each contact's (index, its moving geom), in index order
+    for i in range(data.ncon):
+        if not dists[i] <= TOUCH:
+            continue
+        for name, own in _pairs(compiled).get(
+                frozenset((int(geoms[i][0]), int(geoms[i][1]))), ()):
+            found.setdefault(name, []).append((i, own))
     out = {}
     for c in compiled.description.contacts:
         total, at, depth, normal = np.zeros(3), [], 0.0, None
-        for i in _found(model, data, c.name):
+        for i, own in found.get(c.name, ()):
             local = np.zeros(6)
             mujoco.mj_contactForce(model, data, i, local)
-            frame = data.contact.frame[i].reshape(3, 3)
-            sign = _into(model, data, i, c.name)
+            frame = frames[i].reshape(3, 3)
+            sign = 1.0 if int(geoms[i][1]) == own else -1.0  # as `_into`
             total += sign * (frame.T @ local[:3])  # on geom 2; ours may be 1
-            at.append(data.contact.pos[i].copy())
-            depth = max(depth, -float(data.contact.dist[i]))
+            at.append(contact.pos[i].copy())
+            depth = max(depth, -float(dists[i]))
             normal = sign * frame[0]
         if at:
             out[c.name] = _record(total, normal, float(c.mu), depth,
-                                  np.mean(at, axis=0))
+                                  _mean(at))
     return out
+
+
+def _mean(points):
+    """The mean of 3-vectors, summed in their order and divided by their
+    count, as `np.mean(points, axis=0)` forms it, without its overhead."""
+    total = np.array(points[0], dtype=float)
+    for p in points[1:]:
+        total = total + p
+    return total / len(points)
+
+
+def _pairs(compiled):
+    """Each contact's pair of geoms, looked up once per compiled model: the
+    two geoms' ids, as a frozenset, to the contacts that pair writes, each
+    (its name, its own moving geom's id), in the description's order. An
+    event reads every contact at every step."""
+    pairs = getattr(compiled, "_contact_pairs", None)
+    if pairs is None:
+        model, pairs = compiled.model, {}
+        for c in compiled.description.contacts:
+            own = model.geom(c.name).id
+            key = frozenset((model.geom(f"{c.name}:against").id, own))
+            pairs.setdefault(key, []).append((c.name, own))
+        compiled._contact_pairs = pairs
+    return pairs
 
 
 def _record(force, normal, mu, depth, point):

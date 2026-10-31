@@ -690,13 +690,11 @@ class State:
 
     def _read(self, data, name):
         """Coordinate `name`'s value in `data`."""
-        model = self.compiled.model
-        jid = model.joint(name).id
-        if model.jnt_type[jid] != mujoco.mjtJoint.mjJNT_FREE:
-            return float(data.qpos[model.jnt_qposadr[jid]])
-        bid = model.jnt_bodyid[jid]
-        rotation = data.xmat[bid].reshape(3, 3)
-        return Placement(_frozen(data.xpos[bid] - rotation
+        at, free = self.compiled._reading[name]
+        if not free:
+            return float(data.qpos[at])
+        rotation = data.xmat[at].reshape(3, 3)
+        return Placement(_frozen(data.xpos[at] - rotation
                                  @ self.compiled._offset[name]),
                          _frozen(rotation))
 

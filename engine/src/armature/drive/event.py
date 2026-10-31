@@ -621,6 +621,15 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     independent = [i for i, d in enumerate(m.dofs) if d not in m.dependent]
     contacts = bool(m.description.contacts)
     rows, volts, carried, driven, latched = [], [], [], [], {}
+    # the actuators that share their motor, gear, gearbox and driver, which
+    # `_electrical` steps as one array: the same products element by element,
+    # each one's bus power summed in the actuators' order. A trip changes an
+    # actuator's mode, never these.
+    shared = {}
+    for i, a in enumerate(acts):
+        shared.setdefault((id(a.c), a.n, id(a.gearbox), id(a.driver)),
+                          []).append(i)
+    together = tuple(shared.values())
 
     def observed():
         """The `State` `data` holds, its rates, and, for a floating body,
@@ -733,14 +742,22 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
                                         else {}))
         if k == steps:
             break
-        power = 0.0
-        for a in acts:
-            tau, omega, rotor = out[a.name]
+        drawn = [0.0] * len(acts)
+        for group in together:
+            sides = [(acts[i], *out[acts[i].name]) for i in group]
+            a = sides[0][0]
             e = _electrical(a.c, a.n, a.gearbox, a.driver,
-                            np.asarray(a.n * (tau - rotor)),
-                            np.asarray(omega / a.n), np.asarray(rotor),
-                            np.asarray(a.r))
-            power += float(e.bus)
+                            np.array([s.n * (tau - rotor)
+                                      for s, tau, _, rotor in sides]),
+                            np.array([omega / s.n
+                                      for s, _, omega, _ in sides]),
+                            np.array([rotor for _, _, _, rotor in sides]),
+                            np.array([s.r for s, _, _, _ in sides]))
+            for i, w in zip(group, e.bus):
+                drawn[i] = float(w)
+        power = 0.0
+        for w in drawn:
+            power += w
         if bus.brake is not None:
             cap[BRAKE] = _brake_capacity(bus.brake, v)
         energy, _, _ = _substep(energy, -(power + bus.hotel), step, levels,
