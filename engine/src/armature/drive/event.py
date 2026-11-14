@@ -321,37 +321,58 @@ class _Simulation(NamedTuple):
 
 
 class _Carriers:
-    """What an event reads of the forces at each step: the rows of each
-    loop's `connect` in MuJoCo's constraint, and each hinge's and slide's
-    child body with its point's offset from that body's COM at home."""
+    """What an event reads of the forces at each of its `n` samples: the
+    rows of each loop's `connect` in MuJoCo's constraint, and each hinge's
+    and slide's child body with its point's offset from that body's COM at
+    home. Each step copies MuJoCo's arrays into buffers made once, and
+    `done` works the wrenches out over every sample together, so the record
+    costs a step a few copies."""
 
-    def __init__(self, m, seam):
+    def __init__(self, m, seam, n):
         model, d = m.model, m.description
         self.loops = {loop.name: model.equality(loop.name).id
                       for loop in d.loops}
+        self.rows = None  # each loop's constraint rows, found at the first
         held = [j for j in d.joints if j.kind != "free"
                 and j.name not in d.locks]
         self.names = [] if seam else [j.name for j in held]
+        held = held[:len(self.names)]
         self.bodies = np.array([model.body(j.child).id for j in held],
-                               dtype=int)[:len(self.names)]
+                               dtype=np.intp)
         self.offsets = np.array([m._offset[j.name] for j in held],
-                                dtype=float).reshape(-1, 3)[:len(self.names)]
+                                dtype=float).reshape(-1, 3)
         self.roots = model.body_rootid[self.bodies]
-        self.force, self.torque, self.point = [], [], []
-        self.loop_forces = {name: [] for name in self.loops}
+        j = len(self.names)
+        self.k = 0
+        self.loop_force = np.zeros((n, len(self.loops), 3))
+        self.cfrc = np.zeros((n, j, 6))
+        self.xpos = np.zeros((n, j, 3))
+        self.xmat = np.zeros((n, j, 9))
+        self.com = np.zeros((n, j, 3))
+
+    def _loop_rows(self, data):
+        """Each loop's three rows: an active equality's rows lead MuJoCo's
+        constraint and keep their places while the equalities do."""
+        ne = int(data.ne)
+        if self.rows is None or self.rows[0] != ne:
+            rows = data.efc_type[:ne] == mujoco.mjtConstraint.mjCNSTR_EQUALITY
+            ids = data.efc_id[:ne]
+            self.rows = (ne, np.array([np.flatnonzero(rows & (ids == eq))
+                                       for eq in self.loops.values()],
+                                      dtype=np.intp).reshape(-1, 3))
+        return self.rows[1]
 
     def read(self, model, data, loads, rates):
-        """Record this step's loop forces and joint wrenches from `data`,
-        just stepped: its constraint forces, and `mj_rnePostConstraint` at
-        the step's starting `rates`, which the integration has since moved
-        on, with the loads put on the bodies they act on, as `State.wrench`
-        does, since the step applied them as generalised forces."""
+        """Record this step's loop forces and what its joints carried from
+        `data`, just stepped: its constraint forces, and
+        `mj_rnePostConstraint` at the step's starting `rates`, which the
+        integration has since moved on, with the loads put on the bodies
+        they act on, as `State.wrench` does, since the step applied them as
+        generalised forces."""
+        k = self.k
+        self.k += 1
         if self.loops:
-            rows = (data.efc_type[:data.nefc]
-                    == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
-            for name, eq in self.loops.items():
-                at = np.flatnonzero(rows & (data.efc_id[:data.nefc] == eq))
-                self.loop_forces[name].append(data.efc_force[at].copy())
+            self.loop_force[k] = data.efc_force[self._loop_rows(data)]
         if not self.names:
             return
         put = _loads(model, loads) if loads else []
@@ -367,25 +388,31 @@ class _Carriers:
         if put:
             data.xfrc_applied[:] = 0.0
         b = self.bodies
-        turned = data.xmat[b].reshape(-1, 3, 3)
-        point = data.xpos[b] - np.einsum("nij,nj->ni", turned, self.offsets)
-        force = data.cfrc_int[b, 3:].copy()
-        self.force.append(force)
-        self.torque.append(data.cfrc_int[b, :3] + np.cross(
-            data.subtree_com[self.roots] - point, force))
-        self.point.append(point)
+        np.take(data.cfrc_int, b, axis=0, out=self.cfrc[k])
+        np.take(data.xpos, b, axis=0, out=self.xpos[k])
+        np.take(data.xmat, b, axis=0, out=self.xmat[k])
+        np.take(data.subtree_com, self.roots, axis=0, out=self.com[k])
 
     def done(self):
-        """The loops' forces and the joints' `Carried`, over the samples."""
-        loops = {name: _frozen(np.array(f).reshape(-1, 3))
-                 for name, f in self.loop_forces.items()}
+        """The loops' forces and the joints' `Carried`, over the samples:
+        each joint's point from its body's frame, the force from
+        `cfrc_int`, and its torque moved from the subtree's COM, about
+        which MuJoCo writes it, to the point."""
+        n = self.k
+        loops = {name: _frozen(self.loop_force[:n, i])
+                 for i, name in enumerate(self.loops)}
         joints = {}
         if self.names:
-            force, torque, point = (np.stack(x, axis=1) for x in (
-                self.force, self.torque, self.point))
-            for k, name in enumerate(self.names):
-                joints[name] = Carried(_frozen(force[k]), _frozen(torque[k]),
-                                       _frozen(point[k]))
+            turned = self.xmat[:n].reshape(n, -1, 3, 3)
+            point = self.xpos[:n] - np.einsum("snij,nj->sni", turned,
+                                              self.offsets)
+            force = self.cfrc[:n, :, 3:]
+            torque = self.cfrc[:n, :, :3] + np.cross(self.com[:n] - point,
+                                                     force)
+            for i, name in enumerate(self.names):
+                joints[name] = Carried(_frozen(force[:, i]),
+                                       _frozen(torque[:, i]),
+                                       _frozen(point[:, i]))
         return loops, joints
 
 
@@ -722,7 +749,7 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     independent = [i for i, d in enumerate(m.dofs) if d not in m.dependent]
     contacts = bool(m.description.contacts)
     rows, volts, carried, driven, latched = [], [], [], [], {}
-    carriers = _Carriers(m, seam)
+    carriers = _Carriers(m, seam, steps + 1)
 
     def observed():
         """The `State` `data` holds, its rates, and, for a floating body,
