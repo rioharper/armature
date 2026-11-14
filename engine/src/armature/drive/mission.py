@@ -801,7 +801,8 @@ def _event_run(m, mission, i, event, step, run, actuators):
                       run.driven)
     return Run(step, alone, run.v, run.contacts,
                MappingProxyType(run.tripped), MappingProxyType(run.slack),
-               MappingProxyType(run.snaps))
+               MappingProxyType(run.snaps), MappingProxyType(run.loops),
+               MappingProxyType(run.joints))
 
 
 def _event_halved(m, mission, i, event, step, simulate, actuators):

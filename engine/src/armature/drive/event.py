@@ -12,6 +12,15 @@ The simulation runs on a copy of the compiled model with the integrator
 which `settle` needs. Contact is MuJoCo's own, through the compiled pairs,
 and loads are forces at named sites, applied where they act each step.
 
+What the mechanism carried is read at each sample from the forces that moved
+it, MuJoCo's own solution of that step, never an explicit solve after it:
+each touching contact's force (`Run.contacts`), each loop's (`Run.loops`), and
+the wrench each joint carries (`Run.joints`), the force and the torque about
+its point that its parent exerts on its child, as `State.wrench` reads one.
+Along a hinge's axis that torque is what turns the joint: its actuator's,
+its stops', its limit's and its spring's, less what accelerates its rotor, so
+a hard stop an event drives a joint into carries its load there.
+
 Each mode is a d-q current i in the winding, from the motor's back-EMF
 E = Ke·ω_m and the bus voltage V, with R_φ at the winding's temperature
 (Lee et al.'s power-invariant convention, as `electrical` reads it), so the
@@ -105,7 +114,7 @@ from scipy.optimize import nnls
 
 from ..assembly import tangent
 from ..contact import from_solver
-from ..state import State, _frozen, _load_force
+from ..state import State, _frozen, _load_force, _loads
 from .bus import (BRAKE, SOURCE, TRIPPED_SOURCE, _brake_capacity,
                   _flux_capacity, _levels, _substep)
 from .electrical import (_current_limit, _electrical, _hot, _positive,
@@ -187,7 +196,14 @@ class Run:
     tripped in this run; one that tripped before it is not named. For each
     actuator whose cable pulls only, `slack` says at each sample whether
     its cable carried nothing, and `snaps` gives each time it snapped taut,
-    as `Snap`s in order."""
+    as `Snap`s in order.
+
+    `loops` gives each loop's force at each sample, an (n, 3) array in the
+    base frame (N), the force on its first site's body, as `inverse`
+    reports one; and `joints` each hinge's and slide's `Carried`, the
+    wrench it carried at each sample, both from MuJoCo's solution of that
+    step. Under an actuation seam the transmission pulls through
+    generalised forces with no point to act at, so `joints` is empty."""
     timestep: float
     trace: object
     v: np.ndarray
@@ -195,6 +211,19 @@ class Run:
     tripped: MappingProxyType = MappingProxyType({})
     slack: MappingProxyType = MappingProxyType({})
     snaps: MappingProxyType = MappingProxyType({})
+    loops: MappingProxyType = MappingProxyType({})
+    joints: MappingProxyType = MappingProxyType({})
+
+
+class Carried(NamedTuple):
+    """The wrench a joint carried at each of an event's samples: the
+    `force` (N) and the `torque` (N·m) about the joint's point that its
+    parent exerted on its child, each an (n, 3) array in the base frame, as
+    `State.wrench` reads one at a state; and `point`, where the joint's
+    point was at each sample, (n, 3) (m)."""
+    force: np.ndarray
+    torque: np.ndarray
+    point: np.ndarray
 
 
 class Snap(NamedTuple):
@@ -277,7 +306,8 @@ class _Simulation(NamedTuple):
     its driver is on}), bus voltage `v` and `contacts`; the time (s) each
     driver or the source `tripped` in it; and, for each actuator whose
     cable pulls only, whether it was `slack` at each sample and its
-    `snaps`."""
+    `snaps`; each loop's force at each sample (`loops`) and each joint's
+    `Carried` (`joints`)."""
     t: np.ndarray
     rows: list
     driven: list
@@ -286,6 +316,77 @@ class _Simulation(NamedTuple):
     tripped: dict
     slack: dict
     snaps: dict
+    loops: dict
+    joints: dict
+
+
+class _Carriers:
+    """What an event reads of the forces at each step: the rows of each
+    loop's `connect` in MuJoCo's constraint, and each hinge's and slide's
+    child body with its point's offset from that body's COM at home."""
+
+    def __init__(self, m, seam):
+        model, d = m.model, m.description
+        self.loops = {loop.name: model.equality(loop.name).id
+                      for loop in d.loops}
+        held = [j for j in d.joints if j.kind != "free"
+                and j.name not in d.locks]
+        self.names = [] if seam else [j.name for j in held]
+        self.bodies = np.array([model.body(j.child).id for j in held],
+                               dtype=int)[:len(self.names)]
+        self.offsets = np.array([m._offset[j.name] for j in held],
+                                dtype=float).reshape(-1, 3)[:len(self.names)]
+        self.roots = model.body_rootid[self.bodies]
+        self.force, self.torque, self.point = [], [], []
+        self.loop_forces = {name: [] for name in self.loops}
+
+    def read(self, model, data, loads, rates):
+        """Record this step's loop forces and joint wrenches from `data`,
+        just stepped: its constraint forces, and `mj_rnePostConstraint` at
+        the step's starting `rates`, which the integration has since moved
+        on, with the loads put on the bodies they act on, as `State.wrench`
+        does, since the step applied them as generalised forces."""
+        if self.loops:
+            rows = (data.efc_type[:data.nefc]
+                    == mujoco.mjtConstraint.mjCNSTR_EQUALITY)
+            for name, eq in self.loops.items():
+                at = np.flatnonzero(rows & (data.efc_id[:data.nefc] == eq))
+                self.loop_forces[name].append(data.efc_force[at].copy())
+        if not self.names:
+            return
+        put = _loads(model, loads) if loads else []
+        for site, force in put:
+            on = model.site_bodyid[site]
+            data.xfrc_applied[on, :3] += force
+            data.xfrc_applied[on, 3:] += np.cross(
+                data.site_xpos[site] - data.xipos[on], force)
+        stepped = data.qvel.copy()
+        data.qvel[:] = rates
+        mujoco.mj_rnePostConstraint(model, data)
+        data.qvel[:] = stepped
+        if put:
+            data.xfrc_applied[:] = 0.0
+        b = self.bodies
+        turned = data.xmat[b].reshape(-1, 3, 3)
+        point = data.xpos[b] - np.einsum("nij,nj->ni", turned, self.offsets)
+        force = data.cfrc_int[b, 3:].copy()
+        self.force.append(force)
+        self.torque.append(data.cfrc_int[b, :3] + np.cross(
+            data.subtree_com[self.roots] - point, force))
+        self.point.append(point)
+
+    def done(self):
+        """The loops' forces and the joints' `Carried`, over the samples."""
+        loops = {name: _frozen(np.array(f).reshape(-1, 3))
+                 for name, f in self.loop_forces.items()}
+        joints = {}
+        if self.names:
+            force, torque, point = (np.stack(x, axis=1) for x in (
+                self.force, self.torque, self.point))
+            for k, name in enumerate(self.names):
+                joints[name] = Carried(_frozen(force[k]), _frozen(torque[k]),
+                                       _frozen(point[k]))
+        return loops, joints
 
 
 def _actuated(m, ev, drive, actuators, temperature):
@@ -621,6 +722,7 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
     independent = [i for i, d in enumerate(m.dofs) if d not in m.dependent]
     contacts = bool(m.description.contacts)
     rows, volts, carried, driven, latched = [], [], [], [], {}
+    carriers = _Carriers(m, seam)
 
     def observed():
         """The `State` `data` holds, its rates, and, for a floating body,
@@ -703,12 +805,14 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
             force, carrying, tension, spun = _through(
                 model, data, acts, through, t, v, step, own, gaps, signs)
             data.qfrc_applied[:] += force
+        begun = data.qvel.copy()  # the step's rates, which it moves on
         mujoco.mj_step2(model, data)  # qacc is the continuous one, here
         if not (np.all(np.isfinite(data.qpos))
                 and np.all(np.isfinite(data.qvel))):
             raise RuntimeError(f"the event diverged at t = {t:g} s into it, "
                                f"at a timestep of {step:g} s; give it a "
                                f"smaller timestep=")
+        carriers.read(model, data, ev.loads, begun)
         accel = data.qacc.copy()
         if free:
             accel = np.linalg.solve(turned, accel - drift)
@@ -747,11 +851,13 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
                                 cap)
     times = np.arange(steps + 1) * step
     times[-1] = ev.duration
+    loops, joints = carriers.done()
     return _Simulation(times, rows, driven, _frozen(np.array(volts)),
                        tuple(carried),
                        {key: float(times[k]) for key, k in latched.items()},
                        {a: _flags(slack[a]) for a in sorted(slack)},
-                       {a: tuple(snaps[a]) for a in sorted(snaps)})
+                       {a: tuple(snaps[a]) for a in sorted(snaps)},
+                       loops, joints)
 
 
 def _flags(values):

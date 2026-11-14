@@ -3,9 +3,9 @@
 Every number is written in the base frame at the home posture: a joint is an
 axis direction and a point on it (a free joint only the point), a COM, site or
 cable end is a position, and an inertia is a full tensor about the COM in base
-axes. A loop closes two sites that coincide at home, and a contact sets a
-body's shape against a fixed one. The compiler derives the body-local frames
-MuJoCo needs.
+axes. A loop closes two sites that coincide at home, a contact sets a body's
+shape against a fixed one or another body's, and a stop gives past a face on
+a joint's travel. The compiler derives the body-local frames MuJoCo needs.
 
 Values are whatever the description's parameters were: floats when the truth
 model compiles it, SymPy symbols when the derivation reads it. Nothing here
@@ -18,6 +18,7 @@ from typing import NamedTuple
 WORLD = "world"
 JOINT_KINDS = ("hinge", "slide", "free")
 SHAPE_KINDS = ("sphere", "cylinder", "box", "plane")
+STOP_SIDES = ("low", "high")  # the end of its joint's range a stop gives to
 # A free joint's scalar components, in the order its chain applies them: the
 # point's base-frame position, then rotations about the body's own axes.
 FREE_COMPONENTS = ("x", "y", "z", "rx", "ry", "rz")
@@ -157,6 +158,7 @@ class Contact:
     mu: object
     stiffness: object = None
     damping: object = None
+    against_body: str = WORLD
 
     def __post_init__(self):
         owner = f"contact {self.name!r}"
@@ -165,6 +167,15 @@ class Contact:
                 raise DescriptionError([f"{owner}: {label} must be made by "
                                         f"shape(...), got "
                                         f"{getattr(self, label)!r}"])
+
+
+@dataclass(frozen=True)
+class Stop:
+    name: str
+    joint: str
+    face: object
+    stiffness: object
+    side: str
 
 
 @dataclass(frozen=True)
@@ -262,21 +273,53 @@ def shape(kind, *, pos, axis=None, radius=None, half_length=None,
 
 
 def contact(name, *, body, shape, against, mu, stiffness=None, damping=None):
-    """`body`'s `shape` touching `against`, a shape fixed to the world, with
-    Coulomb friction coefficient `mu` (0 for a frictionless contact).
+    """`body`'s `shape` touching `against`, with Coulomb friction coefficient
+    `mu` (0 for a frictionless contact). `against` is a shape fixed to the
+    world, or `(other, shape)`, a shape on the body `other`, both at home,
+    so that two moving bodies touch: one knee of a leg against its other.
 
     Without `stiffness`, the contact is rigid: the compiler sets the
     stiffest contact MuJoCo keeps stable, a settle reports how far the
     shapes interpenetrate, and raises past 1e-6 m. With `stiffness` (N/m)
     and optionally `damping` (N·s/m), the contact is a physical compliance,
     such as a tyre's: at rest it sinks in by its normal force over
-    `stiffness`. A compliance acts at one point, so it takes a sphere.
+    `stiffness`. A compliance acts at one point, so it takes a sphere, and
+    it is against the world: between two moving bodies a contact is rigid.
 
     The queries carry a touching contact as explicit rows at the points
     MuJoCo finds: `inverse` reports its normal force, its friction force and
     its friction-cone margin under `name`, never the solver's own forces.
+    Every force reported is the one on `body`; `other` takes its opposite.
     """
-    return Contact(name, body, shape, against, mu, stiffness, damping)
+    other = WORLD
+    if isinstance(against, tuple) and not isinstance(against, Shape):
+        try:
+            other, against = against
+        except ValueError:
+            raise DescriptionError([f"contact {name!r}: against must be "
+                                    f"shape(...) or (body, shape(...)), got "
+                                    f"{against!r}"]) from None
+    return Contact(name, body, shape, against, mu, stiffness, damping, other)
+
+
+def stop(name, *, joint, face, stiffness, side):
+    """A stop on a hinge's or a slide's travel that gives past its face.
+
+    Past `face`, a value of `joint`'s coordinate (radians or metres), toward
+    the `side` end of its range, "low" or "high", a linear spring of
+    `stiffness` (N·m/rad or N/m) pushes the joint back toward the face; on
+    the face's other side the stop carries nothing. Its give runs from the
+    face to that end of the range, which stays the hard end the stop bottoms
+    on.
+
+    It compiles as a fixed tendon on the joint whose spring's deadband ends
+    at the face: a passive force, so every query, settle and event feels it
+    as that spring, exactly. It gives back the energy it takes, since a
+    tendon's damping would act inside the face as well. The symbolic view
+    leaves it out, as it leaves the range: the equations hold on the face's
+    free side.
+    """
+    return Stop(name, joint, face, stiffness, side)
 
 
 def actuator(name, *, joint, gear=1.0, rotor_inertia=0.0, torque_limit=None):

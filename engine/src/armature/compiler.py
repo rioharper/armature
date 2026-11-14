@@ -28,12 +28,20 @@ MuJoCo refuses a moving body without mass or inertia, so a body a lump left
 without them compiles with `MASS_FLOOR` of its own mass and inertia, and the
 variant is flagged `approximate`.
 
-A contact compiles as a geom on its body, a geom on the world, and an explicit
-pair between them; no other geoms collide. The cone is pyramidal and, wherever
-friction acts, the noslip solver runs, so a resting contact does not creep. A
-rigid contact gets the loops' solver parameters; a compliant one gets direct
-stiffness and damping, scaled so its rest sag is the physical force over k;
-`rigid(contact)` drops that compliance for the rigid parameters.
+A contact compiles as a geom on its body, a geom on the world or on the body
+its `against` names, and an explicit pair between them; no other geoms
+collide. The cone is pyramidal and, wherever friction acts, the noslip solver
+runs, so a resting contact does not creep. A rigid contact gets the loops'
+solver parameters; a compliant one gets direct stiffness and damping, scaled
+so its rest sag is the physical force over k; `rigid(contact)` drops that
+compliance for the rigid parameters.
+
+A stop compiles as a fixed tendon on its joint, the joint's coordinate its
+length, with a linear spring whose deadband ends at the face and runs past
+the joint's range on the other side, so the spring pushes only past the
+face. MuJoCo applies a tendon's spring as a passive force, so the stop is
+the physical spring itself, not a soft constraint scaled by the solver's
+estimate of an inertia. A stop on a locked joint goes with the joint.
 """
 
 from contextlib import contextmanager
@@ -71,6 +79,8 @@ NOSLIP_ITERATIONS = 20  # wherever friction acts: without it, MuJoCo's soft
     # friction lets a resting contact creep. Noslip only acts on pyramidal
     # cones in 3.15 (on elliptic ones it changes nothing), so the cone is
     # pyramidal
+STOP_FAR = 1e6  # rad or m: a stop's deadband runs this far past its face on
+    # the side it carries nothing, beyond any travel a joint has
 
 _KIND = {"hinge": mujoco.mjtJoint.mjJNT_HINGE,
          "slide": mujoco.mjtJoint.mjJNT_SLIDE}
@@ -423,7 +433,8 @@ def _spec(description):
     compliant = compliant_contacts(description)
     for c in description.contacts:  # one geom each side, colliding only as
         _add_geom(handle[c.body], c.name, c.shape, com[c.body])  # this pair
-        _add_geom(spec.worldbody, f"{c.name}:against", c.against, np.zeros(3))
+        _add_geom(handle[c.against_body], f"{c.name}:against", c.against,
+                  com[c.against_body])
         mu = float(c.mu)
         pair = spec.add_pair(name=c.name, geomname1=f"{c.name}:against",
                              geomname2=c.name, condim=3 if mu > 0 else 1)
@@ -433,6 +444,16 @@ def _spec(description):
         if c.name in compliant:  # the stiffness is set by `_comply`
             d = COMPLIANT_IMPEDANCE
             pair.solimp = (d, d, 1e-3, 0.5, 2.0)
+
+    for s in description.stops:
+        if s.joint in locks:  # its joint is gone, and its travel with it
+            continue
+        tendon = spec.add_tendon(name=s.name)
+        tendon.wrap_joint(s.joint, 1.0)  # its length is the coordinate
+        tendon.stiffness[0] = float(s.stiffness)
+        face = float(s.face)
+        tendon.springlength = ([face, face + STOP_FAR] if s.side == "low"
+                               else [face - STOP_FAR, face])
 
     for a in description.actuators:
         if a.joint in locks:  # its joint is gone, and its rotor with it

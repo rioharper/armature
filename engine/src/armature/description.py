@@ -12,12 +12,12 @@ from types import MappingProxyType
 import numpy as np
 import sympy as sp
 
-from .elements import (FREE_COMPONENTS, JOINT_KINDS, SHAPE_KINDS, WORLD,
-                       Actuator, Body, Cable, Contact, DescriptionError,
-                       Gravity, Joint, Loop, Site)
+from .elements import (FREE_COMPONENTS, JOINT_KINDS, SHAPE_KINDS, STOP_SIDES,
+                       WORLD, Actuator, Body, Cable, Contact,
+                       DescriptionError, Gravity, Joint, Loop, Site, Stop)
 from .variants import Couple, Lock, Lump, Planar, Rigid, Variant, massless
 
-ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity, Contact)
+ELEMENTS = (Body, Joint, Site, Cable, Loop, Actuator, Gravity, Contact, Stop)
 
 DEFAULT_GRAVITY = (0.0, 0.0, -9.81)
 UNIT_TOL = 1e-9        # |‖axis‖ − 1| allowed, so (0, √½, √½) written in floats passes
@@ -52,6 +52,7 @@ class Description:
     locked_by: MappingProxyType = MappingProxyType({})
     floored: MappingProxyType = MappingProxyType({})
     contacts: tuple = ()
+    stops: tuple = ()
 
 
 def rigid_cables(description):
@@ -215,6 +216,8 @@ def describe(mechanism, params):
         problems += _check_actuator(a, joints)
     for c in by_kind[Contact]:
         problems += _check_contact(c, bodies)
+    for s in by_kind[Stop]:
+        problems += _check_stop(s, joints)
     problems += [f"parameter {n!r} is defined but never used; the description "
                  f"lacks the element that reads it, or it is stale"
                  for n in sorted(set(p) - p.used)]
@@ -227,7 +230,7 @@ def describe(mechanism, params):
                        loops=by_kind[Loop], actuators=by_kind[Actuator],
                        gravity=gravity,
                        params_used=frozenset(p.used),
-                       contacts=by_kind[Contact])
+                       contacts=by_kind[Contact], stops=by_kind[Stop])
 
 
 def _reduce(description, variant):
@@ -617,6 +620,46 @@ def _check_contact(c, bodies):
         problems.append(f"{owner}: a compliance acts at one point, so it "
                         f"takes a sphere; a {c.shape.kind} touches at "
                         f"several, each of which would take the stiffness")
+    other = c.against_body
+    if other != WORLD:
+        if other not in bodies:
+            problems.append(f"{owner}: against's body {other!r} is not "
+                            f"declared")
+        elif other == c.body:
+            problems.append(f"{owner}: against is on {other!r}, the moving "
+                            f"body itself; a contact touches two bodies")
+        if c.against.kind == "plane":
+            problems.append(f"{owner}: a plane is fixed to the world; on "
+                            f"{other!r} it would move")
+        if c.stiffness is not None:
+            problems.append(f"{owner}: a compliance is against the world; "
+                            f"between {c.body!r} and {other!r} a contact is "
+                            f"rigid")
+    return problems
+
+
+def _check_stop(s, joints):
+    owner, problems = _label(s), []
+    j = joints.get(s.joint)
+    if j is None:
+        problems.append(f"{owner}: joint {s.joint!r} is not declared")
+    elif j.kind not in ("hinge", "slide"):
+        problems.append(f"{owner}: joint {s.joint!r} is a {j.kind} joint; a "
+                        f"stop gives along a hinge's or a slide's travel")
+    if s.side not in STOP_SIDES:
+        problems.append(f"{owner}: side {s.side!r} is not one of "
+                        f"{STOP_SIDES}")
+    k = _num(s.stiffness)
+    if k is not None and not k > 0:
+        problems.append(f"{owner}: stiffness {k} must be positive")
+    face = _num(s.face)
+    if (face is not None and j is not None and j.range is not None
+            and j.kind in ("hinge", "slide")):
+        lo, hi = (_num(v) for v in j.range)
+        if lo is not None and hi is not None and not lo <= face <= hi:
+            problems.append(f"{owner}: face {face:g} is outside joint "
+                            f"{s.joint!r}'s range ({lo:g}, {hi:g}), which "
+                            f"is the stop's hard end")
     return problems
 
 

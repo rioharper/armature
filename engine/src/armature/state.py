@@ -342,8 +342,9 @@ class State:
 
         On a closed chain each loop's force comes from the explicit solve
         `inverse` makes for the same `qdd` and `loads`, applied at its two
-        sites, and each touching contact's likewise, at its points; the
-        solver's own constraint forces are not read.
+        sites, and each touching contact's likewise, at its points, and
+        opposite on the other body where it touches one; the solver's own
+        constraint forces are not read.
         """
         with self._scratch() as data:
             return self._wrench(data, body, qdd, loads)
@@ -388,9 +389,13 @@ class State:
                  for s, f in loop_forces]
         applied = [(model.site_bodyid[site], data.site_xpos[site], force)
                    for site, force in _loads(model, loads) + named]
-        body_of = {c.name: c.body for c in compiled.description.contacts}
-        applied += [(model.body(body_of[p.contact]).id, p.position, force)
-                    for p, force in contact_forces]
+        bodies_of = {c.name: (c.body, c.against_body)
+                     for c in compiled.description.contacts}
+        for p, force in contact_forces:  # on the body, its opposite on the
+            on, other = bodies_of[p.contact]  # other where that one moves
+            applied.append((model.body(on).id, p.position, force))
+            if model.body(other).id:
+                applied.append((model.body(other).id, p.position, -force))
         for on, at, force in applied:
             lever = at - data.xipos[on]  # xfrc acts at the COM
             data.xfrc_applied[on, :3] += force

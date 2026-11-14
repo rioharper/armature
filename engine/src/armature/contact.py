@@ -2,10 +2,13 @@
 
 A contact touches where MuJoCo's collision finds its pair within `TOUCH`. Each
 point it finds becomes rows in the explicit solve: the force on the moving
-body at that point, along the directions its joints let it move in (a planar
-chain's two in-plane axes, a chain of slides its axes' span, all three base
-axes otherwise; only the normal on a frictionless contact), with the Jacobian
-from `mj_jac` at the point. Points whose rows coincide, as a planar wheel's
+body at that point, along the directions the joints between it and what it
+touches let it move in (a planar chain's two in-plane axes, a chain of slides
+its axes' span, all three base axes otherwise; only the normal on a
+frictionless contact), with the Jacobian from `mj_jac` at the point. Against
+another body the rows are the Jacobian of the moving body's point less that
+of the other body's point there, so the force on one is the opposite of the
+force on the other. Points whose rows coincide, as a planar wheel's
 two rims do, are one constraint and are merged, so a lost rank means the same
 on a wheel as on a pin. A contact's force is reported as its total over its
 points, with the friction-cone margin μN − |F_t|: positive where Coulomb
@@ -25,7 +28,7 @@ from typing import NamedTuple
 import mujoco
 import numpy as np
 
-from .assembly import _directions
+from .assembly import _around, _directions
 from .elements import WORLD
 
 TOUCH = 1e-8      # m: a contact this close counts as touching. It is the
@@ -76,8 +79,9 @@ def touching(compiled, data):
         if not found:
             continue
         body = model.body(c.body).id
+        other = model.body(c.against_body).id  # 0, the world's, by default
         frictionless = float(c.mu) == 0.0
-        plane = _reach(compiled, c.body)
+        plane = _reach(compiled, c.body, c.against_body)
         merged = []  # [rows, positions, normal, directions, penetration]
         for i in found:
             normal = _into(model, data, i, c.name) * data.contact.frame[i][:3]
@@ -85,6 +89,10 @@ def touching(compiled, data):
             position = data.contact.pos[i].copy()
             jac = np.zeros((3, model.nv))
             mujoco.mj_jac(model, data, jac, None, position, body)
+            if other:  # the moving body's point relative to the other's
+                theirs = np.zeros((3, model.nv))
+                mujoco.mj_jac(model, data, theirs, None, position, other)
+                jac -= theirs
             rows = directions @ jac
             depth = max(0.0, -float(data.contact.dist[i]))
             for m in merged:
@@ -164,20 +172,18 @@ def _record(force, normal, mu, depth, point):
                         _frozen(point))
 
 
-def _reach(compiled, body):
-    """The directions `body`'s points can move in, by the joints between it
-    and the world: a planar chain's plane, a chain of slides alone the span
-    of their axes, and all three otherwise. A force across them is carried
-    by the joints, which the solve has no rows for, so it is not asked."""
-    joint_into = {j.child: j for j in compiled.description.joints}
-    slides, at = [], body
-    while at != WORLD:
-        j = joint_into[at]
+def _reach(compiled, body, other=WORLD):
+    """The directions `body`'s points can move in against `other`'s, by the
+    joints between them (the world's, by default): a planar chain's plane, a
+    chain of slides alone the span of their axes, and all three otherwise.
+    A force across them is carried by the joints, which the solve has no
+    rows for, so it is not asked."""
+    slides = []
+    for j in _around(compiled.description, body, other):
         if j.kind == "hinge" or j.kind == "free":
-            return _directions(compiled, body, WORLD)
+            return _directions(compiled, body, other)
         if j.name not in compiled.description.locks:
             slides.append(np.array(j.axis, dtype=float))
-        at = j.parent
     if not slides:
         return np.zeros((0, 3))
     _, s, vt = np.linalg.svd(np.array(slides))

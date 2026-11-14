@@ -223,11 +223,17 @@ def _contact(c, d):
     shape, against = described(c.shape), described(c.against)
     return {"name": c.name, "body": c.body, "shape": shape["kind"],
             "at": shape["pos"], "axis": shape["axis"], "size": shape["size"],
+            "against body": c.against_body,
             "against": against["kind"], "against at": against["pos"],
             "against axis": against["axis"], "against size": against["size"],
             "mu": _n(c.mu),
             "stiffness": None if c.stiffness is None else _n(c.stiffness),
             "damping": None if c.damping is None else _n(c.damping)}
+
+
+def _stop(s, d):
+    return {"name": s.name, "joint": s.joint, "face": _n(s.face),
+            "side": s.side, "stiffness": _n(s.stiffness)}
 
 
 SECTIONS = (  # (title, the Description's attribute, its row from (element, d))
@@ -238,6 +244,7 @@ SECTIONS = (  # (title, the Description's attribute, its row from (element, d))
     ("Loops", "loops", _loop),
     ("Actuators", "actuators", _actuator),
     ("Contacts", "contacts", _contact),
+    ("Stops", "stops", _stop),
 )
 
 

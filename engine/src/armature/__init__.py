@@ -11,7 +11,9 @@ queried on explicit, named states.
 A closed chain adds `loop(name, a, b)`; `m.independent` names what `at()`
 takes, and it solves the rest so every loop closes. A wheel or a foot adds
 `contact(name, body=..., shape=shape(...), against=shape("plane", ...),
-mu=...)`; `s.inverse()` reports what each touching contact carries.
+mu=...)`; `s.inverse()` reports what each touching contact carries. Two
+moving bodies touch through `against=(other, shape(...))`. A stop that gives
+past its face is `stop(name, joint=..., face=..., stiffness=..., side=...)`.
 
     rigid = armature.reduce(mechanism, lock("elbow", 0.0, assumption="A3"))
     armature.compile(rigid, PARAMS).at().release(hold)
@@ -94,7 +96,7 @@ _FROM = {
     "contact": ["ContactForce"],
     "description": ["Description", "describe"],
     "elements": ["DescriptionError", "actuator", "body", "cable", "contact",
-                 "gravity", "joint", "loop", "shape", "site"],
+                 "gravity", "joint", "loop", "shape", "site", "stop"],
     "equations": ["Equations", "equations"],
     "review": ["Frames", "Review", "frames", "render", "review"],
     "sampler": ["PoseEnvelope", "Rejected", "Samples", "clearance",
@@ -148,7 +150,7 @@ __all__ += ["Frames", "Review", "box", "compose", "cylinder", "frames", "point",
             "render", "review", "rod", "sphere"]
 __all__ += ["AccountingError", "account", "lump", "massless", "planar",
             "rigid"]
-__all__ += ["ContactForce", "contact", "shape"]
+__all__ += ["ContactForce", "contact", "shape", "stop"]
 __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
             "pose_envelope", "sample", "sample_states"]
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
