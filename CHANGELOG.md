@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 4.1.1 — 2026-11-18
 
 ### An event steps about 1.45 times faster, to the same bits
 
@@ -10,7 +10,7 @@ Profiled on a project's falls (Ibex T1.7c): of a fall's 265 µs a step, MuJoCo's
 - **`tangent` forms its cross products itself** (`assembly.cross`), each component a product less a product as `np.cross` forms it.
 - **An event steps the actuators that share a motor, gear, gearbox and driver as one array** through `_electrical`, element by element, and sums their bus power in the actuators' order.
 
-Nothing computed changes: 69 of the project's stored falls, fallen again across its worlds, windings and band corners, read the same to the bit. A fall took 1.24–2.81 s against 1.81–3.90 s, the same falls timed alternately on both engines.
+Nothing computed changes: 69 of the project's stored falls, fallen again across its worlds, windings and band corners, read the same to the bit. A fall took 1.24–2.81 s against 1.81–3.90 s, the same falls timed alternately on both engines. Rebased onto 4.1.0 for this release, 60 of Ibex's falls, across its falls margins, both windings and all three worlds, read the same to the bit on 4.1.0 and on 4.1.1, and 24 of them ran 1.53 times faster natively, timed alternately. 4.1.1 shipped on the engine's suite, 1,216 passed and 6 xfailed, without the release run `evals/README.md` requires: no skill, reference or template changed, and nothing the engine computes.
 
 ## 4.1.0 — 2026-11-14
 
