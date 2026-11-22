@@ -119,7 +119,13 @@ case "$cmd" in
       *) die "$line: could not tell whether $tag contains that commit" \
              "(gh api failed)" ;;
     esac
-    sed -bi "s|^armature-engine = {[^}]*}|armature-engine = $want|" "$pyproject"         || die "could not rewrite $pyproject"
+    # GNU sed's -b keeps a CRLF file's line ends on Windows; BSD sed (macOS)
+    # has no -b and keeps them anyway.
+    rewrite="s|^armature-engine = {[^}]*}|armature-engine = $want|"
+    { sed -b "$rewrite" "$pyproject" > "$pyproject.new" 2>/dev/null \
+          || sed "$rewrite" "$pyproject" > "$pyproject.new"; } \
+        && mv "$pyproject.new" "$pyproject" \
+        || die "could not rewrite $pyproject"
     grep -qF "armature-engine = $want" "$pyproject" \
         || die "the engine source in $pyproject was not rewritten"
     echo "old: $current"
