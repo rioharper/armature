@@ -1,6 +1,6 @@
 # ADR 0011 — Actions are gated, not stages
 
-2026-10-21 — Status: accepted
+2026-10-21 — Status: superseded by [ADR 0013](0013-one-check-and-advisory-reviews.md)
 
 A project no longer records where it is. The `**Stage:**` and
 `**Latest artifacts:**` lines leave the `CLAUDE.md` template, and no skill

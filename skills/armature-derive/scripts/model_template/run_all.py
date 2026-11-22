@@ -13,7 +13,7 @@ each of those callables is one check. Nothing in this file lists modules or
 tests, so a module added later — a `spring.py` for a plan task — is collected
 the moment it lands, and so is a test added to a checks module that already
 exists. A review's checks file, `review_<date>_<artifact>_checks.py`, has
-no module beside it and is collected by itself, last (ADR 0011).
+no module beside it and is collected by itself, last.
 
 That is deliberate. A hardcoded list is a list you forget to add to, and the
 self-tests you forget are exactly the ones that then never run.
@@ -88,10 +88,9 @@ def is_model_module(stem):
 def is_review_checks(path):
     """
     Whether `path` is a review's checks file,
-    `review_<date>_<artifact>_checks.py`: one review's recomputations, a
-    `test_F<n>_*` per finding it closes (ADR 0011). It has no module of its
-    own beside it, so it is collected as a module by itself, and a
-    `fixed` closure's `check` passes when this run does.
+    `review_<date>_<artifact>_checks.py`: the recomputations a review's
+    findings were fixed against, a `test_F<n>_*` each. It has no module of
+    its own beside it, so it is collected as a module by itself.
     """
     stem = path.stem
     return (path.suffix == ".py" and stem.startswith("review_")

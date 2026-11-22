@@ -247,7 +247,7 @@ def is_review_checks(path):
     """
     Whether this file is a review's checks file,
     `review_<date>_<artifact>_checks.py`: one review's recomputations, a
-    `test_F<n>_*` per finding it closes (ADR 0011). It pairs with no module
+    `test_F<n>_*` per finding fixed against it. It pairs with no module
     and makes no claim of its own for a truth check to test, so neither gate
     holds it; `run_all.py` collects it by itself. A file so named with a
     module of its own beside it is that module's checks, as `run_all.py`

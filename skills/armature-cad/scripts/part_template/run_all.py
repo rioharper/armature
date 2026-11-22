@@ -15,7 +15,7 @@ defines callables named `test_*`; each of those callables is one check.
 Nothing in this file lists modules or tests, so a part file added later is
 collected the moment its `<PART-ID>_checks.py` lands. A review's checks
 file, `review_<date>_<artifact>_checks.py`, has no module beside it and is
-collected by itself, last (ADR 0011). A module-level
+collected by itself, last. A module-level
 `armature.Margin`, or a tuple of them, is collected too, searched and held
 to passing as in the model template, an UNCHECKED one failing unless
 DRIVE_EXEMPT argues it; run without the engine, as a part file is, there are
@@ -66,10 +66,9 @@ def is_model_module(stem):
 def is_review_checks(path):
     """
     Whether `path` is a review's checks file,
-    `review_<date>_<artifact>_checks.py`: one review's recomputations, a
-    `test_F<n>_*` per finding it closes (ADR 0011). It has no module of its
-    own beside it, so it is collected as a module by itself, and a
-    `fixed` closure's `check` passes when this run does.
+    `review_<date>_<artifact>_checks.py`: the recomputations a review's
+    findings were fixed against, a `test_F<n>_*` each. It has no module of
+    its own beside it, so it is collected as a module by itself.
     """
     stem = path.stem
     return (path.suffix == ".py" and stem.startswith("review_")

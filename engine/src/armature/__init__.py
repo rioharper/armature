@@ -71,8 +71,8 @@ input number lives once with its unit, band, status and provenance:
 `py -m armature.ledger check` reports each entry whose `as_written`
 disagrees with its value, whose unit is not SI, or whose citation is
 missing. It is imported on its own, never from here, and so is
-`armature.gate` (ADR 0011). Every name here is imported the first time it
-is read, so neither of them loads MuJoCo.
+`armature.check` (ADR 0013), which runs it and every `run_all.py`. Every
+name here is imported the first time it is read, so neither loads MuJoCo.
 
 A spec-stage description writes its bodies as `point`, `rod`, `box`,
 `cylinder` and `sphere`, joined by `compose`. `armature.review(mechanism,
@@ -85,9 +85,9 @@ import sys
 import types
 
 # Each public name, by the submodule it comes from. A name is imported the
-# first time it is read, so `import armature.ledger` or `armature.gate`
-# loads neither MuJoCo nor SymPy, and the hook that calls the gate stays
-# fast (#155). `drive` is a subpackage, bound by its own name.
+# first time it is read, so `import armature.ledger` or `armature.check`
+# loads neither MuJoCo nor SymPy. `drive` is a subpackage, bound by its
+# own name.
 _FROM = {
     "drive": ["drive"],
     "assembly": ["ClosureError"],

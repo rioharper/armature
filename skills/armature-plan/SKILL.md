@@ -80,7 +80,7 @@ Resolve with the user: available hours per week, hard deadlines, whether analysi
 
 Work these questions in rounds per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`, checkpointing the plan after each. A phase-ordering question waits until the spec gap that drives it is resolved. Lookupables here are a lead time, a part's availability, a datasheet number.
 
-The draft is **not** the plan and never becomes it. It lives on the plan's branch, `armature/plan-<name>`, cut from `main` when the interview starts, with `CONTEXT.md` beside it; it exists only while the interview runs and its review settles, and the branch deletes it before merging (*Close through the gate*). An older project's `.gitignore` lists it: drop that line. Nothing is created on the tracker until the branch merges: a half-specified plan published as forty issues is worse than no plan, because the fog in it is now indistinguishable from work. A plan branch whose draft has no issues behind it is an abandoned interview; offer to resume it or delete the branch.
+The draft is **not** the plan and never becomes it. It is `docs/02-plan/draft.md`, with `CONTEXT.md` beside it; it exists only while the interview runs, and it is deleted once the issues are cut (*Close*). Nothing is created on the tracker until the user accepts the draft: a half-specified plan published as forty issues is worse than no plan, because the fog in it is now indistinguishable from work. A draft with no issues behind it is an unfinished interview; offer to resume it.
 
 ## The plan on the tracker
 
@@ -202,9 +202,8 @@ A leaf that runs somewhere other than the plan's default machine names it too, w
 
 **T-ids are permanent.** Assign once, never renumber: a leaf inserted after `T3.2b` is `T3.2c`, even where that leaves the order looking odd. Renumbering would mean editing every issue title in the phase and would still orphan the T-ids already cited by closed issues, `docs/decisions.md`, and every report written under `references/derivation-report-template.md`.
 
-Three cuts a planner makes before a session discovers them:
+Two cuts a planner makes before a session discovers them:
 
-- a review and its rework are separate leaves (the **armature-red-team** agent runs in its own context; resolving its findings costs a session);
 - a report (re-run the model, tabulate the sweep, write back to the ledger and the notes) is its own leaf;
 - a change of executor is a cut.
 
@@ -218,7 +217,7 @@ User-executed leaves keep the older bound: under a day of hands-on work.
 |---|---|
 | Writing: documents, repository layout, configuration, a schema | 15–45 min |
 | Checked outside the editor: a build, a real source tree at a tag, constants that must agree across documents | 1–2 h |
-| Derivation milestone, three leaves | draft ~30 min · review ~0 for the driver · rework ~1 h |
+| Derivation milestone | 1–1.5 h |
 | Report: re-run, tabulate, write back | 1–1.5 h |
 
 Wall-clock tracks how much of the leaf is checked against something the executor does not control: a fast draft is fast because it defers the checking, and the checking is where the hours are.
@@ -247,14 +246,10 @@ Dates and hours are estimates and labeled as such. If the spec's scope doesn't f
 - "I'm stuck, need a better approach for phase N": dispatch the **armature-inventor** agent.
 - A concept the plan assumes the user knows: call the Skill tool with "armature-teach".
 
-## Close through the gate
+## Close
 
-The issues are cut only after the plan's branch merges (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`). The hook watches no issue creation, so this order is yours to keep:
-
-1. Log the planning decisions (phases chosen, prototypes selected, hours assumed) in `docs/decisions.md`, commit the finished draft and `CONTEXT.md`, and dispatch the **armature-red-team** agent at that commit with the draft, `CONTEXT.md` and the spec it is cut from (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*). The draft is the plan's one reviewable form: every issue inherits what it carries.
-2. Close each BLOCKER and MAJOR (`gates.md`, *Closing a finding*) and commit. That commit's draft is what the issues are cut from; note its SHA.
-3. `git rm docs/02-plan/draft.md` and commit: once the issues exist they are the plan, and a draft left on `main` would be a second one.
-4. `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge` on the branch, routing each `fail` by `gates.md`. Done when it exits 0; then `git checkout main` and `git merge --ff-only armature/plan-<name>`.
-5. Cut the issues from `git show <step 2's SHA>:docs/02-plan/draft.md`.
+1. Log the planning decisions (phases chosen, prototypes selected, hours assumed) in `docs/decisions.md` and commit the finished draft and `CONTEXT.md`.
+2. Walk the user through the draft and settle what they change. A red-team review of a plan is on request only (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*).
+3. Cut the issues from the draft, then `git rm docs/02-plan/draft.md` and commit: once the issues exist they are the plan, and a draft left beside them would be a second one.
 
 Report the index issue, how many leaves were materialised and for which phases, and which phases are still task lists waiting to be cut.

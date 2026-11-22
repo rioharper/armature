@@ -18,13 +18,7 @@
 #  4. runs `uv sync` with a persistent cache of its own, so the agent's
 #     sandboxed `uv run` needs no network grant (#112);
 #  5. commits the lot on `main`, so the project has the history a spec stage
-#     leaves. Its root ledger.toml puts it in the plugin hook's scope, so it
-#     is left as init leaves a project: on `main`, which the skills merge
-#     into and the hook guards, with `.armature/`, the gate's stamps,
-#     ignored, since the gate runs the model only on a clean tree (ADR 0011),
-#     and a waivers.toml whose standing waivers, one per gate, waive the
-#     engine item: step 3's path pin, which no project commits (ADR 0009),
-#     fails it by construction.
+#     leaves.
 set -euo pipefail
 
 mechanism="${1:?usage: scaffold.sh <mechanism>}"
@@ -57,24 +51,12 @@ grep -qF "path = \"$engine\"" "$model/pyproject.toml" \
 ( cd "$model" && UV_CACHE_DIR="${ARMATURE_EVAL_UV_CACHE:-/var/tmp/armature-eval-uv}" \
     UV_PYTHON_DOWNLOADS=never uv sync --quiet )
 
-printf '.venv/\n__pycache__/\n.pytest_cache/\nreview/\n.armature/\n' > .gitignore
-for gate in merge buy; do
-    cat <<EOF
-[[waiver]]
-gate = "$gate"
-item = "engine"
-scope = "standing"
-reason = "the eval sandbox's path pin: evals/scaffold.sh points the model at the plugin copy's engine by path, so the run reads the engine under test; a project pins it by tag"
-confirmed = 2026-10-21
-
-EOF
-done > waivers.toml
+printf '.venv/\n__pycache__/\n.pytest_cache/\nreview/\n' > .gitignore
 git init -q -b main
 # What claude plugin eval's sandbox lays over the workspace: shell and editor
-# configuration masked from the agent, and the harness's own artifacts. Left
-# untracked they dirty the tree, so the gate never stamps a model run and the
-# hook refuses every merge (#160). They are excluded in the clone, so the
-# project's .gitignore stays the project's.
+# configuration masked from the agent, and the harness's own artifacts. They
+# are excluded in the clone, so the agent's `git status` is the project's and
+# the project's .gitignore stays the project's.
 printf '%s\n' /.bash_profile /.bashrc /.claude/ /.eval-artifacts /.gitconfig \
     /.gitmodules /.idea /.mcp.json /.profile /.ripgreprc /.vscode /.zprofile \
     /.zshrc >> .git/info/exclude

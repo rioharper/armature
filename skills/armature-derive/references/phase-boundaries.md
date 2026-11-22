@@ -1,6 +1,6 @@
 # Phase boundaries
 
-A phase ends when you think "ok, we're done with that" — a milestone branch merged, an interview finished, a review's findings resolved. The boundary between two phases is the only place to decide what happens to the session's context. Mid-phase there is no decision: continue, or split remaining work into subagents. Compacting mid-phase loses the thread.
+A phase ends when you think "ok, we're done with that" — a milestone checkpoint passed, an interview finished, a review's findings resolved. The boundary between two phases is the only place to decide what happens to the session's context. Mid-phase there is no decision: continue, or split remaining work into subagents. Compacting mid-phase loses the thread.
 
 ## The five options, judged in order
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### One check and advisory reviews, in place of the gates
+
+[ADR 0013](docs/adr/0013-one-check-and-advisory-reviews.md), superseding ADR 0011. Breaking: `armature.gate` and the plugin hook are gone.
+- **`armature.sh check`** (`armature.check`) runs `ledger check` and every `run_all.py`, streams each run's output, prints a `pass` or `fail` line per item and exits 1 on a failure. A folder named on the command line runs alone. Nothing is cached and git is never read.
+- **Removed:** the `merge` and `buy` gates, `hooks/hooks.json`, stamps under `.armature/`, the `armature/<kind>-<name>` branch rule, `waivers.toml`, order records under `docs/orders/`, and `references/gates.md`. `init` no longer seeds any of them.
+- **The red team advises.** Its report has no findings block, is pinned to no commit, and has no recheck mode. It is dispatched when a spec is finished, before money or a drawing leaves the project, and on request. No fix is re-reviewed.
+- **The stage skills** end in the check and a commit. Derive's checkpoint is the check, with one offered review at Milestone 3, and it no longer re-pins the engine: `engine-source.sh pin` moves it when the project wants a new tag.
+- **Migrating a project:** delete `waivers.toml`, `docs/orders/` and `.armature/`, and replace the gate rules in its `CLAUDE.md` with `init`'s current standing rules.
+
 ## 4.1.1 — 2026-11-18
 
 ### An event steps about 1.45 times faster, to the same bits
