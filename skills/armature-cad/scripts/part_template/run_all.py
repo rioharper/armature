@@ -3,7 +3,7 @@ run_all.py — every self-test in cad/parts/, in order, end to end.
 
     uv run --project analysis/model --with 'build123d~=0.11' python cad/parts/run_all.py
 
-Exits nonzero on the first failing check, which is what makes it a
+Runs every check and exits nonzero if any failed, which is what makes it a
 pre-commit hook or CI step. `--project analysis/model` runs it in the
 model's environment, which has the engine the sweep poses its envelopes
 with; the part files need only build123d and the ledger.
@@ -278,13 +278,34 @@ def discover_exemptions(names=None):
 
 
 def _run(title, checks):
+    """Run every check under `title`, a failing one printing its FAIL row
+    and the run going on; the names of those that failed."""
     print(f"=== {title} ===")
+    failed = []
     for check in checks:
-        check()
+        try:
+            check()
+        except Exception as e:
+            kind = ("" if isinstance(e, AssertionError)
+                    else f"{type(e).__name__}: ")
+            print(f"  [FAIL] {check.__name__}: {kind}{e}")
+            failed.append(f"{title}: {check.__name__}")
+    return failed
+
+
+def _report(failed):
+    """End the run: nonzero, naming each failed check, where any failed."""
+    if failed:
+        print(f"{len(failed)} check(s) failed:")
+        for name in failed:
+            print(f"  {name}")
+        raise SystemExit(1)
 
 
 def main(names=None):
-    """Run the named milestones, or every one, in order; the first failure raises."""
+    """Run the named milestones, or every one, in order. A failing check
+    prints its FAIL row and the rest still run; the run exits nonzero at
+    the end, naming each one that failed."""
     unknown = [name for name in names or []
                if not (HERE / f"{name}.py").is_file()
                and not (HERE / name / "__init__.py").is_file()]
@@ -292,12 +313,16 @@ def main(names=None):
     milestones = discover_milestones(names)
     assert milestones, (f"no milestone modules named {names} in {HERE}" if names
                         else f"no milestone modules found in {HERE}")
+    failed = []
     for title, _module, checks in milestones:
-        _run(title, checks)
+        failed += _run(title, checks)
         print("")
+    _report(failed)
     print(f"All self-tests passed across {'; '.join(names)}." if names
           else "All self-tests passed across all milestones.")
 
 
 if __name__ == "__main__":
+    # Rows show as they print, even with the output sent to a file.
+    sys.stdout.reconfigure(line_buffering=True)
     main(sys.argv[1:] or None)
