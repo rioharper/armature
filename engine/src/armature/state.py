@@ -955,18 +955,20 @@ def _quench(model, data, loads, min_steps, max_steps):
     Rest is judged on the speed each step reaches, before any quench; read
     after one, a steady creep, whose acceleration is nil, would pass for
     rest the moment rounding flips the sign of q̇·q̈."""
+    # fetched once: each MjData attribute read builds a new view
+    qpos, qvel, qacc = data.qpos, data.qvel, data.qacc
+    applied, sized = data.qfrc_applied, model.nv > 0
     for step in range(1, max_steps + 1):
         mujoco.mj_step1(model, data)
-        data.qfrc_applied[:] = _load_force(model, data, loads)  # here, now
+        applied[:] = _load_force(model, data, loads)  # here, now
         mujoco.mj_step2(model, data)
-        if not (np.all(np.isfinite(data.qpos))
-                and np.all(np.isfinite(data.qvel))):
+        if not (np.isfinite(qpos).all() and np.isfinite(qvel).all()):
             return False, step
-        speed = float(np.max(np.abs(data.qvel), initial=0.0))
-        if float(data.qvel @ data.qacc) < 0.0:
-            data.qvel[:] = 0.0
+        speed = float(np.abs(qvel).max()) if sized else 0.0
+        if float(qvel @ qacc) < 0.0:
+            qvel[:] = 0.0
         if (step >= min_steps and speed < REST_SPEED
-                and np.max(np.abs(data.qacc), initial=0.0) < REST_ACCEL):
+                and (np.abs(qacc).max() if sized else 0.0) < REST_ACCEL):
             return True, step
     return False, max_steps
 

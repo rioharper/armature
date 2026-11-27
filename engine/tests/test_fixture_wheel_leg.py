@@ -325,6 +325,24 @@ def test_resting_on_the_tyre_matches_the_closed_form_lift(skid_m):
         assert s.q["y"] == pytest.approx(float(lift["lift"]), abs=1e-12)
 
 
+def test_a_resting_state_is_the_one_at_walks_from_home(skid_m, monkeypatch):
+    """`rest_on`'s Newton steps walk the leg's loop from the step before,
+    but the state it keeps is `at()`'s own, walked from home: the same to
+    the bit as asking `at()` for its coordinates. Only its first step and
+    that last state walk from home."""
+    from armature.assembly import Closure
+    walks = []
+    assemble = Closure.assemble
+    monkeypatch.setattr(Closure, "assemble", lambda self, values, near=None:
+                        walks.append(near is None)
+                        or assemble(self, values, near))
+    samples = armature.sample(skid_m, n=8, seed=SEED, rest_on={"tyre": "y"})
+    assert sum(walks) <= 2 * samples.drawn < len(walks)
+    for s in samples.states:
+        again = skid_m.at(q={n: s.q[n] for n in skid_m.independent})
+        assert again.q == s.q and again.qd == s.qd
+
+
 def test_coordinates_rest_on_the_tyre_as_the_sampler_does():
     """The search's `Coordinates` takes `rest_on` straight to the sampler's
     map: the torso's height is solved, not an axis, and at every point of

@@ -55,9 +55,9 @@ def write_q(compiled, data, values):
     """Write coordinate `values` (keyed by name) into `data.qpos`. A
     floating body's `Placement` places its joint's point and turns the body;
     MuJoCo's own position is its COM's."""
-    model = compiled.model
+    address, qpos = compiled._address, data.qpos
     for name, value in values.items():
-        adr = model.jnt_qposadr[model.joint(name).id]
+        adr = address[name][0]
         if isinstance(value, tuple):  # a Placement, a NamedTuple
             data.qpos[adr:adr + 3] = (value.position + value.rotation
                                       @ compiled._offset[name])
@@ -65,7 +65,7 @@ def write_q(compiled, data, values):
             mujoco.mju_mat2Quat(quat, np.ascontiguousarray(value.rotation).ravel())
             data.qpos[adr + 3:adr + 7] = quat
         else:
-            data.qpos[adr] = value
+            qpos[adr] = value
 
 
 def tangent(compiled, data, rates=None):
@@ -145,6 +145,8 @@ class Closure:
                     for label in ("start", "end"))
             self.blocks.append((c.name, "cable", 1,
                                 (*ends, float(c.rest_length))))
+        self._site_jacobians = (np.zeros((3, model.nv)),
+                                np.zeros((3, model.nv)))
         self.around = frozenset(around)
         self.names = tuple(name for name, *_ in self.blocks)
         self.size = sum(size for _, _, size, _ in self.blocks)
@@ -155,11 +157,11 @@ class Closure:
         kinematics and `mj_comPos` must be current."""
         model = self.model
         gap, jac = np.zeros(self.size), np.zeros((self.size, model.nv))
+        ja, jb = self._site_jacobians  # mj_jacSite writes all of each
         row = 0
         for _, kind, size, detail in self.blocks:
             if kind == "loop":
                 a, b, directions = detail
-                ja, jb = np.zeros((3, model.nv)), np.zeros((3, model.nv))
                 mujoco.mj_jacSite(model, data, ja, None, a)
                 mujoco.mj_jacSite(model, data, jb, None, b)
                 gap[row:row + size] = directions @ (data.site_xpos[a]
@@ -244,43 +246,48 @@ class Closure:
         are, until the gap stops shrinking. Leaves the kinematics current and
         returns the gap."""
         model, best = self.model, math.inf
+        qpos, adr, dof = data.qpos, self._dep_adr_at, self._dep_dof_at
         for k in range(NEWTON_STEPS + 1):
             mujoco.mj_kinematics(model, data)
             mujoco.mj_comPos(model, data)
             gap, jac = self.rows(data)
-            size = float(np.max(np.abs(gap), initial=0.0))
+            size = float(np.abs(gap).max()) if gap.size else 0.0
             if (k == NEWTON_STEPS or not math.isfinite(size) or size == 0.0
                     or (size < CLOSE_TOL and size > 0.5 * best)):
                 return gap
             best = min(best, size)
-            data.qpos[self._dep_adr] -= _solve(jac[:, self._dep_dof], gap)
+            qpos[adr] -= _solve(jac[:, dof], gap)
 
-    def assemble(self, values):
+    def assemble(self, values, near=None):
         """The dependent coordinates that close every loop and couple with
         the independent coordinates at `values`, reached from home in steps
-        so the solve stays on the branch connected to home. Raises, naming
-        the constraint, where the posture cannot close."""
+        so the solve stays on the branch connected to home, or from `near`,
+        a closed posture keyed by coordinate, on whatever branch it is.
+        Raises, naming the constraint, where the posture cannot close."""
         compiled, model = self.compiled, self.model
-        start = {n: compiled.home(n) for n in values}
+        start = near or {n: compiled.home(n) for n in values}
         scalar = [n for n in values if not isinstance(values[n], tuple)
                   and compiled._coordinate[n][0].name in self.around]
         span = max((abs(values[n] - start[n]) for n in scalar), default=0.0)
         steps = max(1, math.ceil(span / CONTINUATION_STEP))
-        adr = [model.jnt_qposadr[model.joint(n).id] for n in scalar]
-        dof = [model.jnt_dofadr[model.joint(n).id] for n in scalar]
+        adr = np.array([compiled._address[n][0] for n in scalar], np.intp)
+        dof = np.array([compiled._address[n][1] for n in scalar], np.intp)
+        walked = set(scalar)
         with compiled._scratch() as data:  # reset, so qpos0: home
+            if near:
+                write_q(compiled, data, near)
             mujoco.mj_kinematics(model, data)
             mujoco.mj_comPos(model, data)
             for k in range(1, steps + 1):
                 now = {n: (start[n] + k / steps * (values[n] - start[n])
-                           if n in scalar else values[n]) for n in values}
+                           if n in walked else values[n]) for n in values}
                 # Predict along the branch's tangent before correcting: near
                 # a singularity the other branch is close, and Newton started
                 # from the last step's posture can fall onto it.
                 _, jac = self.rows(data)
                 move = np.array([now[n] for n in scalar]) - data.qpos[adr]
-                data.qpos[self._dep_adr] -= _solve(jac[:, self._dep_dof],
-                                                   jac[:, dof] @ move)
+                data.qpos[self._dep_adr_at] -= _solve(
+                    jac[:, self._dep_dof_at], jac[:, dof] @ move)
                 write_q(compiled, data, now)
                 gap = self.close(data)
                 if not np.max(np.abs(gap), initial=0.0) <= CLOSE_TOL:
@@ -347,6 +354,8 @@ class Closure:
         self.dependent = tuple(chosen)
         self._dep_adr = [model.jnt_qposadr[model.joint(n).id] for n in chosen]
         self._dep_dof = [model.jnt_dofadr[model.joint(n).id] for n in chosen]
+        self._dep_adr_at = np.array(self._dep_adr, dtype=np.intp)
+        self._dep_dof_at = np.array(self._dep_dof, dtype=np.intp)
         self.independent_dofs = [i for i in range(model.nv)
                                  if i not in self._dep_dof]
 

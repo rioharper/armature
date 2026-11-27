@@ -11,6 +11,14 @@
 - **The stage skills** end in the check and a commit. Derive's checkpoint is the check, with one offered review at Milestone 3, and it no longer re-pins the engine: `engine-source.sh pin` moves it when the project wants a new tag.
 - **Migrating a project:** delete `waivers.toml`, `docs/orders/` and `.armature/`, and replace the gate rules in its `CLAUDE.md` with `init`'s current standing rules.
 
+### A search runs on every core, and `rest_on` walks its loops a short way
+
+- **`search` forks workers** where its first evaluation says it will take a second or more here: `ARMATURE_WORKERS` of them, every CPU by default, and `1` keeps it all in one process. The workers evaluate every `Choice` combination's Sobol set and corners, then run each polish start up to its cap, and the search then runs exactly as written, reading each evaluation a worker already made. `n`, `rejected`, `coverage`, the check and the worst read the same to the bit; an error or a nan in `fn` is raised from the same point. The worst's `Point` is rebuilt for `check`, so `fn` must give the same slack at the same point every time, as seeding already asks. Where the platform cannot fork, the search runs as before.
+- **A closure's Newton step looks up nothing:** each coordinate's qpos and dof address is `Compiled._address`, the dependent ones are index arrays, and the two site Jacobians are buffers made once. `rest_on`'s clearances read the scratch data's kinematics, not a fresh `MjData` stepped through `mj_forward`, and `settle`'s quench fetches its arrays once.
+- **`rest_on`'s Newton steps walk the loops from the step before,** and so do the nudges each slope is differenced from, rather than each walking from home. The state it keeps is still `at()`'s own, walked from home, and kept only if it touches; one that does not, on another branch than the steps found, sends the rest of the solve back to walking from home. This one changes numbers: a resting state moves by at most 8.6e-11 m, inside `PLACE_TOL`, and a search's polish can step differently from there. On the engine's suite only the 8 results that rest on a contact changed: the wheel-leg's searched worsts land within 1.5e-6 of where they did, at values within 2e-6 relative, and its seeded samples still match main's digest.
+
+On an 18-core M5 Max, the wheel-leg's two hold margins, its skid and the cable platform's tension floor searched in 2.1 s against 15.4 s (8.4 s in one process), and the wheel-leg's 12 drive margins over one space in 5.1 s against 32.5 s (21.3 s in one process). Without the `rest_on` change, each of the 671 `Worst`s and `Samples` the engine's suite makes read the same to the bit as before, with or without workers; with it, workers still read the same to the bit as one process.
+
 ## 4.1.1 — 2026-11-18
 
 ### An event steps about 1.45 times faster, to the same bits

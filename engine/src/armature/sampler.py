@@ -43,7 +43,7 @@ from typing import NamedTuple
 import mujoco
 import numpy as np
 
-from .assembly import ClosureError
+from .assembly import ClosureError, write_q
 from .contact import TOUCH
 from .contact import clearance as _clearance
 from .rotations import AXES, floating_rotation, turn
@@ -579,37 +579,63 @@ class _Refused(Exception):
 
 def _rest(compiled, values, rest_on):
     """The state at `values` with each `rest_on` coordinate solved, by
-    Newton on the clearances, so each contact just touches."""
+    Newton on the clearances, so each contact just touches.
+
+    Each Newton step, and each nudge its slope is differenced from, walks
+    the loops from the state before it, a short way, rather than from home.
+    The state returned is `at()`'s own, walked from home, and is kept only
+    if it touches too; one that does not, on another branch than the steps
+    found, sends the rest of the solve back to walking from home."""
     contacts, names = list(rest_on), list(rest_on.values())
     reason = ", ".join(f"contact {c!r}" for c in contacts)
     x = np.array([compiled.home(n) for n in names], dtype=float)
 
-    def at(guess):
+    def at(guess, near=None):
+        q = values | dict(zip(names, map(float, guess)))
+        if near is not None and compiled.closure:
+            try:
+                return compiled.at(q=q, _near=near.q)
+            except ValueError:  # it walks from home instead, and says why
+                pass
         try:
-            return compiled.at(q=values | dict(zip(names, map(float, guess))))
+            return compiled.at(q=q)
         except ClosureError:
             raise
         except ValueError:  # the solve has left a joint's range
             raise _Refused(reason) from None
 
+    near, cold = None, False  # cold: from home, once a shortcut misled
     for _ in range(PLACE_STEPS):
-        state = at(x)
+        state = at(x, near)
         gap = _gaps(state, contacts)
         if np.max(np.abs(gap)) <= PLACE_TOL:
-            return state
+            if near is None:
+                return state
+            state = at(x)
+            gap = _gaps(state, contacts)
+            if np.max(np.abs(gap)) <= PLACE_TOL:
+                return state
+            cold = True
         slope = np.empty((len(contacts), len(names)))
         for j in range(len(names)):
             nudged = x.copy()
             nudged[j] += PLACE_EPS
-            slope[:, j] = (_gaps(at(nudged), contacts) - gap) / PLACE_EPS
+            slope[:, j] = (_gaps(at(nudged, None if cold else state),
+                                 contacts) - gap) / PLACE_EPS
         x = x - np.linalg.lstsq(slope, gap, rcond=None)[0]
+        near = None if cold else state
     raise _Refused(reason)
 
 
 def _gaps(state, contacts):
-    data = state._data()
-    return np.array([_clearance(state.compiled.model, data, c)
-                     for c in contacts])
+    """Each contact's clearance at `state`, from its kinematics alone, in
+    the compiled model's scratch data."""
+    compiled = state.compiled
+    with compiled._scratch() as data:
+        write_q(compiled, data, state.q)
+        mujoco.mj_kinematics(compiled.model, data)
+        return np.array([_clearance(compiled.model, data, c)
+                         for c in contacts])
 
 
 def _measured(compiled, states):
