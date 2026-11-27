@@ -19,6 +19,7 @@
 - **A margin's row says it is a slack.** `Worst` prints `slack <value>`, and the bus's minimum V, brake pulse energy, source power and brake power rows name the limit they are held against, as the peak V's already did ([#236](https://github.com/rioharper/armature/issues/236)).
 - **No `py -m`.** Skills, agents and references run the ledger through `armature.sh ledger …`, and the CLAUDE.md `init` writes does too; `py` is the Windows launcher and Linux and macOS have none ([#175](https://github.com/rioharper/armature/issues/175)).
 - **`run_all.py` runs every check.** A failing check prints a FAIL row and the run goes on, exiting 1 at the end with each failure named; a ledger error still stops it first. Its output is line-buffered, so a run sent to a file shows its rows as they print ([#253](https://github.com/rioharper/armature/issues/253), [#205](https://github.com/rioharper/armature/issues/205)).
+- **Executors.** `init`'s standing rule says to dispatch an agent executor with the Agent tool, and the tracker has an `executor:armature-spec` label, seventeen in all; a project made earlier creates it with `gh label create` ([#187](https://github.com/rioharper/armature/issues/187), [#176](https://github.com/rioharper/armature/issues/176)).
 
 ### A search runs on every core, and `rest_on` walks its loops a short way
 

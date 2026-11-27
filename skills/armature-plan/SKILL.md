@@ -11,7 +11,7 @@ You take a finished (or finished-enough) engineering spec and turn it into a pla
 
 Read `docs/01-spec/spec.md`, `docs/01-spec/bom.md`, `CLAUDE.md`, and `CONTEXT.md` (if present) from disk — the spec is normally produced by **armature-spec**. If no spec exists, do a compressed requirements capture (mission, constraints, chosen architecture, builder capability) and note in the plan that it rests on an informal spec — or, for a substantial project, offer armature-spec: on yes, call the Skill tool with "armature-spec". If the spec is still foggy — more open decisions than one session can settle — call the Skill tool with "armature-wayfind" to chart the way first. Audience and differentiation are settled upstream, in **armature-pitch**'s concept brief if one exists; take them as given.
 
-**The tracker must exist before you plan.** The plan is issues, not a file. Confirm three things: `gh auth status` passes, `git remote -v` names a remote, and `docs/agents/issue-tracker.md` is present. `init` establishes all three; a project scaffolded before it did will be missing them. Where any is absent, stop and say which — the repair is `gh auth login`, `gh repo create <name> --private --source=. --remote=origin --push`, and copying **armature-wayfind**'s `references/issue-tracker-github.md` into `docs/agents/` plus creating the sixteen labels from its table. Planning into a markdown file that nothing downstream reads is the failure this check exists to prevent.
+**The tracker must exist before you plan.** The plan is issues, not a file. Confirm three things: `gh auth status` passes, `git remote -v` names a remote, and `docs/agents/issue-tracker.md` is present. `init` establishes all three; a project scaffolded before it did will be missing them. Where any is absent, stop and say which — the repair is `gh auth login`, `gh repo create <name> --private --source=. --remote=origin --push`, and copying **armature-wayfind**'s `references/issue-tracker-github.md` into `docs/agents/` plus creating the seventeen labels from its table. Planning into a markdown file that nothing downstream reads is the failure this check exists to prevent.
 
 ## Before writing
 
@@ -185,6 +185,7 @@ Each row below is also a label:
 
 | Executor | Picks up |
 |---|---|
+| `armature-spec` | spec amendments, vendor questionnaires, orders |
 | `armature-derive` | kinematics, dynamics, sizing math |
 | `armature-cad` | part definitions and build recipes |
 | `armature-test` | robot software, test-first |

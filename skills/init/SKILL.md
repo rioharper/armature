@@ -146,7 +146,7 @@ named an existing remote, `git push -u origin main`. Confirm with `gh repo view`
 a failure here stops init the way a missing `gh` does, because everything below
 writes to that repo.
 
-**The labels.** Create all sixteen from the table in the tracker doc you just
+**The labels.** Create all seventeen from the table in the tracker doc you just
 copied, each with its colour and description:
 
 ```bash
@@ -155,7 +155,7 @@ gh label create "plan:leaf" --color BFD4F2 --description "Plan leaf (one session
 
 `gh label create` fails on a label that already exists, which is the right
 behaviour on a re-run — pass `--force` only to repair a colour or description,
-never to blank one. Done when `gh label list` shows all sixteen.
+never to blank one. Done when `gh label list` shows all seventeen.
 
 **Sub-issues and dependencies.** Check once that both are available on this
 repo, since the plan's three-level shape and its blocking edges rest on them.
@@ -211,8 +211,10 @@ it appears.
   Buying a part and sending a drawing out are the user's to do.
 - A `confirmed` ledger entry is the user's decision: write one only on the
   user's word, and name the decision in the commit message.
-- A plan leaf's Executor names the skill that works it: call the Skill tool
-  with that name before starting the leaf.
+- A plan leaf's Executor names who works it. Before starting the leaf,
+  call the Skill tool with that name for a skill, or dispatch an agent
+  (armature-librarian, armature-red-team, armature-inventor) with the Agent
+  tool.
 - The plan and every wayfinder map are GitHub Issues, never a markdown file.
   Read docs/agents/issue-tracker.md before touching the tracker.
 - A change to a mass, power draw, or cost is debited in the same session;
