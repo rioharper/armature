@@ -644,7 +644,7 @@ class Worst:
             return (f"{self.margin}: UNCHECKED, FAILS; missing "
                     + ", ".join(self.unchecked))
         held = f" against {self.against}" if self.against else ""
-        text = (f"{self.margin}: {self.value:.7g} {self.unit}{held} at "
+        text = (f"{self.margin}: slack {self.value:.7g} {self.unit}{held} at "
                 f"{_written(self.at)}, "
                 f"{'passes' if self.passes else 'FAILS'}; pre-polish "
                 f"{self.pre_polish:.7g}; coverage {self.coverage:.1%}; "

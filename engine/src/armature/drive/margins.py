@@ -441,17 +441,23 @@ class _Setup:
                               against=_against(self.nominal)))
             if self.sourced:
                 held = self.sourced[0]
-                out.append(_Check("bus: minimum V", "V", PEAK, "minimum V",
-                                  None, _undervoltage(held)
-                                  or held.bus.source.v[0], "bus"))
+                trip = _undervoltage(held)
+                low = trip or held.bus.source.v[0]
+                out.append(_Check(
+                    "bus: minimum V", "V", PEAK, "minimum V", None, low, "bus",
+                    against=(f"the undervoltage trip ({low:g} V)" if trip else
+                             f"the source's lowest voltage ({low:g} V)")))
             if self.braked:
                 brake = _first_brake(self.nominal)
-                out.append(_Check("bus: brake pulse energy", "J", PEAK,
-                                  "brake pulse", None, brake.energy, "bus"))
+                out.append(_Check(
+                    "bus: brake pulse energy", "J", PEAK, "brake pulse", None,
+                    brake.energy, "bus",
+                    against=f"the brake's pulse rating ({brake.energy:g} J)"))
             if self.sourced:
+                p_max = self.sourced[0].bus.source.p_max
                 out.append(_Check("bus: source power", "W", PEAK,
-                                  "source power", None,
-                                  self.sourced[0].bus.source.p_max, "bus"))
+                                  "source power", None, p_max, "bus",
+                                  against=f"the source's peak ({p_max:g} W)"))
             return out
         missing = None if self.written else (WRITTEN,)
         for a in self.actuators:
@@ -465,9 +471,11 @@ class _Setup:
                                   DUTY, "RMS current", a, rating.value,
                                   "torque-speed", missing))
         if self.braked:
-            out.append(_Check("bus: brake power", "W", DUTY, "brake power",
-                              None, _first_brake(self.nominal).power, "bus",
-                              missing))
+            power = _first_brake(self.nominal).power
+            out.append(_Check(
+                "bus: brake power", "W", DUTY, "brake power", None, power,
+                "bus", missing,
+                against=f"the brake's continuous rating ({power:g} W)"))
         return out
 
     def _winding(self, a, missing):

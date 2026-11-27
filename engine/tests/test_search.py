@@ -372,7 +372,7 @@ def test_a_strict_margin_fails_at_zero_slack():
                            strict=True))
     assert not strict.passes and strict.value == 0.0
     assert strict.coverage == 0.0
-    assert str(strict).startswith("at the trip: 0 V at x = ")
+    assert str(strict).startswith("at the trip: slack 0 V at x = ")
     assert ", FAILS;" in str(strict)
 
 

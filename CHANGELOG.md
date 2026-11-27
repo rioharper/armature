@@ -14,6 +14,10 @@
 - **The eval suite is advisory.** A version bump needs the engine, script and eval-harness tests; the tier-2 run is on demand (ADR 0008, amended).
 - **Migrating a project:** delete `waivers.toml`, `docs/orders/` and `.armature/`, and replace the gate rules in its `CLAUDE.md` with `init`'s current standing rules.
 
+### Friction fixes from Ibex
+
+- **A margin's row says it is a slack.** `Worst` prints `slack <value>`, and the bus's minimum V, brake pulse energy, source power and brake power rows name the limit they are held against, as the peak V's already did ([#236](https://github.com/rioharper/armature/issues/236)).
+
 ### A search runs on every core, and `rest_on` walks its loops a short way
 
 - **`search` forks workers** where its first evaluation says it will take a second or more here: `ARMATURE_WORKERS` of them, every CPU by default, and `1` keeps it all in one process. The workers evaluate every `Choice` combination's Sobol set and corners, then run each polish start up to its cap, and the search then runs exactly as written, reading each evaluation a worker already made. `n`, `rejected`, `coverage`, the check and the worst read the same to the bit; an error or a nan in `fn` is raised from the same point. The worst's `Point` is rebuilt for `check`, so `fn` must give the same slack at the same point every time, as seeding already asks. Where the platform cannot fork, the search runs as before.
