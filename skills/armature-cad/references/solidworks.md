@@ -70,3 +70,13 @@ If the `solidworks` MCP server is connected (`/armature:init` writes it into a S
 - **Release metadata:** `sw_set_tolerance` for the fits documentation-standards §6 chose; `sw_custom_props` to stamp part number, rev, material before the drawing.
 
 Parameter names, coordinate-system names, and dimension names are the whole API contract — they must match the glossary and the part definition exactly, which §1–§3 already require. If a name lookup fails, the error lists what exists; fix the model's names rather than adapting to typos.
+
+## 10. Building and drawing by script — swkit
+
+When a part is worth scripting (its driven dimensions are still moving, it has a mirrored hand, it is rebuilt each time the ledger moves, or its drawing is redone at every revision), build it in SOLIDWORKS itself with `${CLAUDE_PLUGIN_ROOT}/skills/armature-cad/scripts/swkit/`. Copy it into the project as `cad/tools/swkit/` and keep the project's build scripts beside it. Its README covers how to run it, its units and frames, and the rules that keep the user's seat safe. It does §1–§8 by script:
+
+- **§1–§3:** `part.Part` and `Sketch` make named planes and typed globals. Every driven dimension is an equation of the globals, and the build stops on any sketch that is not fully defined. `extrude` keeps the side it was asked for and refuses a boss that merged away with no faces.
+- **§5 and *Close the loop*:** `measure.mass_props`, `reach` and `find_face` read the model back, the mass properties in SI, ready for the `cad` entries. `python -m swkit audit` lists each configuration's rebuild errors and faceless bosses. `python -m swkit rebuild` rebuilds the part with its driven globals at ±10 %. Together they are a scripted part's *Done when* checks.
+- **§6 and §8:** `drawing.draw_part` with `annotate` puts fits, tolerances, datums and feature control frames on the views, picking each edge by its model geometry, plus three to five terse notes. `exchange.export_step` writes AP214 and reads its schema back; AP242 needs SOLIDWORKS MBD. The drawing's PDF and DXF are exported before its native save.
+
+Run `python -m swkit.smoke` once on a new seat or release, with SOLIDWORKS holding no document, before trusting the kit's numbers. A script that opens and closes documents needs an empty seat. Restarting SOLIDWORKS is the user's call. Wake the screen before a STEP import.

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### swkit: SOLIDWORKS part, drawing and check automation
+
+`skills/armature-cad/scripts/swkit/` is a Python kit for driving a running SOLIDWORKS through COM with pywin32. It builds a part from its build recipe with design intent: named planes, typed globals, every driven dimension an equation of them, and every sketch fully defined. It reads the part back exactly: extents, faces found by geometry, and mass properties in SI. It runs the *Done when* checks: rebuild errors, bosses that merged away with no faces, and a rebuild at ±10 %. It draws the part to its critical features, with fits, tolerances, datums and frames on the views and edges picked by model geometry, then section and detail views. It exports STEP AP214 with the schema read back, plus PDF and DXF. It also mates assemblies with computed alignments and runs Simulation's linear statics. It was extracted and generalized from the scripts Ibex used to build, draw and check its leg's parts (T3.3–T5.2a). Each SOLIDWORKS quirk those scripts paid for is written into the module that guards it. `references/solidworks.md` §10 points to the kit.
+
+- **Two fixes found while extracting it.**
+  - Selecting a drawing view's edge by its sheet point (`SelectByID2("", "EDGE", x, y)`) selects the view and not the edge, so a datum or flag placed that way attaches to the view. `annotate.spot` and `section.flags` now find the edge through a model point among the view's visible edges, which include a section's cut edges.
+  - The faceless-boss audit now skips bosses upstream of an active Delete Body feature, so a mirrored configuration no longer reads every boss as faceless.
+- **Tested** on SOLIDWORKS 2026 SP4.1. `python -m swkit.smoke` passes 27 checks against hand-worked numbers: volumes, exact extents, an L-section's inertia tensor including its products' sign, the ±10 % rebuild's volume change, and a drawing reopened to count its annotations. It also checks two section distances read at their model value, one of them on a 2:1 detail on a 1:2 sheet, an assembly's mates, and Simulation's bar within 0.2 % of beam theory. `swkit/tests` covers the pure modules (expressions, inertia, sheet layout) and runs anywhere. The STEP read-back (`--import`) was not run, because the seat's screen was asleep, the state in which an import once crashed SOLIDWORKS.
+
 ## 4.1.1 — 2026-11-18
 
 ### An event steps about 1.45 times faster, to the same bits
