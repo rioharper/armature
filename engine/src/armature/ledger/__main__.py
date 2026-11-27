@@ -1,4 +1,4 @@
-"""`py -m armature.ledger check [--json]`, `show <prefix>` and `render`,
+"""`python -m armature.ledger check [--json]`, `show <prefix>` and `render`,
 on the ledger nearest the working directory, or the one `--path` names.
 `check` prints one finding per line, `<level> <code> <entry>: <message>`,
 or a JSON list with `--json`, and exits 1 on any error; a ledger it cannot

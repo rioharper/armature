@@ -18,7 +18,7 @@ an Armature project — `init` establishes them, and there is no non-GitHub path
 
 ## Labels
 
-Sixteen, created by `init` with `gh label create <name> --color <hex> --description "..."`.
+Seventeen, created by `init` with `gh label create <name> --color <hex> --description "..."`.
 Nothing else creates labels; a missing one is an un-bootstrapped project.
 
 | Label | Colour | Description |
@@ -31,6 +31,7 @@ Nothing else creates labels; a missing one is an un-bootstrapped project.
 | `plan:index` | `0052CC` | Plan index (the build's narrative) |
 | `plan:phase` | `006B75` | Plan phase (exit criterion for a block of leaves) |
 | `plan:leaf` | `BFD4F2` | Plan leaf (one session of known work) |
+| `executor:armature-spec` | `D4C5F9` | Executor: spec amendments, vendor questionnaires, orders |
 | `executor:armature-derive` | `D4C5F9` | Executor: kinematics, dynamics, sizing math |
 | `executor:armature-cad` | `D4C5F9` | Executor: part definitions and build recipes |
 | `executor:armature-test` | `D4C5F9` | Executor: robot software, test-first |

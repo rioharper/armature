@@ -1,6 +1,6 @@
 # Armature
 
-A Claude Code plugin for designing robots. It takes a project from idea to CAD, checks the dynamics against a MuJoCo model, and won't merge or buy anything until a red-team review is closed.
+A Claude Code plugin for designing robots. It takes a project from idea to CAD, checks the dynamics against a MuJoCo model, and can put a red-team review in front of a purchase or a drawing going out.
 
 ## How a project runs
 
@@ -9,13 +9,11 @@ flowchart LR
   pitch --> spec --> plan --> derive --> cad[CAD] --> build
   subgraph stage [each stage]
     direction LR
-    branch[work on a branch] --> review[red-team review] --> gate{gate}
+    work[work] --> check{check} --> commit[commit]
   end
-  gate -- merge --> main
-  gate -- buy --> order[parts or drawing out]
 ```
 
-Every stage works on a branch. The `merge` gate needs a red-team review with its BLOCKERs and MAJORs closed and a passing model. The `buy` gate also needs every ordered part confirmed by you and priced in the last 90 days. A plugin hook blocks a merge the gate would refuse. You can waive a gate item in `waivers.toml`, with a reason.
+Each stage ends by running one command, `armature.sh check`: the ledger's check and every `run_all.py`. Nothing enforces it and nothing is cached. A red-team review is advice, asked for when the spec is finished, before money or a drawing leaves the project, and whenever you want one. Buying parts and sending drawings out are yours to do.
 
 ## How the math is checked
 
@@ -61,7 +59,7 @@ Run `/armature:init` in an empty folder. It sets up the project and the GitHub r
 | `armature-bringup` | Bench test procedures and their records |
 | `/armature:armature-debug` | Hardware misbehaving at the bench |
 | `armature-teach` | Explaining a concept or design decision |
-| red-team (agent) | Adversarial review before a merge or purchase |
+| red-team (agent) | Adversarial review, on request and before a purchase or a release |
 | librarian (agent) | Datasheets, prices, vendor CAD models |
 | inventor (agent) | Less conventional mechanisms and actuators |
 
@@ -85,8 +83,7 @@ From the Ibex rover, a squatting camera platform built with Armature:
 ## Notes
 
 - The project's model pins the engine by the plugin's release tag, so its first `uv sync` needs GitHub access.
-- The gates' first run builds an environment in 15–30 s. After that a merge check takes about 6 s.
-- The hook only acts in a folder whose root holds `ledger.toml`.
+- `armature.sh check`'s first run builds an environment in 15–30 s.
 - Design decisions are in [`docs/adr/`](docs/adr/), release notes in [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Credits

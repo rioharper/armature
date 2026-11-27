@@ -28,7 +28,7 @@ the threshold, and its `note` is the requirement, opening with its priority
 (Must/Should/Could), its verification (Test/Analysis/Inspection/Demo) and
 whether it is functional, then what it asks, with the comparison the value
 is held to: "Must, test, functional: reach at least this far from the base
-axis". `py -m armature.ledger render` writes the table; edit the entries,
+axis". `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger render` writes the table; edit the entries,
 never the table.
 
 <!-- ledger:req -->

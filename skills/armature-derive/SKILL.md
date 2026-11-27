@@ -1,29 +1,22 @@
 ---
 name: armature-derive
-description: Derive a robot's kinematics and dynamics as milestone-sized notes plus a re-runnable SymPy/SciPy model, red-teamed at each milestone. Use when a project needs equations of motion, a Jacobian, workspace or singularity analysis, natural frequencies and modes, actuator-sizing or statics math, or the user says "do the math" for a mechanism; and for any plan task whose Executor is armature-derive, re-running the model to decide a requirement, size a part, or close routed findings. Reviews go to armature-red-team.
+description: Derive a robot's kinematics and dynamics as milestone-sized notes plus a re-runnable SymPy/SciPy model, checked against the truth model at each milestone. Use when a project needs equations of motion, a Jacobian, workspace or singularity analysis, natural frequencies and modes, actuator-sizing or statics math, or the user says "do the math" for a mechanism; and for any plan task whose Executor is armature-derive, re-running the model to decide a requirement, size a part, or close routed findings.
 ---
 
 # Robotics Mathematician
 
-You produce the analytical backbone of a robotics project: derivations to engineering-notebook standard, verified symbolically with SymPy, and every part sized numerically on the truth model. Read `references/derivation-standards.md` before writing any note — it sets the register, the per-file rules, and which layer each sentence lives in. Read `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md` before writing any module — the file split and the 250-code-line budget the checkpoint enforces.
+You produce the analytical backbone of a robotics project: derivations to engineering-notebook standard, verified symbolically with SymPy, and every part sized numerically on the truth model. Read `references/derivation-standards.md` before writing any note — it sets the register, the per-file rules, and which layer each sentence lives in. Read `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md` before writing any module — where checks live and the truth gate the checkpoint enforces.
 
 ## Milestones
 
-The derivation is four self-contained parts, each with its own `.md` note, its own module — a `.py`, or a package once the note outgrows one file — and the checks module beside it, built in that order on its own git branch (`armature/m0-setup`, `m1-kinematics`, `m2-dynamics`, `m3-verification`).
+The derivation is four self-contained parts, each with its own `.md` note, its own module — a `.py`, or a package once the note outgrows one file — and the checks module beside it, built in that order.
 
-Every milestone closes through the same **checkpoint**, the merge through the gate (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`):
+Every milestone closes through the same **checkpoint**:
 
-1. Commit, then run the gate via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge`. It runs `analysis/model/run_all.py`, every discovered check, `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`. Expect every item to pass but `review`, which waits on step 2. Its `engine` line quotes `engine-source.sh check`'s state against the plugin you run; act on it:
-   - `in-step`: go on.
-   - `behind … (minor)`, or `rev … (in vX.Y.Z)`: run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model`, commit `pyproject.toml` and `uv.lock`, and gate again. Its run is then the upgrade's check.
-   - `behind … (major)`, `ahead` or `path`: stop and report. A move across a major version is a migration, so read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` with the user first; `ahead` means the plugin is out of date. A path is never committed (Step 0); offer `pin`, which replaces one, and run it once the user agrees.
-   - `rev … (unreleased)` or `rev … (unknown)`: report it and go on.
-2. Dispatch the **armature-red-team** agent at that commit with the milestone's `.md`, its modules and their checks modules, `mechanism.py` and `mechanism_checks.py`, and earlier milestones as context (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*). The review unit is a note section with its matching submodule and checks.
-3. Close each BLOCKER and MAJOR in the review's block (`gates.md`, *Closing a finding*): a recomputed number lands as a test, `test_F<n>_<what>`, in `analysis/model/review_<date>_<artifact>_checks.py`, which `run_all.py` collects; a judgment goes to a recheck, or to the user. Log the resolutions in the milestone `.md`'s revision note, and commit.
-4. Run the gate again, routing each `fail` by `gates.md`. Done when it exits 0.
-5. Merge: `git checkout main`, then `git merge --ff-only` the milestone's branch. The merge is the phase gate — the next milestone's branch is cut from `main` after it.
+1. Run the project's check via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" check`. It runs `ledger check` and every `run_all.py`, each discovered check and `layout.py`'s **truth gate** among them (`${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`). While iterating, run one folder alone by naming it (`… check analysis/model`), or one milestone with `uv run python run_all.py <module>` in the folder.
+2. Settle what fails, log anything a later reader needs in the milestone `.md`'s revision note, and commit. Done when the check exits 0 on the committed tree.
 
-Whether a milestone is reviewed is the gate's `review` item, not a rule of this skill. Milestone 0 writes model code, the template's and the mechanism description, so it is reviewed like the rest, and its dispatch adds the review artifact `report_truth.py` writes, so the mechanism description is read against the spec's sketch before anything is built on it.
+The engine a model directory pins moves only when you move it: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model` rewrites it to the tag of the plugin you run and prints the old source beside the new. Take a new tag when the project wants what it brings, read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` first when the move crosses a major version, and never commit a local path (Step 0).
 
 ## File layout
 
@@ -42,7 +35,7 @@ analysis/model/
   mechanism_checks.py      <-   its self-tests: compiles exactly, boxes inside the ranges, a release
   kinematics.py            <- Milestone 1 (FK, Jacobian)
   kinematics_checks.py     <-   its self-tests
-  dynamics/                <- Milestone 2, a package: one submodule per note section
+  dynamics/                <- Milestone 2, a package
     __init__.py            <-   MILESTONE, and nothing else
     equations.py           <-   M, C q̇, g by armature.equations; V; rotor N²J added
     equations_checks.py
@@ -55,19 +48,19 @@ analysis/model/
   drive_checks.py          <-   its self-tests
   report_results.py        <- prints the symbolic results, the named configurations, the tables
   report_truth.py          <- writes the review artifact: the frames table and skeleton renders
-  layout.py                <- the two gates: the code-line budget and the truth check
+  layout.py                <- the truth gate
   layout_checks.py         <-   the gates as checks, with their teeth
   run_all.py               <- discovers the milestone modules, runs every self-test in order
   test_derivation.py       <- the same checks, exposed to pytest
 ```
 
-Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none, never its `ledger.toml`, which is the template's own. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: its equations are formed by the engine on the symbolic view's frames rather than from `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
+Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none, never its `ledger.toml`, which is the template's own. Each module uses the variable names of its matching `.md`, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: its equations are formed by the engine on the symbolic view's frames rather than from `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
 
-**Outline the note before writing its module.** The note's section headings are the module's decomposition: a note with more than about three substantive sections starts as a package, one submodule per section, each with its checks module beside it. Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it.
+Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it. Split a module into a package when it stops reading easily; nothing counts its lines.
 
 A module joins the run by shape, not by name: its self-tests are `test_*` callables in its sibling `<module>_checks.py`, and it carries a module-level `MILESTONE = (order, title)` — once per package, in `__init__.py`. Both commands discover it, so a module added later — a `spring.py` for a plan task — and a test added to a checks module that already exists are collected with no edit to `run_all.py` or `test_derivation.py`. During development check one milestone alone: `uv run python run_all.py kinematics` (a module or package name) runs its checks without the budget, which only the full run enforces.
 
-`ledger.toml` is where a value is edited, and `mechanism.py` is where the mechanism changes shape. `params.py` loads the ledger and holds only structure: `PARAMS`, `DRIVE` and `REQ` are its `mechanism`, `drive` and `req` sections in SI, the bands are `LEDGER.bands(section)`, and the workspace, the rate envelope and the load-case table are keyed to joints and load classes, each number a ledger entry. What number it may still hold is `params_checks.py`'s `test_the_parameter_block_writes_no_number`. A number derived from entries, such as a balance condition, is computed and never entered. Anyone who needs a value, its unit or its provenance runs `py -m armature.ledger show <prefix>`.
+`ledger.toml` is where a value is edited, and `mechanism.py` is where the mechanism changes shape. `params.py` loads the ledger and holds only structure: `PARAMS`, `DRIVE` and `REQ` are its `mechanism`, `drive` and `req` sections in SI, the bands are `LEDGER.bands(section)`, and the workspace, the rate envelope and the load-case table are keyed to joints and load classes, each number a ledger entry. What number it may still hold is `params_checks.py`'s `test_the_parameter_block_writes_no_number`. A number derived from entries, such as a balance condition, is computed and never entered. Anyone who needs a value, its unit or its provenance runs `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger show <prefix>`.
 
 ## Step 0: Establish the model
 
@@ -83,7 +76,7 @@ If the project has no numbers yet, derive symbolically and enter each parameter 
 
 **When a number has to come from a datasheet, get the datasheet.** Rotor and gearbox inertia, gearbox efficiency and backlash, stall and continuous torque, thermal limits, bearing friction, material modulus and yield: if a needed spec isn't already in the project's materials, dispatch the **armature-librarian** agent with the exact P/N (or the description plus the specs that matter): a pre-confirmed P/N is cached in the run; a candidate waits in the agent's staging file for your confirmation, then its Merge step. Cite its `part.<pn>` entries, and read a `candidate` one as `CLAUDE.md`'s standing rule on input numbers says. A number, a closed form, or a whole method that comes out of a book has no row to cite and its own rules in `references/derivation-standards.md`, *Design data from a book*. A milestone needing several parts sends them in waves (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`).
 
-Write the model into `00_setup.md` (system description, numbered assumptions, home posture and frame table, the parameter table's pointer), the values into `ledger.toml`, the structure around them into `params.py` and the mechanism description into `mechanism.py`, on the `armature/m0-setup` branch.
+Write the model into `00_setup.md` (system description, numbered assumptions, home posture and frame table, the parameter table's pointer), the values into `ledger.toml`, the structure around them into `params.py` and the mechanism description into `mechanism.py`.
 
 **Write the mechanism description.** `mechanism(p)` lists the engine's typed elements — `body`, `joint`, `site`, `cable`, `loop`, `contact`, `stop`, `actuator` and `gravity` — every number read from `p`, nothing branching on a value. It is the one place this machine's geometry is written: the truth model is compiled from it and the derivation reads its frames from it, so a frame cannot drift between them. While a part is still unknown its body is coarse — `point`, `rod`, `box`, `cylinder` or `sphere`, joined by `compose` — and CAD replaces it with the measured body later. The joint ranges are the envelope: the configurations every claim is checked over, and the truth model's joint limits. A stop that gives past its face before the hard end is a `stop`, its linear spring a passive force the truth model feels exactly, and a contact between two moving bodies, a knee against a knee, is `against=(other, shape(...))`. Give every body a physical inertia on every axis: `diag(0, 0, Izz)` is the planar assumption written into the description, and the engine refuses it.
 
@@ -91,7 +84,7 @@ Write the model into `00_setup.md` (system description, numbered assumptions, ho
 
 **Every reduction carries a release, or a sentence saying why it cannot.** The platform stays level, the base is rigid, the elbow is locked, the gearbox has no wind-up, the cable is inextensible: each of those removes a coordinate from the equations, which means it is missing from *both sides* of every check made with them — the arithmetic reproduces, the self-consistency holds, and the machine does something else. So the numbered assumptions become a table with a **Released?** column (`references/derivation-standards.md` says what goes in it), and each reduction gets a release check named `test_truth_…`: compile the variant, take a state, and release it under what the derivation says holds it, `armature.compile(DERIVED, PARAMS).at(q=...).release(hold=...)`. Release is keyed by reduction. A lock, couple or planar reports the signed displacement of what it fixed when the full description settles under the hold, with **nothing at all** on the freed coordinate; a lump or rigid reports how much a `quantity=` you pass changes without it. A few microradians is an assumption sized and kept. Where the description has no such coordinate — a compliance it never described — the row gets the sentence instead, and the sentence says what adding the coordinate would take and where that work is scoped, never "reasonable for this design". The template's `mechanism_checks.py` shows the check failing on a locked-elbow variant, held by its own inverse dynamics, and passing on a true lock as its control.
 
-**Then compile the truth model and produce the review artifact, before the first analytic claim.** The truth model is the full description compiled by the **engine**, the pinned package that holds the compiler, the queries, the reductions, the symbolic view and the sampler; what it gives, what the project keeps, and the gate are in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`, *The engine and the project's half*. It is built here, at Milestone 0, because a derivation with nothing to be checked against on the day it is written gets its wrong assumption found at review rather than at its own checkpoint. `uv run python run_all.py mechanism` compiles it: the engine validates the description first and names the element at fault. Then `uv run python report_truth.py` writes the review artifact into `review/` — the frames table, and skeleton renders at home and at sampled states — and prints the sample it drew; `00_setup.md` cites it. An error in the description is common-mode: both sides read it, so no truth check can see it, and the artifact read against the spec's sketch is its check.
+**Then compile the truth model and produce the review artifact, before the first analytic claim.** The truth model is the full description compiled by the **engine**, the pinned package that holds the compiler, the queries, the reductions, the symbolic view and the sampler; what it gives, what the project keeps, and the gate are in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`, *The engine and the project's half*. It is built here, at Milestone 0, because a derivation with nothing to be checked against on the day it is written gets its wrong assumption found late rather than at its own checkpoint. `uv run python run_all.py mechanism` compiles it: the engine validates the description first and names the element at fault. Then `uv run python report_truth.py` writes the review artifact into `review/` — the frames table, and skeleton renders at home and at sampled states — and prints the sample it drew; `00_setup.md` cites it. An error in the description is common-mode: both sides read it, so no truth check can see it, and the artifact read against the spec's sketch is its check.
 
 **Fill the template's boxes**, whose comments say what each is for: **`WORKSPACE`, the region the requirements name**, keyed by coordinate, a second box inside the joint ranges because a singularity is allowed to live in the gap between the two; `QD_LIMITS` and `QDD_LIMITS`, the rate envelope, keyed by dof. A floating body has no joint range, so its claims are checked over a pose envelope: decide it here, write it into `00_setup.md` beside the joint envelope, and pass it to every sample as `poses={joint: armature.pose_envelope(box=..., tilt=..., yaw=...)}`.
 
@@ -101,7 +94,7 @@ The model has its own environment, `analysis/model/pyproject.toml`, which takes 
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model
 ```
 
-It rewrites the engine's source line to this plugin's tag and runs `uv lock`; commit `pyproject.toml` and `uv.lock` together, so another machine, or this one in six months, syncs the same engine commit. The first sync needs GitHub as well as PyPI. Never write the engine's source by hand, and never commit a local path. A fix needed between releases arrives as `rev = "<sha>"` of a commit on `main`, in place of `tag`, and the checkpoint pins it back to a tag once a release contains it. Why a tag, and not a path into the plugin cache: `${CLAUDE_PLUGIN_ROOT}/docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md`.
+It rewrites the engine's source line to this plugin's tag and runs `uv lock`; commit `pyproject.toml` and `uv.lock` together, so another machine, or this one in six months, syncs the same engine commit. The first sync needs GitHub as well as PyPI. Never write the engine's source by hand, and never commit a local path. A fix needed between releases arrives as `rev = "<sha>"` of a commit on `main`, in place of `tag`; pin it back to a tag once a release contains it. Why a tag, and not a path into the plugin cache: `${CLAUDE_PLUGIN_ROOT}/docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md`.
 
 ## Milestone 1: Kinematics
 
@@ -156,7 +149,7 @@ For each finding: state the problem physically, name the specific spec or part i
 
 In `verification.py`: numeric inverse kinematics (`least_squares`) with an FK→IK→FK round-trip self-test in `verification_checks.py`, and the holding margin, `HOLDING`, declared once over the workspace, every load-case row, a plane case's headings and every band in the ledger's `mechanism` section, the static case, checked beside the drive margins that size the actuators; `run_all.py` searches every margin it discovers with `armature.search`, fails one that does not pass or whose `check=` disagrees, and `report_results.py` prints the margin table `03_results.md` cites. `run_all.py` runs every discovered self-test in milestone order — the single command that proves the whole model is internally consistent.
 
-The Milestone 3 checkpoint splits its red-team pass by question — two passes run in sequence, then the merge pass, per the split rule in `${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md` — so neither carries files its question does not need. This is the worked example that rule generalises:
+**Milestone 3 is where the derivation is reviewed**, once, because its results are what parts get bought against. After its checkpoint, offer the user a red-team review of the whole derivation (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*), passing every note, module and checks module, `mechanism.py` and the review artifact `report_truth.py` writes. Where the set is past that reference's split threshold, split it by question — two passes run in sequence, then the merge pass — so neither carries files its question does not need. This is the worked example that rule generalises:
 
 - **Does the argument hold?** All four notes and nothing else: does `03_results.md` follow from what Milestones 0–2 derived? That question lives entirely in prose.
 - **Does the code mirror the equations?** Note-and-module pairs — each note with its modules and checks modules — plus `mechanism.py` and the report modules: does each module compute what its note's equations claim, do its checks exercise what the note says they do, and does every table in the notes match what the report modules print?
@@ -169,7 +162,7 @@ Flagging is half the job. When the user approves a change — bigger motor, shor
 2. Update every equation, boxed result, and interpretation in whichever `.md` the change touches. A number-only change usually touches `03_results.md` alone; a structural change (rigid link → flexible, a joint added, a mass → payload variable) re-derives that milestone's `.md` and `.py` together. If that re-derivation is genuinely large, scope it as its own task.
 3. Bump the revision note in every `.md` file that changed, recording what changed and why.
 
-When masses or inertias firm up, update their ledger entries, with the source kind that firmed them (`cad`, `measured`), and run `py -m armature.ledger render`, which rewrites the budgets that read them. A torque result is derived and is never an entry; the drive margins carry it.
+When masses or inertias firm up, update their ledger entries, with the source kind that firmed them (`cad`, `measured`), and run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger render`, which rewrites the budgets that read them. A torque result is derived and is never an entry; the drive margins carry it.
 
 ## When a plan task lands as a report
 
@@ -182,46 +175,32 @@ write-back table for every number it moves, the assumptions under strain with
 the direction and size the model gives each, and a row per item routed to the
 task. Print every table from a report module under `analysis/model/`
 (`report_<task>.py`) so the report re-runs; a number typed in by hand goes stale
-in silence. The task's computation follows the plugin's model layout against
-the report's sections as a milestone module does against its note's: outline
-the report first, one submodule per section once it has more than about three,
-each with its checks module, under the same budget. A milestone note the
+in silence. The task's computation follows the plugin's model layout, its
+checks module beside each module. A milestone note the
 report corrects gets a revision note pointing at it, and the write-back runs the
 same propagation as an approved change above.
 
-**A report closes through the checkpoint**, on its task's branch,
-`armature/task-<T-id>`. Whether it is reviewed is the gate's `review` item: a
-report that moves a ledger number or adds model code, its `report_<task>.py`
-among it, is; one that re-runs an unchanged model and moves nothing needs no
-review, and its Status line says the gate asked for none. Dispatch the
-**armature-red-team** agent as the checkpoint's step 2 does, with the report,
-its `report_<task>.py` and checks modules, `mechanism.py`, `params.py`, the
-ledger prefixes the report moves, and any milestone note the report corrects,
-and name the review file in the report's **Review** line. The review is yours
-to run, not the user's, so a user who is away changes nothing: close each
-BLOCKER or MAJOR the run can settle before stopping; one it cannot leaves the
-branch unmerged and sets the Status to blocked on it, with a row under *Items
-routed here*.
+**A report closes through the checkpoint.** Where it moves a number a purchase or a drawing rests on, offer the user a red-team review of it; otherwise it needs none.
 
 ## Boundaries
 
-Any milestone merge is a clean stopping point: files committed, the gate passed, branch merged — a fresh session resumes from the repo alone. At each merge, decide what this session does next with `references/phase-boundaries.md` — five options, judged in order, at the boundary only.
+Any milestone checkpoint is a clean stopping point: the check passed, files committed — a fresh session resumes from the repo alone. At each checkpoint, decide what this session does next with `references/phase-boundaries.md` — five options, judged in order, at the boundary only.
 
 When a Milestone 3 finding sends work upstream, say which number broke and what it collides with, then route: a requirement, part, or BOM number must change → call the Skill tool with "armature-spec"; a mechanism gap → dispatch the **armature-inventor** agent, then re-derive on the surviving candidate. Update `docs/decisions.md` when the change is accepted.
 
 As each REQ's analysis lands, move its row in `docs/01-spec/traceability.md` from `open` to `analyzed`, Analysis column pointing at the derivation file and section.
 
-When Milestone 3's branch has merged, append a `docs/decisions.md` line summarizing the analysis' conclusions and offer detail design next — on yes, call the Skill tool with "armature-cad".
+When Milestone 3's checkpoint has passed, append a `docs/decisions.md` line summarizing the analysis' conclusions and offer detail design next — on yes, call the Skill tool with "armature-cad".
 
 ## Calibration — when hardware exists
 
-Datasheet numbers are the model's opening bid; measured numbers are the truth. When a test report in `docs/testing/` carries a measured value the model assumed — friction, motor torque constant, a real link mass — update its ledger entry: `value` and `as_written` the measured figure, `source = { kind = "measured", ref = "<the report's path>" }`, `status = "confirmed"` once the user has accepted the report's Result, the old value in a comment beside it. A number moving is work for the task's branch, which closes through the checkpoint like a report. Then `render`, `check` and `run_all.py`, and record in `03_results.md` which conclusions moved: margins that shrank, a sizing that no longer closes, an assumption invalidated. The budgets that read the entry re-render with it.
+Datasheet numbers are the model's opening bid; measured numbers are the truth. When a test report in `docs/testing/` carries a measured value the model assumed — friction, motor torque constant, a real link mass — update its ledger entry: `value` and `as_written` the measured figure, `source = { kind = "measured", ref = "<the report's path>" }`, `status = "confirmed"` once the user has accepted the report's Result, the old value in a comment beside it. Then `render`, `check` and `run_all.py`, and record in `03_results.md` which conclusions moved: margins that shrank, a sizing that no longer closes, an assumption invalidated. The budgets that read the entry re-render with it.
 
 ## Deliverables
 
 1. `analysis/derivation/00_setup.md` … `03_results.md` — four files per `references/derivation-standards.md`: assumptions up front, numbered equations, prose that explains *why* each step, sanity checks shown, results boxed with units.
 2. `analysis/model/` — the adapted, passing, parameterized modules, their checks modules, and the report modules the notes cite, laid out per the plugin's model layout and confirmed green under both `run_all.py` and `pytest`.
-3. A red-team findings file per milestone in `docs/reviews/`, written by the **armature-red-team** agent, every BLOCKER and MAJOR closed in its block.
+3. Where the user took Milestone 3's review, its findings file in `docs/reviews/`, with what was done about each finding in `docs/decisions.md`.
 
 ## Scope notes
 

@@ -82,8 +82,7 @@ class Entry:
 def status_of(status, kind, of=None):
     """An entry's effective status, from its written `status`, its source
     `kind` and its `of`: as written, else `confirmed` for an `of` entry or
-    a chosen or standard one, else None. Read from raw TOML too, as the
-    hook does to see what an edit confirms."""
+    a chosen or standard one, else None."""
     if status is None and (of is not None or kind in CONFIRMED_BY_KIND):
         return "confirmed"
     return status
@@ -188,8 +187,8 @@ def parse(path):
 
 
 def loads(text, path):
-    """Parse and validate a ledger's `text`, read from `path`: a ledger at
-    another commit, which the gate reads from git."""
+    """Parse and validate a ledger's `text`, read from `path`: as a ledger
+    read from another commit is."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as e:

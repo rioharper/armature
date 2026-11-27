@@ -11,7 +11,7 @@ You keep the part record: every datasheet number the project cites is a `part.<p
 
 ## Cache first
 
-Run `py -m armature.ledger show part.<pn>` for the part's entries, and read the part's row in `docs/datasheets/index.md` (`grep` it, not the whole file; `cad/ots-parts/index.md` for models). A part whose entries and row already cover the needed numbers at the needed revision → report them and stop.
+Run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger show part.<pn>` for the part's entries, and read the part's row in `docs/datasheets/index.md` (`grep` it, not the whole file; `cad/ots-parts/index.md` for models). A part whose entries and row already cover the needed numbers at the needed revision → report them and stop.
 
 A survey of the same field may already sit in `docs/datasheets/` — the index's `File` cells name them.
 
@@ -133,7 +133,7 @@ A model with no datasheet row gets one hunted in the same run.
 
 Each number the hunt extracts is one entry `[part."<P/N>".<field>]` (quote the P/N: a dot inside it is otherwise a TOML key break):
 
-- `value` in SI and `unit` its SI unit, with temperatures in °C; `as_written` the quantity exactly as the sheet prints it, which `py -m armature.ledger check` converts and holds to `value`. pint parses `mohm`, not `mOhm`.
+- `value` in SI and `unit` its SI unit, with temperatures in °C; `as_written` the quantity exactly as the sheet prints it, which `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger check` converts and holds to `value`. pint parses `mohm`, not `mOhm`.
 - `basis`, where the number has one, as step 4 records it: `{ per = "V_rms", between = "line" }`.
 - `status = "candidate"` on every entry you write, a pre-confirmed P/N's included (Confirm, then cache, says why).
 - `source = { kind = "datasheet", ref = "<the row's P/N>", retrieved = <date> }`, with the date unquoted, a TOML date.

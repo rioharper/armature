@@ -5,17 +5,12 @@ writes under `cad/parts/` follows these rules. Skills point here; they don't res
 Firmware, ROS nodes, and bench procedures (**armature-test**, **armature-bringup**) are the
 user's own code under the project's conventions, and sit outside them.
 
-Every agent that opens a module pays for the whole file: the session editing it, the
-red-team at a checkpoint, a later stage looking up one constant. The rules keep each read
-to what its question needs.
+## Modules, packages and their checks
 
-## One section, one module, one checks module
-
-A module mirrors the document it accompanies — a milestone note, a `docs/testing/` report,
-a part definition — and its decomposition mirrors that document's sections. Outline the
-document before writing code: the split is then a consequence of the outline, known before
-any code exists, never a refactor forced at the checkpoint. A document with more than about
-three substantive sections gets a package from the start:
+A module goes with the document it supports — a milestone note, a `docs/testing/` report,
+a part definition — and uses that document's names. How it is split is yours to judge:
+one file while it reads easily, a package once it does not. Nothing counts lines. A
+package looks like this:
 
 ```
 dynamics/
@@ -31,9 +26,6 @@ titles the run, and every submodule inherits it, running in file-name order. Oth
 import from the submodule that owns a name. A library package (a shared helper, not a
 milestone) makes its `__init__.py` the public surface instead: the contract docstring and
 the re-exported names callers import.
-
-That triple — a document section, its submodule, its checks — is the red-team's review
-unit: one coherent argument, held in view at a time.
 
 ## The engine and the project's half
 
@@ -160,7 +152,7 @@ what lets the same file ship in the CAD part template unchanged. The engine is o
 too: it is not the project's code, and its own tests check it.
 
 A module that genuinely makes no claim a truth model can reach says so, at module level,
-with the same argued-exemption mechanism the budget uses and the same reader parsing it:
+with an argued exemption:
 
 ```python
 TRUTH_EXEMPT = "a naming convention and a units table; no physical claim to check"
@@ -170,38 +162,17 @@ Anything but a non-empty string raises. The reason appears in `layout.py`'s tabl
 red-team challenges it — the exemption a session writes under time pressure is exactly the
 one a fresh context should read. The model template ships one worked example: `params_checks.py`
 argues that a block of *data* has no claim a simulator can be asked about, since its constants
-are held against the truth model where they are used. No module in either template claims a
-`LAYOUT_EXEMPT`.
+are held against the truth model where they are used.
 
-## The budget: 250 code lines
+## Running the gate
 
-A **code line** is any line not blank, not comment-only, and not part of a docstring.
-Documentation is free; the only way under the budget is to split. `layout.py` counts —
-`ast` for docstrings, `tokenize` for comments — and ships inside each template, stdlib only,
-because it has to run where the model's environment does not:
-
-- `python layout.py` (in the template's directory) prints every module's count and its
-  truth column, and the line counts of the documents beside them — milestone notes, part
-  definitions — for information, since documents carry no budget, then exits
-  nonzero on a violation of either gate. It imports nothing but the standard library, so it runs where
-  SymPy, SciPy, or build123d cannot.
-- `run_all.py` — the same discovery runner in both templates — collects `layout.py`'s
-  checks like any other, so the full run fails on a module over budget: in
-  `analysis/model/` that run and `pytest` are the milestone checkpoint; in `cad/parts/`
-  it is the one command that runs every part file's and library's self-tests. Running one
-  name (`run_all.py kinematics`, `run_all.py check`) leaves the budget out: a file still
-  being written is not red-barred mid-work.
-
-A module that genuinely must stand large says why, at module level:
-
-```python
-LAYOUT_EXEMPT = "one generated lookup table; splitting it splits the table"
-```
-
-Anything but a non-empty string raises, so an exemption cannot be claimed without being
-argued. The reason is surfaced in `layout.py`'s table, and the red-team challenges every
-one: the fresh context judges the exception better than the session that just wrote the
-file.
+`layout.py` ships inside each template and imports nothing but the standard library, so it
+runs where SymPy, SciPy or build123d cannot. `python layout.py` prints each module's truth
+column and exits nonzero on a violation. `run_all.py`, the same discovery runner in both
+templates, collects `layout.py`'s checks like any other, so the full run fails on a checks
+module with neither a truth check nor an argued exemption. Running one name
+(`run_all.py kinematics`, `run_all.py check`) leaves the gate out: a file still being
+written is not red-barred mid-work.
 
 ## Licence headers
 

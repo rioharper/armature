@@ -12,6 +12,7 @@ The five-bar's pin clearance is searched over ±π, where three of the four
 corners and a third of the space cannot close.
 """
 
+import importlib
 import math
 from collections import Counter
 
@@ -371,7 +372,7 @@ def test_a_strict_margin_fails_at_zero_slack():
                            strict=True))
     assert not strict.passes and strict.value == 0.0
     assert strict.coverage == 0.0
-    assert str(strict).startswith("at the trip: 0 V at x = ")
+    assert str(strict).startswith("at the trip: slack 0 V at x = ")
     assert ", FAILS;" in str(strict)
 
 
@@ -751,3 +752,64 @@ def test_a_margin_is_checked_when_it_is_declared():
 def test_axes_and_budgets_are_checked(make, match):
     with pytest.raises((TypeError, ValueError), match=match):
         make()
+
+
+# --- the workers ----------------------------------------------------------------
+def _searched(monkeypatch, make, workers):
+    """`search(make())` on `workers` workers, forked however short it is."""
+    monkeypatch.setenv("ARMATURE_WORKERS", str(workers))
+    monkeypatch.setattr(importlib.import_module("armature.search"),
+                        "PARALLEL_FROM", 0.0)
+    return search(make())
+
+
+def test_workers_give_the_serial_search_to_the_bit(monkeypatch):
+    """With every choice, a refused region, a check and Coordinates, the
+    worst read on four workers is the serial one in every field, and the
+    parent made only a few of the evaluations itself."""
+    here, cases = [], (lambda v: v, lambda v: -v)  # pickle cannot send
+
+    def make():
+        def fn(p):
+            here.append(p)
+            if p.x > 0.9:
+                raise Infeasible("past the stop")
+            return (math.sin(5 * p.x + p.case(1.0)) + p.load[0] * p.x
+                    + 0.1 * p.state.q["elbow"])
+        return Margin("slack", fn, "N", over=Space(
+            x=Interval(0.0, 1.0), load=Direction("xy"),
+            case=Choice(cases),
+            state=Coordinates(arm_2r.mechanism, arm_2r.params.PARAMS)),
+            check=fn, agree=1e-9)
+
+    serial = _searched(monkeypatch, make, 1)
+    n_serial = len(here)
+    here.clear()
+    parallel = _searched(monkeypatch, make, 4)
+    assert repr(parallel) == repr(serial)
+    assert parallel.rejected["past the stop"] > 0
+    assert parallel.check.agrees
+    assert len(here) < n_serial // 4
+
+
+def test_workers_raise_where_the_serial_search_raises(monkeypatch):
+    """An error in fn, or a nan, is raised from the same point, as it is
+    serially: the worker's read is evaluated again here."""
+    def broken():
+        def fn(p):
+            if p.x > 0.5:
+                raise ZeroDivisionError(f"at {p.x}")
+            return p.x
+        return margin(fn, x=Interval(0.0, 1.0))
+
+    def nan():
+        return margin(lambda p: math.nan if p.x > 0.5 else p.x,
+                      x=Interval(0.0, 1.0))
+
+    for make, error in ((broken, ZeroDivisionError), (nan, ValueError)):
+        raised = []
+        for workers in (1, 4):
+            with pytest.raises(error) as info:
+                _searched(monkeypatch, make, workers)
+            raised.append(str(info.value))
+        assert raised[0] == raised[1]

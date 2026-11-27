@@ -15,8 +15,6 @@ Read `docs/00-concept/concept-brief.md` and `CLAUDE.md` if they exist. If a conc
 
 ## The process
 
-A spec revision, the first included, is a branch, `armature/spec-<rev>`, cut from `main` before the first checkpoint: the spec, its ledger entries and §9's model all commit there, and it reaches `main` only through the gate at the Hand-off.
-
 ### Phase 1: Interrogation (the grilling)
 
 Interview first; the spec comes after. Run it per `${CLAUDE_PLUGIN_ROOT}/references/interview.md`, checkpointing the spec after each round; the Draft line survives Phases 1–2, and Phase 3's finished spec drops it. Lookupables here are a datasheet number, a COTS part's existence, a material property.
@@ -79,14 +77,13 @@ Then write the **design-driver BOM** to `docs/01-spec/bom.md` per `references/bo
 
 ### Hand-off
 
-When the spec is accepted, it merges through the gate (`${CLAUDE_PLUGIN_ROOT}/references/gates.md`):
+When the spec is accepted:
 
-1. Log the architecture decision in `docs/decisions.md` and commit.
-2. Dispatch the **armature-red-team** agent at that commit with the spec, BOM, budgets, traceability and `ledger.toml` paths (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*) — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds.
-3. Close each BLOCKER and MAJOR (`gates.md`, *Closing a finding*): a recomputed number lands as a test in `analysis/model/review_<date>_spec_checks.py` once §9 has made the model, and a judgment goes to a recheck or to the user. Commit.
-4. `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate merge` on the branch, routing each `fail` by `gates.md`. Done when it exits 0; then `git checkout main` and `git merge --ff-only armature/spec-<rev>`.
+1. Log the architecture decision in `docs/decisions.md`, run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" check`, settle what fails, and commit.
+2. Dispatch the **armature-red-team** agent with the spec, BOM, budgets, traceability and `ledger.toml` paths (`${CLAUDE_PLUGIN_ROOT}/references/subagent-dispatch.md`, *Dispatching the red team*) — it runs with fresh context by construction, so its review isn't compromised by the trade-offs and rationalizations the author of the document already holds.
+3. Fix the findings you agree with, take each BLOCKER or MAJOR you would leave standing to the user, note what was done in `docs/decisions.md`, run the check again, and commit. The review is not repeated.
 
-**Buying parts is an order**, never part of the spec branch: once the parts it buys are confirmed and the spec has merged, cut `armature/order-<name>` from `main`, add `docs/orders/<date>-<name>.toml` with `kind = "purchase"` and a line per part (`gates.md`, *`buy`*), commit, and dispatch the red team with the order record plus the BOM and the `part.<pn>` entries it rests on. Close its findings, run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate buy`, and merge it as a spec merges. So does a single bench part bought to be measured before the design is done: the user confirms its datasheet numbers, and the bench report replaces them.
+**Before a part is bought**, every `part.<pn>` entry the purchase rests on is `confirmed` by the user, none an `estimate`, and its price was retrieved recently enough to trust. Say which entries those are and that the order is the user's to place. A single bench part bought to be measured before the design is done goes the same way: the user confirms its datasheet numbers, and the bench report replaces them.
 
 Then offer the routes onward and, on yes, call the Skill tool with the chosen one: "armature-plan" (converts the spec into a phased implementation plan with analysis and CAD milestones) or "armature-derive" (derives the kinematics/dynamics the chosen architecture implies). Either runs right here in this same session — the files on disk are what those skills need, not the conversation that produced them.
 

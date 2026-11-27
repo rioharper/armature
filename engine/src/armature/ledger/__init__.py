@@ -9,8 +9,8 @@ provenance.
     print(show("budget.mass"))     # its lines, total, allocation and margin
     render()                       # rewrite the markdown's marked sections
 
-From a shell, `py -m armature.ledger check [--json]`,
-`py -m armature.ledger show <prefix>` and `py -m armature.ledger render`;
+From a shell, `python -m armature.ledger check [--json]`,
+`python -m armature.ledger show <prefix>` and `python -m armature.ledger render`;
 `check` exits 1 on any error.
 
 An entry is the table `[<section>.<name>]`, in a section `mechanism`
@@ -68,7 +68,7 @@ __all__ = ["ALLOCATION", "Entry", "Finding", "KINDS", "Ledger",
            "load", "loads", "parse", "render", "show"]
 
 # CAD's write-back: `set_from_part("part.<pn>", <file>)`, or from a shell
-# `py -m armature.ledger set part.<pn> --from-part <file>`, writes the part
+# `python -m armature.ledger set part.<pn> --from-part <file>`, writes the part
 # file's measured mass, COM and inertia as cad candidates (`write.py`).
 from .write import set_from_part  # noqa: E402
 
