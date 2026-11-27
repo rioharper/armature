@@ -23,7 +23,8 @@ GATES = re.compile(r"armature\.sh\"? gate|gates\.md|waivers\.toml|docs/orders"
 def _shipped():
     return [path for folder in ("skills", "agents", "references")
             for path in sorted((ROOT / folder).rglob("*"))
-            if path.is_file() and path.suffix in (".md", ".py", ".sh")]
+            if path.is_file() and path.suffix in (".md", ".py", ".sh")
+            and not any(part.startswith(".") for part in path.parts)]
 
 
 def _hits(pattern):
