@@ -78,3 +78,5 @@ The cost accepted:
 
 Revisit when a consumer cannot reach GitHub (then PyPI), or when the release
 run's cost pushes engine fixes toward separate releases.
+
+**Amended 2026-11-21:** `engine-source.sh` keeps `pin` alone. `check` and its states (in-step, behind, ahead, rev, path) are gone, and `pin` no longer refuses a major-version move, a newer tag or a rev: it writes the plugin's tag over whatever the line held and prints both. Nothing checks a project's pin against the plugin, so a project upgrades when it chooses to (#252, #168, #178).

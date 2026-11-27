@@ -12,7 +12,7 @@ The current folder is the project root.
 
 If a `ledger.toml` sits here at the root, this is an Armature project: report what `docs/decisions.md`'s last entries and `git log --oneline -10` say about where it stands, and stop. A `CLAUDE.md` here with no `ledger.toml` beside it is somebody else's file: ask through AskUserQuestion whether to merge the template into it or replace it, and carry that answer into step 4.
 
-The stop carries two repairs. Where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`; a project that has no `.mcp.json` wanted none. Where `analysis/model/` exists, run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check analysis/model` and report its line, acting on it as armature-derive's checkpoint does. Report and repair is the whole of a re-run.
+The stop carries one repair. Where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`; a project that has no `.mcp.json` wanted none. Report and repair is the whole of a re-run.
 
 ## 2. Probe the machine
 

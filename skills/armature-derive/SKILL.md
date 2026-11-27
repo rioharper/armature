@@ -16,7 +16,7 @@ Every milestone closes through the same **checkpoint**:
 1. Run the project's check via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" check`. It runs `ledger check` and every `run_all.py`, each discovered check and `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`. While iterating, run one folder alone by naming it (`… check analysis/model`), or one milestone with `uv run python run_all.py <module>` in the folder.
 2. Settle what fails, log anything a later reader needs in the milestone `.md`'s revision note, and commit. Done when the check exits 0 on the committed tree.
 
-The engine a model directory pins moves only when you move it: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check analysis/model` says how it stands against the plugin you run, and `pin` moves it. Take a new tag when the project wants what it brings, read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` with the user before crossing a major version, and never commit a local path (Step 0).
+The engine a model directory pins moves only when you move it: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model` rewrites it to the tag of the plugin you run and prints the old source beside the new. Take a new tag when the project wants what it brings, read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` first when the move crosses a major version, and never commit a local path (Step 0).
 
 ## File layout
 
