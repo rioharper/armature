@@ -11,6 +11,7 @@
 - **The stage skills** end in the check and a commit. Derive's checkpoint is the check, with one offered review at Milestone 3, and it no longer re-pins the engine: `engine-source.sh pin` moves it when the project wants a new tag.
 - **`engine-source.sh` keeps `pin` alone.** `check` and its in-step, behind, ahead, rev and path states are gone, and `pin` writes the plugin's tag over whatever the line held, a major-version move included ([#178](https://github.com/rioharper/armature/issues/178), [#252](https://github.com/rioharper/armature/issues/252)). It also works with macOS's sed now.
 - **No code-line budget.** `layout.py` keeps the truth gate and the paired-checks check; the 250-line budget, `LAYOUT_EXEMPT` and the rule that a module's split mirrors its note's sections are gone. A `LAYOUT_EXEMPT` left in a project is ignored.
+- **The eval suite is advisory.** A version bump needs the engine, script and eval-harness tests; the tier-2 run is on demand (ADR 0008, amended).
 - **Migrating a project:** delete `waivers.toml`, `docs/orders/` and `.armature/`, and replace the gate rules in its `CLAUDE.md` with `init`'s current standing rules.
 
 ### A search runs on every core, and `rest_on` walks its loops a short way

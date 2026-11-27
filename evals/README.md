@@ -2,9 +2,9 @@
 
 Tier 2 of [ADR 0008](../docs/adr/0008-the-agent-is-measured-on-golden-mechanisms.md). Each **eval case** runs the plugin's agent through `claude plugin eval` against a **golden mechanism** whose brief states its **bait** outright, or, in the case's **unstated variant**, only implies it. Tier 1, the engine against the same mechanisms, is `uv run pytest` in `engine/`.
 
-## The gate
+## What a pass means
 
-The suite gates every version bump. A partial run, or any case caught in fewer than 2/3 of its runs, blocks the bump. The hold-out is the one case that never gates (below).
+The suite is advisory: run it when a change to `armature-derive`, the red-team agent or `review-checklist.md` is one you want measured. It gates no version bump (ADR 0008, amended 2026-11-21). A run passes when it is complete and every case is caught in at least 2/3 of its runs. The hold-out is the one case that never counts (below).
 
 A run is caught only when every `catch-*` grader passed and no `peeked-*` grader did:
 - **A derive case** has two catch graders. `catch-window` is a regex that finds a number inside the answer's **window**, with its unit, in the report the brief fixes. `catch-bait` is an llm rubric that passes only when the bait is visibly rejected or sized. The right number with the bait carried into the decision is not caught.
@@ -46,7 +46,7 @@ It writes a `git archive` of HEAD into an empty directory, so commit first. It l
 
 ## The commands
 
-**The release run,** before every version bump. It costs about $117 of plan usage and takes about 259 min: 2.0.0's measured $100 and 220 min (#137), over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them, plus about $6 and 13 min for `wheel-leg-traction-unstated` (#149), about $6 and 13 min for `cable-platform-braking-unstated` (#150) and about $5 and 13 min for `spring-cable-imu-unstated` (#151):
+**The full run,** still called the release run below. It costs about $117 of plan usage and takes about 259 min: 2.0.0's measured $100 and 220 min (#137), over twice #124's $39 and 79 min now that every case has its unstated variant and the hold-out runs beside them, plus about $6 and 13 min for `wheel-leg-traction-unstated` (#149), about $6 and 13 min for `cable-platform-braking-unstated` (#150) and about $5 and 13 min for `spring-cable-imu-unstated` (#151):
 
 ```
 claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-model claude-sonnet-5-5 \
@@ -55,11 +55,11 @@ claude plugin eval . --ablation with-without --model claude-opus-5-5 --judge-mod
 uv run --project engine python evals/score.py <out>.json
 ```
 
-**The release procedure.** The engine's version, `plugin.json`'s and `marketplace.json`'s are one version and one tag `vX.Y.Z` names all three ([ADR 0009](../docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)), so a tag must point at the exact commit the release run gated:
+**The release procedure.** The engine's version, `plugin.json`'s and `marketplace.json`'s are one version and one tag `vX.Y.Z` names all three ([ADR 0009](../docs/adr/0009-the-engine-reaches-projects-as-a-git-tag.md)), so a tag points at a commit whose tests passed:
 
 1. Bump the three versions in one commit. `engine/tests/test_version.py` fails until all three agree.
-2. Run the release run above on that commit.
-3. If it passes, tag that commit `vX.Y.Z`. If it fails, the fix is a new commit and the run is repeated on it; no tag points at an ungated commit.
+2. Run `uv run pytest` in `engine/` and `uv run --project engine pytest scripts/tests evals/tests` on that commit.
+3. If they pass, tag that commit `vX.Y.Z`. If one fails, the fix is a new commit and the tests are repeated on it.
 4. Push `main` and the tag together: `git push --atomic origin main vX.Y.Z`.
 5. Run `bash evals/release-smoke.sh vX.Y.Z` from the tagged commit. It is the one test of the git source a project syncs from: the tag on origin, `engine-source.sh pin` with the lock, then `run_all.py` on the fetched engine.
 

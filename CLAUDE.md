@@ -14,4 +14,4 @@ Single-context: `CONTEXT.md` and `docs/adr/` at the repo root, both created lazi
 
 ## Releasing
 
-Version bumps are gated by the eval suite. `evals/README.md` holds the rule, the commands, and the files whose edits it checks.
+A version bump needs the engine, script and eval-harness tests green; the eval suite itself is advisory. `evals/README.md` holds the release procedure and the suite's commands.
