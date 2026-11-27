@@ -1,4 +1,4 @@
-"""`py -m armature.check [folder ...]`: the project's whole check, run when
+"""`python -m armature.check [folder ...]`: the project's whole check, run when
 asked (ADR 0013). It runs `ledger check`, then every `run_all.py` in the
 project, or only those in the folders named, each in its own environment
 with its output streamed as it comes. It prints one `pass` or `fail` line

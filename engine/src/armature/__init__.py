@@ -68,7 +68,7 @@ the bus stepped alongside.
 `armature.ledger` reads a project's `ledger.toml` (ADR 0010), where every
 input number lives once with its unit, band, status and provenance:
 `ledger.load("mechanism")` is a plain SI dict for `compile`, and
-`py -m armature.ledger check` reports each entry whose `as_written`
+`python -m armature.ledger check` reports each entry whose `as_written`
 disagrees with its value, whose unit is not SI, or whose citation is
 missing. It is imported on its own, never from here, and so is
 `armature.check` (ADR 0013), which runs it and every `run_all.py`. Every

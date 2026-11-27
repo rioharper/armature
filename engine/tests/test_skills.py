@@ -38,6 +38,17 @@ def test_no_skill_agent_or_reference_writes_a_stage_line():
     assert _hits(STAGE) == []
 
 
+def test_nothing_shipped_runs_the_windows_py_launcher():
+    """`py` is the Windows launcher, absent on Linux and macOS (#175)."""
+    launcher = re.compile(r"(?<![\w.])py -m armature")
+    engine = [f"{path.relative_to(ROOT)}:{n}"
+              for path in sorted((ROOT / "engine" / "src").rglob("*.py"))
+              for n, line in enumerate(path.read_text(
+                  encoding="utf-8").splitlines(), 1)
+              if launcher.search(line)]
+    assert _hits(launcher) + engine == []
+
+
 def test_no_skill_agent_or_reference_names_the_removed_gates():
     assert _hits(GATES) == []
 

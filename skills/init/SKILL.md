@@ -199,8 +199,9 @@ it appears.
   row in docs/datasheets/index.md saying what was verified. An entry whose
   `status` is `candidate` carries no decision until the user confirms it.
 - After a number changes, edit its ledger entry, the one place it is written,
-  then run `py -m armature.ledger render`, then `py -m armature.ledger check`,
-  and settle every error before anything reads the number.
+  then run `bash "<plugin root>/scripts/armature.sh" ledger render`, then
+  `bash "<plugin root>/scripts/armature.sh" ledger check`, and settle every
+  error before anything reads the number.
 - Before a commit that changes a number, the model, the derivation or a part,
   run the project's check, `bash "<plugin root>/scripts/armature.sh" check`
   (`<plugin root>` being the Armature plugin's folder): `ledger check` and

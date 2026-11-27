@@ -17,6 +17,7 @@
 ### Friction fixes from Ibex
 
 - **A margin's row says it is a slack.** `Worst` prints `slack <value>`, and the bus's minimum V, brake pulse energy, source power and brake power rows name the limit they are held against, as the peak V's already did ([#236](https://github.com/rioharper/armature/issues/236)).
+- **No `py -m`.** Skills, agents and references run the ledger through `armature.sh ledger …`, and the CLAUDE.md `init` writes does too; `py` is the Windows launcher and Linux and macOS have none ([#175](https://github.com/rioharper/armature/issues/175)).
 
 ### A search runs on every core, and `rest_on` walks its loops a short way
 

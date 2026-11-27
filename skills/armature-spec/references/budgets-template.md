@@ -3,9 +3,9 @@
 Living document. Debit at every phase gate: math and CAD update estimates
 as they harden; any change to a mass, power draw, or cost updates its
 ledger entry. Each table below is a view of `ledger.toml` (ADR 0010): edit
-the entries, then run `py -m armature.ledger render`, which rewrites every
+the entries, then run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger render`, which rewrites every
 table between its `<!-- ledger:budget.<kind> -->` and `<!-- /ledger -->`
-markers, and `py -m armature.ledger check`, which fails a table edited by
+markers, and `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger check`, which fails a table edited by
 hand. The prose around the tables is yours.
 
 A budget is the section `budget.<kind>`: one entry named `allocation`, the

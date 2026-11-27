@@ -60,7 +60,7 @@ Whatever the note or module needs printed in full — a long symbolic result, a 
 
 A module joins the run by shape, not by name: its self-tests are `test_*` callables in its sibling `<module>_checks.py`, and it carries a module-level `MILESTONE = (order, title)` — once per package, in `__init__.py`. Both commands discover it, so a module added later — a `spring.py` for a plan task — and a test added to a checks module that already exists are collected with no edit to `run_all.py` or `test_derivation.py`. During development check one milestone alone: `uv run python run_all.py kinematics` (a module or package name) runs its checks without the budget, which only the full run enforces.
 
-`ledger.toml` is where a value is edited, and `mechanism.py` is where the mechanism changes shape. `params.py` loads the ledger and holds only structure: `PARAMS`, `DRIVE` and `REQ` are its `mechanism`, `drive` and `req` sections in SI, the bands are `LEDGER.bands(section)`, and the workspace, the rate envelope and the load-case table are keyed to joints and load classes, each number a ledger entry. What number it may still hold is `params_checks.py`'s `test_the_parameter_block_writes_no_number`. A number derived from entries, such as a balance condition, is computed and never entered. Anyone who needs a value, its unit or its provenance runs `py -m armature.ledger show <prefix>`.
+`ledger.toml` is where a value is edited, and `mechanism.py` is where the mechanism changes shape. `params.py` loads the ledger and holds only structure: `PARAMS`, `DRIVE` and `REQ` are its `mechanism`, `drive` and `req` sections in SI, the bands are `LEDGER.bands(section)`, and the workspace, the rate envelope and the load-case table are keyed to joints and load classes, each number a ledger entry. What number it may still hold is `params_checks.py`'s `test_the_parameter_block_writes_no_number`. A number derived from entries, such as a balance condition, is computed and never entered. Anyone who needs a value, its unit or its provenance runs `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger show <prefix>`.
 
 ## Step 0: Establish the model
 
@@ -162,7 +162,7 @@ Flagging is half the job. When the user approves a change — bigger motor, shor
 2. Update every equation, boxed result, and interpretation in whichever `.md` the change touches. A number-only change usually touches `03_results.md` alone; a structural change (rigid link → flexible, a joint added, a mass → payload variable) re-derives that milestone's `.md` and `.py` together. If that re-derivation is genuinely large, scope it as its own task.
 3. Bump the revision note in every `.md` file that changed, recording what changed and why.
 
-When masses or inertias firm up, update their ledger entries, with the source kind that firmed them (`cad`, `measured`), and run `py -m armature.ledger render`, which rewrites the budgets that read them. A torque result is derived and is never an entry; the drive margins carry it.
+When masses or inertias firm up, update their ledger entries, with the source kind that firmed them (`cad`, `measured`), and run `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger render`, which rewrites the budgets that read them. A torque result is derived and is never an entry; the drive margins carry it.
 
 ## When a plan task lands as a report
 
