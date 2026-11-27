@@ -44,8 +44,8 @@ During development run one milestone by name — a module or a package:
     uv run python run_all.py kinematics
 
 It runs that milestone's checks without rebuilding the symbolic models of the
-milestones it isn't checking, and without the code-line budget in `layout.py`,
-which only the full run enforces. The same file ships in armature-cad's part
+milestones it isn't checking, and without `layout.py`'s gate, which only the
+full run enforces. The same file ships in armature-cad's part
 template, where the modules it collects are part files and libraries.
 """
 

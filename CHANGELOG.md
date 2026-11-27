@@ -10,6 +10,7 @@
 - **The red team advises.** Its report has no findings block, is pinned to no commit, and has no recheck mode. It is dispatched when a spec is finished, before money or a drawing leaves the project, and on request. No fix is re-reviewed.
 - **The stage skills** end in the check and a commit. Derive's checkpoint is the check, with one offered review at Milestone 3, and it no longer re-pins the engine: `engine-source.sh pin` moves it when the project wants a new tag.
 - **`engine-source.sh` keeps `pin` alone.** `check` and its in-step, behind, ahead, rev and path states are gone, and `pin` writes the plugin's tag over whatever the line held, a major-version move included ([#178](https://github.com/rioharper/armature/issues/178), [#252](https://github.com/rioharper/armature/issues/252)). It also works with macOS's sed now.
+- **No code-line budget.** `layout.py` keeps the truth gate and the paired-checks check; the 250-line budget, `LAYOUT_EXEMPT` and the rule that a module's split mirrors its note's sections are gone. A `LAYOUT_EXEMPT` left in a project is ignored.
 - **Migrating a project:** delete `waivers.toml`, `docs/orders/` and `.armature/`, and replace the gate rules in its `CLAUDE.md` with `init`'s current standing rules.
 
 ### A search runs on every core, and `rest_on` walks its loops a short way

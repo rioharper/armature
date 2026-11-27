@@ -5,7 +5,7 @@ description: Derive a robot's kinematics and dynamics as milestone-sized notes p
 
 # Robotics Mathematician
 
-You produce the analytical backbone of a robotics project: derivations to engineering-notebook standard, verified symbolically with SymPy, and every part sized numerically on the truth model. Read `references/derivation-standards.md` before writing any note — it sets the register, the per-file rules, and which layer each sentence lives in. Read `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md` before writing any module — the file split and the 250-code-line budget the checkpoint enforces.
+You produce the analytical backbone of a robotics project: derivations to engineering-notebook standard, verified symbolically with SymPy, and every part sized numerically on the truth model. Read `references/derivation-standards.md` before writing any note — it sets the register, the per-file rules, and which layer each sentence lives in. Read `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md` before writing any module — where checks live and the truth gate the checkpoint enforces.
 
 ## Milestones
 
@@ -13,7 +13,7 @@ The derivation is four self-contained parts, each with its own `.md` note, its o
 
 Every milestone closes through the same **checkpoint**:
 
-1. Run the project's check via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" check`. It runs `ledger check` and every `run_all.py`, each discovered check and `layout.py`'s two gates among them: the code-line budget and the **truth gate**, both in `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`. While iterating, run one folder alone by naming it (`… check analysis/model`), or one milestone with `uv run python run_all.py <module>` in the folder.
+1. Run the project's check via Bash from the project root: `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" check`. It runs `ledger check` and every `run_all.py`, each discovered check and `layout.py`'s **truth gate** among them (`${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`). While iterating, run one folder alone by naming it (`… check analysis/model`), or one milestone with `uv run python run_all.py <module>` in the folder.
 2. Settle what fails, log anything a later reader needs in the milestone `.md`'s revision note, and commit. Done when the check exits 0 on the committed tree.
 
 The engine a model directory pins moves only when you move it: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" pin analysis/model` rewrites it to the tag of the plugin you run and prints the old source beside the new. Take a new tag when the project wants what it brings, read `${CLAUDE_PLUGIN_ROOT}/CHANGELOG.md` first when the move crosses a major version, and never commit a local path (Step 0).
@@ -35,7 +35,7 @@ analysis/model/
   mechanism_checks.py      <-   its self-tests: compiles exactly, boxes inside the ranges, a release
   kinematics.py            <- Milestone 1 (FK, Jacobian)
   kinematics_checks.py     <-   its self-tests
-  dynamics/                <- Milestone 2, a package: one submodule per note section
+  dynamics/                <- Milestone 2, a package
     __init__.py            <-   MILESTONE, and nothing else
     equations.py           <-   M, C q̇, g by armature.equations; V; rotor N²J added
     equations_checks.py
@@ -48,15 +48,15 @@ analysis/model/
   drive_checks.py          <-   its self-tests
   report_results.py        <- prints the symbolic results, the named configurations, the tables
   report_truth.py          <- writes the review artifact: the frames table and skeleton renders
-  layout.py                <- the two gates: the code-line budget and the truth check
+  layout.py                <- the truth gate
   layout_checks.py         <-   the gates as checks, with their teeth
   run_all.py               <- discovers the milestone modules, runs every self-test in order
   test_derivation.py       <- the same checks, exposed to pytest
 ```
 
-Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none, never its `ledger.toml`, which is the template's own. Each module mirrors the equations and variable names of its matching `.md` exactly, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: its equations are formed by the engine on the symbolic view's frames rather than from `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
+Spec §9 normally creates `analysis/model/` with its parameters, a coarse `mechanism.py`, the drive and the missions (ADR 0007). Milestone 0 refines those files in place and copies the rest of `model_template/` from this skill's `scripts/` directory beside them, or the whole template where the spec made none, never its `ledger.toml`, which is the template's own. Each module uses the variable names of its matching `.md`, and imports only what it needs from earlier modules (`verification.py` imports `kinematics.py`'s FK; nothing imports `verification.py`). `dynamics/` deliberately does *not* borrow from `kinematics.py`: its equations are formed by the engine on the symbolic view's frames rather than from `kinematics.py`'s matrices, so the two milestones share the mechanism description and nothing else.
 
-**Outline the note before writing its module.** The note's section headings are the module's decomposition: a note with more than about three substantive sections starts as a package, one submodule per section, each with its checks module beside it. Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it.
+Whatever the note or module needs printed in full — a long symbolic result, a table — goes in a report module (`report_<scope>.py`), never inline in the module that computes it. Split a module into a package when it stops reading easily; nothing counts its lines.
 
 A module joins the run by shape, not by name: its self-tests are `test_*` callables in its sibling `<module>_checks.py`, and it carries a module-level `MILESTONE = (order, title)` — once per package, in `__init__.py`. Both commands discover it, so a module added later — a `spring.py` for a plan task — and a test added to a checks module that already exists are collected with no edit to `run_all.py` or `test_derivation.py`. During development check one milestone alone: `uv run python run_all.py kinematics` (a module or package name) runs its checks without the budget, which only the full run enforces.
 
@@ -175,10 +175,8 @@ write-back table for every number it moves, the assumptions under strain with
 the direction and size the model gives each, and a row per item routed to the
 task. Print every table from a report module under `analysis/model/`
 (`report_<task>.py`) so the report re-runs; a number typed in by hand goes stale
-in silence. The task's computation follows the plugin's model layout against
-the report's sections as a milestone module does against its note's: outline
-the report first, one submodule per section once it has more than about three,
-each with its checks module, under the same budget. A milestone note the
+in silence. The task's computation follows the plugin's model layout, its
+checks module beside each module. A milestone note the
 report corrects gets a revision note pointing at it, and the write-back runs the
 same propagation as an approved change above.
 

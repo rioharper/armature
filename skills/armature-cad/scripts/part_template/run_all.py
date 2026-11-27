@@ -25,8 +25,8 @@ During development run one module or package by name:
 
     python cad/parts/run_all.py check
 
-It runs that name's checks without the code-line budget in `layout.py`,
-which only the full run enforces. The same file ships in armature-derive's
+It runs that name's checks without `layout.py`'s, which only the full run
+collects. The same file ships in armature-derive's
 model template, where the modules it collects are milestones.
 """
 

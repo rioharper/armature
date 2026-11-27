@@ -9,7 +9,7 @@
 # run's empty workspace, and:
 #  1. runs scaffold.sh <mechanism>: the spec-stage project, synced and
 #     committed;
-#  2. copies the model template's gates and review artifact (layout.py,
+#  2. copies the model template's truth gate and review artifact (layout.py,
 #     layout_checks.py, report_truth.py) into analysis/model/, as derive's
 #     Milestone 0 does;
 #  3. copies <planted> over the workspace: the notes, model modules and

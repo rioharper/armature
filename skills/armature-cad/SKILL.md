@@ -114,7 +114,7 @@ part with the numbers to measure.
 
 A build recipe is a numbered feature sequence with concrete dimensions, so it can also be written in **build123d** as `cad/parts/<PART-ID>.py` from `scripts/part_template/` (its README holds what it buys, the unit contract, and where it stops). Offer it when a part has an inertia target to hit, its driven dimensions are still moving, or no CAD seat is open yet: it closes the inertia loop and validates the recipe at sketch grade, before the modeling hours. A one-off typed-dimension bracket doesn't need it, and build123d is not an armature dependency.
 
-Everything under `cad/parts/` is laid out per `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`: a part file's self-tests go one file over, in `<PART-ID>_checks.py`; no module passes 250 code lines; and `cad/parts/run_all.py` runs every self-test and the budget, exiting nonzero on a failure; the template's README gives the commands. The template demonstrates all of it.
+Everything under `cad/parts/` is laid out per `${CLAUDE_PLUGIN_ROOT}/references/model-layout.md`: a part file's self-tests go one file over, in `<PART-ID>_checks.py`; and `cad/parts/run_all.py` runs every self-test, exiting nonzero on a failure; the template's README gives the commands. The template demonstrates all of it.
 
 `scripts/part_template/sweep/` is the planning-stage cousin: crude link envelopes swept over the description's joint ranges, before parts exist. Each envelope rides on a site of the mechanism description and is posed by the engine's truth model, so the sweep runs in the model's environment and keeps no forward kinematics of its own. A self-collision it finds is a joint limit or a link length — an **armature-derive** finding; hand it back with the printed rows.
 

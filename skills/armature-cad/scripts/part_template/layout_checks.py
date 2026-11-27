@@ -1,6 +1,6 @@
 """
-layout_checks.py — the gates layout.py defines, as checks: the code-line
-budget, every checks module paired, the truth gate on checks modules and on
+layout_checks.py — the gates layout.py defines, as checks: every checks
+module paired, the truth gate on checks modules and on
 margins, and the gate's teeth against fixtures it builds. `run_all.py` runs
 them as layout.py's, and `python layout.py` prints the gate table and runs
 them. Standard library only, as layout.py is.
@@ -9,7 +9,7 @@ them. Standard library only, as layout.py is.
 import tempfile
 from pathlib import Path
 
-from layout import (BUDGET, DESCRIPTION, EXEMPT, HERE, TRUTH_PREFIX,
+from layout import (DESCRIPTION, HERE, TRUTH_PREFIX,
                     is_review_checks, model_files, size_table,
                     unchecked_claims, unconfirmed_margins)
 from layout import TRUTH_EXEMPT as TRUTH_GATE
@@ -19,15 +19,6 @@ from layout import TRUTH_EXEMPT as TRUTH_GATE
 # fixtures test_the_truth_gate_has_teeth builds and sees fail.
 TRUTH_EXEMPT = ("the gates read source files, not the machine; their teeth "
                 "are the fixtures the last check builds and sees fail")
-
-
-def test_modules_within_budget():
-    over = [f"{row.where} ({row.lines} code lines)" for row in size_table()
-            if row.lines > BUDGET and row.exempt is None]
-    assert not over, (
-        f"over the {BUDGET}-code-line budget: {', '.join(over)}; split along "
-        f"the note's sections, or declare {EXEMPT} with the reason it cannot")
-    print(f"  [PASS] every module within {BUDGET} code lines or exempt with a reason")
 
 
 def test_checks_modules_are_paired():
