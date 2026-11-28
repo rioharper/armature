@@ -4,7 +4,9 @@
 check, each searched by `armature.search`:
 
 - **per actuator**, every (τ, ω) sample inside the torque–speed envelope at
-  the bus's lowest voltage, with the winding hot; the driver's peak current;
+  the bus's lowest voltage, with the winding at its `Thermal`'s `t_max`
+  (at its resistance's T₀ where the motor has no `Thermal`); the driver's
+  peak current;
   the winding's temperature over the duty, or, where the motor publishes no
   `Thermal`, its RMS torque against its continuous rating; the driver's
   RMS current against its continuous rating, where it gives one; and,
@@ -67,7 +69,9 @@ T₀, which returns the most regeneration, for the peak voltage, the brake
 and each actuator's regeneration, whose flux brake then takes least; and
 with each winding at its `t_max`, which draws the most, for the minimum
 voltage, the source's power, the flux brakes' heat and the envelope,
-whose V_min it is. The envelope reads the winding hot too.
+whose V_min it is. The envelope reads the winding at `t_max` too. A motor
+with no `Thermal` has no `t_max`, so every reading of its winding is at T₀,
+25 °C by default, and its envelope is the cold winding's.
 
 Each margin's `check` re-runs its point at `confirm` (1 kHz) with each
 event at half its timestep, and must agree within `agree` of the limit the
@@ -674,7 +678,8 @@ class _Setup:
 
     def _envelope(self, a, ran):
         """`a`'s envelope slack (N·m at the output, the envelope's own scale
-        Kt·N·η) and its `Envelope` at V_min with the winding hot, on a bus
+        Kt·N·η) and its `Envelope` at V_min with the winding at `t_max` (at
+        T₀ where the motor has no `Thermal`), on a bus
         with no source no lower than the driver's undervoltage trip. Each
         sample's d-q current must lie within the current limit and within
         the voltage limit |R·i + E| ≤ k_mod·V_min; its slack is the nearer
@@ -704,7 +709,8 @@ class _Ran:
     """One evaluation: the point's `values`, the compiled model `m`, the
     `drive`, the `mission` as run, its `trace`, each actuator's electrical
     model (`loads`; its current is the same at any winding temperature) and
-    its winding's resistance hot (`r_hot`, Ω), and the bus charged with
+    its winding's resistance at `t_max`, or at T₀ for a motor with no
+    `Thermal` (`r_hot`, Ω), and the bus charged with
     every winding at T₀ (`charged`) and with each at its `t_max`
     (`sagged`), one run where no motor has a `Thermal`."""
     values: dict
@@ -891,7 +897,8 @@ def review(margins, directory="review", worsts=None):
     `directory`, one PNG per margin, and return a `Reviewed` for each:
 
     - an actuator's envelope, current and RMS-torque margins: its (τ, ω)
-      samples over its envelope at V_min, the winding hot;
+      samples over its envelope at V_min, the winding at `t_max` (at T₀
+      where the motor has no `Thermal`, and the legend says so);
     - an actuator's regeneration margin: the power it returns to the bus
       over t against its flux brake's capacity, the winding at T₀;
     - the bus's margins: V(t) against its trip lines, and the source's and
@@ -954,12 +961,14 @@ def _torque_speed(plt, setup, check, ran, worst):
     figure, axis = plt.subplots(figsize=(6.4, 4.8))
     tau, omega, _ = ran.trace.output(a, setup.gear_of(a))
     _, bound = setup._envelope(a, ran)
+    winding = ("winding at t_max" if ran.drive.motors[a].thermal is not None
+               else "winding at T₀ (no Thermal)")
     if bound is not None:
         speeds = np.linspace(-bound.no_load_speed, bound.no_load_speed, 401)
         limit = bound.torque(speeds)
         axis.plot(speeds, limit, color="black", lw=1,
                   label=f"envelope at V_min = {bound.v_bus:.4g} V, "
-                        f"winding hot")
+                        f"{winding}")
         axis.plot(speeds, -limit, color="black", lw=1)
     axis.scatter(omega, tau, s=4, color="tab:blue", label="samples")
     axis.axhline(0, color="grey", lw=0.5)

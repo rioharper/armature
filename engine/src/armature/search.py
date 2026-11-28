@@ -34,8 +34,14 @@ short after 2,000 evaluations.
 
 A point `fn` cannot evaluate, such as a loop that cannot close or a settle
 that does not come to rest, raises `Infeasible(reason)`. It is counted
-under its reason, never reported as the worst, and ranks last during the
-polish. A design failing there, a cable going slack or a contact lifting,
+under its reason and kept, with where it was, in `Worst.refused`, never
+reported as the worst, and ranks last during the polish. A combination of
+`Choice` values with no point `fn` could evaluate keeps its reasons and
+fails the margin, and the other combinations are still searched. Where a
+region with no answer is itself a failure (no trajectory found, no
+recovery inside the window), `Margin(rejects_fail=True)` fails the margin
+on any rejected point; leave it off where `Infeasible` only marks points
+outside the space, such as poses the map refuses. A design failing there, a cable going slack or a contact lifting,
 is a number, never an `Infeasible`. A `nan` is an error naming the point.
 
 Two axes touch the mechanism. A `Band` is a parameter's tolerance band, and
@@ -538,7 +544,11 @@ class Margin:
     marked UNCHECKED, which fails.
 
     `against`, optional, names the limit for the row, where the name alone
-    does not: "power board (44 V)"."""
+    does not: "power board (44 V)".
+
+    `rejects_fail` fails the margin wherever its search rejected a point,
+    for a margin whose `Infeasible` means the design has no answer there
+    rather than that the point lies outside the space."""
     name: str
     fn: object
     unit: str
@@ -549,6 +559,7 @@ class Margin:
     unchecked: tuple = None
     against: str = None
     strict: bool = False
+    rejects_fail: bool = False
 
     def __post_init__(self):
         if not callable(self.fn):
@@ -597,10 +608,21 @@ class Confirmed(NamedTuple):
 
 class Case(NamedTuple):
     """The worst of one `Choice` combination: `choices` maps each choice
-    axis to its value, and `value` is the worst slack, at `at`."""
+    axis to its value, and `value` is the worst slack, at `at`. A
+    combination with no point `fn` could evaluate has `value` nan, `at`
+    empty, and `rejected` counting its reasons; it fails the margin."""
     choices: dict
     value: float
     at: dict
+    rejected: MappingProxyType = None
+
+
+class Refused(NamedTuple):
+    """A point the search rejected: where it was, each axis's value by
+    name (a `Coordinates` axis the map refused is left out), and the
+    `Infeasible` reason."""
+    at: dict
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -612,7 +634,8 @@ class Worst:
     evaluation, `seed` seeds the Sobol set, and `method` says what was
     spent. `pre_polish` is the least slack before the polish, at
     `pre_polish_at`, so a reviewer sees whether the polish moved it.
-    `rejected` counts the `Infeasible` points by reason, and `coverage` is
+    `rejected` counts the `Infeasible` points by reason, `refused` holds
+    each as a `Refused` in the order evaluated, and `coverage` is
     the fraction of the global set's feasible points that pass, pooled over
     every combination; a `Case` carries none. `check`
     is the `Confirmed` record of the margin's check at `at` and at
@@ -621,7 +644,10 @@ class Worst:
 
     An UNCHECKED margin's worst names its missing inputs in `unchecked`; its
     value is nan, it fails, and nothing was evaluated. `against` is the
-    margin's, printed after the value."""
+    margin's, printed after the value.
+
+    `passes` is also False where a combination had no feasible point, and,
+    for a `rejects_fail` margin, where any point was rejected."""
     margin: str
     unit: str
     value: float
@@ -638,6 +664,7 @@ class Worst:
     check: Confirmed = None
     unchecked: tuple = None
     against: str = None
+    refused: tuple = ()
 
     def __str__(self):
         if self.unchecked:
@@ -649,10 +676,20 @@ class Worst:
                 f"{'passes' if self.passes else 'FAILS'}; pre-polish "
                 f"{self.pre_polish:.7g}; coverage {self.coverage:.1%}; "
                 f"n = {self.n}, seed = {self.seed}; {self.method}")
+        for case in self.cases:
+            if case.rejected is not None:
+                text += (f"; NO FEASIBLE POINT at {_written(case.choices)} ("
+                         + ", ".join(f"{r}: {k}"
+                                     for r, k in case.rejected.items()) + ")")
         if self.rejected:
             text += (f"; {sum(self.rejected.values())} rejected ("
                      + ", ".join(f"{r}: {k}" for r, k in self.rejected.items())
                      + ")")
+            shown = self.refused[:3]
+            if shown:
+                text += (", first at " + "; ".join(
+                    f"{_written(r.at)} ({r.reason})" for r in shown)
+                    + ("; ..." if len(self.refused) > len(shown) else ""))
         if self.check is not None:
             t = self.check
             text += (f"; check {t.value:.7g} at the worst, {t.pre_polish:.7g} "
@@ -679,9 +716,11 @@ def search(margin, seed=DEFAULT_SEED):
     An UNCHECKED margin is not evaluated: its `Worst` names what is
     missing, and fails.
 
-    Raises when `fn` returns nan, naming the point, when a combination has
-    no point `fn` could evaluate, giving the reasons, and when `check`
-    raises `Infeasible` at a point `fn` evaluated.
+    A combination with no point `fn` could evaluate is kept as a `Case`
+    with its reasons, and fails the margin. Raises when `fn` returns nan,
+    naming the point, when no combination has a point `fn` could evaluate,
+    giving the reasons, and when `check` raises `Infeasible` at a point
+    `fn` evaluated.
     """
     if not isinstance(margin, Margin):
         raise TypeError(f"search takes a Margin; got {margin!r}")
@@ -709,24 +748,38 @@ def search(margin, seed=DEFAULT_SEED):
     _ahead(run, combinations, cube, corners, starts, cap)
     cases, found, pre = [], [], None
     for k, fixed in enumerate(combinations):
+        held = Counter(run.rejected)
         best, before = run.combination(k, fixed, cube, corners, starts, cap)
+        if best is None:
+            reasons = MappingProxyType(dict(run.rejected - held))
+            cases.append(Case(fixed, math.nan, {}, reasons))
+            found.append(None)
+            continue
         cases.append(Case(fixed, best[0], best[1]))
         found.append(best)
         if pre is None or before[0] < pre[0]:
             pre = before
-    first = min(range(len(cases)), key=lambda i: cases[i].value)
+    if pre is None:
+        raise ValueError(
+            f"margin {margin.name!r} has no point it could evaluate: "
+            + ", ".join(f"{r}: {k}" for r, k in run.rejected.items()))
+    first = min((i for i in range(len(cases)) if found[i] is not None),
+                key=lambda i: cases[i].value)
     worst, point = cases[first], found[first][2]
     method = (f"Sobol {len(cube)} (scrambled) + {len(corners)} corners + "
               f"Powell from {starts} (at most {cap} evaluations each)"
               if dims else "every combination evaluated once")
     if len(cases) > 1:
         method += f", for each of {len(cases)} combinations"
+    passes = (_passes(margin, worst.value)
+              and all(f is not None for f in found)
+              and not (margin.rejects_fail and run.rejected))
     return Worst(margin.name, margin.unit, worst.value, worst.at,
-                 _passes(margin, worst.value), tuple(cases), method, run.n,
+                 passes, tuple(cases), method, run.n,
                  seed, pre[0], pre[1], MappingProxyType(dict(run.rejected)),
                  run.covered / run.counted if run.counted else 0.0,
                  _confirm(margin, (worst.value, worst.at, point), pre),
-                 against=margin.against)
+                 against=margin.against, refused=tuple(run.refused))
 
 
 def _passes(margin, slack):
@@ -772,14 +825,15 @@ class _Run:
 
     def __init__(self, margin, space):
         self.margin, self.space = margin, space
-        self.n, self.rejected = 0, Counter()
+        self.n, self.rejected, self.refused = 0, Counter(), []
         self.covered = self.counted = 0
         self.known = {}  # (combination, u's bytes): what a worker read there
 
-    def point(self, fixed, u):
+    def point(self, fixed, u, mapped=True):
         """Each axis's value at unit coordinates `u`, the `Coordinates`'
         state last, compiled with the point's band values. Raises
-        `Infeasible` where the map refuses the point."""
+        `Infeasible` where the map refuses the point; with `mapped` False,
+        leaves the `Coordinates` axis out instead of mapping it."""
         values, mechanism, i = {}, None, 0
         for name, axis in self.space.axes.items():
             if isinstance(axis, Choice):
@@ -791,7 +845,9 @@ class _Run:
                 values[name], mechanism = None, (name, axis, unit)
             else:
                 values[name] = axis.value(unit)
-        if mechanism:
+        if mechanism and not mapped:
+            del values[mechanism[0]]
+        elif mechanism:
             name, axis, unit = mechanism
             values[name] = axis.value(unit, {
                 a.param: values[n] for n, a in self.space.axes.items()
@@ -800,15 +856,20 @@ class _Run:
 
     def read(self, fixed, u):
         """`fn` at unit coordinates `u`, uncounted: (slack, the point as a
-        plain dict, the `Point` `fn` read, None), or (None, None, None,
-        reason) where it raised `Infeasible`."""
+        plain dict, the `Point` `fn` read, None), or (None, the point as a
+        plain dict, None, reason) where it raised `Infeasible`."""
+        values = None
         try:
             values = self.point(fixed, u)
-            at = {n: self.space.axes[n].plain(v) for n, v in values.items()}
             point = Point(values)
-            return float(self.margin.fn(point)), at, point, None
+            return float(self.margin.fn(point)), self.plain(values), point, None
         except Infeasible as refused:
-            return None, None, None, refused.reason
+            if values is None:
+                values = self.point(fixed, u, mapped=False)
+            return None, self.plain(values), None, refused.reason
+
+    def plain(self, values):
+        return {n: self.space.axes[n].plain(v) for n, v in values.items()}
 
     def evaluate(self, k, fixed, u):
         """`fn` at unit coordinates `u` in combination `k`, or what a worker
@@ -818,12 +879,14 @@ class _Run:
         self.n += 1
         known = self.known.pop((k, u.tobytes()), None)
         slack, at, point, reason = known or self.read(fixed, u)
-        if known and reason is None:
+        if known:
             at = {n: fixed[n] if n in fixed else at[n]
-                  for n in self.space.axes}
+                  for n in self.space.axes if n in fixed or n in at}
+        if known and reason is None:
             point = point or _Lazy(self, fixed, u)
         if reason is not None:
             self.rejected[reason] += 1
+            self.refused.append(Refused(at, reason))
             return None, None, None
         if math.isnan(slack):
             raise ValueError(f"margin {self.margin.name!r} is nan at "
@@ -833,7 +896,8 @@ class _Run:
 
     def combination(self, k, fixed, cube, corners, starts, cap):
         """The least slack of combination `k`, `fixed`, and the least before
-        the polish, each as (value, at, point)."""
+        the polish, each as (value, at, point), or (None, None) where no
+        point could be evaluated."""
         best = None
         ranked = []   # (slack, order, u) of every feasible point so far
         seen = {}
@@ -859,10 +923,7 @@ class _Run:
         for u in corners:
             visit(np.array(u, dtype=float))
         if best is None:
-            raise ValueError(
-                f"margin {self.margin.name!r} has no point it could evaluate"
-                + (f" at {_written(fixed)}" if fixed else "") + ": "
-                + ", ".join(f"{r}: {k}" for r, k in self.rejected.items()))
+            return None, None
         before = best
         if not math.isfinite(best[0]) or not starts:
             return best, before
