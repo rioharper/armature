@@ -589,6 +589,16 @@ def test_render_writes_a_budget_whole_and_check_is_then_clean(tmp_path):
     assert found(root, "view.stale") == []
 
 
+def test_check_without_views_leaves_a_stale_view_out(tmp_path):
+    root = project(tmp_path, PART, {BUDGETS: marked("budget.mass")})
+    assert "view.stale" not in {f.code for f in check(root, today=TODAY,
+                                                         views=False)}
+    cli = subprocess.run([sys.executable, "-m", "armature.ledger", "check",
+                          "--no-views", "--path", str(root)],
+                         capture_output=True, text=True)
+    assert "view.stale" not in cli.stdout
+
+
 PROJECT = PART + """
 [part."moteus-r4.11".kt]
 of = "part.moteus-r4.11.ke"

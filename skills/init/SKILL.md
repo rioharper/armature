@@ -126,6 +126,15 @@ __pycache__/
 .mcp.json
 ```
 
+- `.gitattributes`, so two branches' appends to the same log merge as both
+  lines instead of a conflict:
+
+```
+docs/decisions.md merge=union
+docs/datasheets/index.md merge=union
+cad/ots-parts/index.md merge=union
+```
+
 - `CLAUDE.md` from the template below, with the setup answers filled in.
   If step 1 chose merge, append the template's sections to the existing
   file, keeping its content above them.

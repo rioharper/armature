@@ -2,7 +2,8 @@
 on the ledger nearest the working directory, or the one `--path` names.
 `check` prints one finding per line, `<level> <code> <entry>: <message>`,
 or a JSON list with `--json`, and exits 1 on any error; a ledger it cannot
-read is an error too. `render` prints each file it rewrote.
+read is an error too. `--no-views` leaves out stale views, for a caller
+that leaves `render` to someone else. `render` prints each file it rewrote.
 
 `set <name> --from-part <file>` runs the part file's `--mass-properties`
 export with this Python, writes its mass, COM and inertia as `cad`
@@ -33,6 +34,8 @@ def main(argv=None):
     for sub in verbs.choices.values():
         sub.add_argument("--path", help=PATH_HELP)
     verbs.choices["check"].add_argument("--json", action="store_true")
+    verbs.choices["check"].add_argument("--no-views", action="store_true",
+                                        help="leave out stale views")
     verbs.choices["show"].add_argument("prefix")
     put = verbs.choices["set"]
     put.add_argument("name", help="the part's entries, part.<pn>")
@@ -54,7 +57,7 @@ def main(argv=None):
         if args.verb == "show":
             print(show(args.prefix, path=args.path))
             return 0
-        findings = check(args.path)
+        findings = check(args.path, views=not args.no_views)
     except LedgerError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

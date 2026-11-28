@@ -46,10 +46,11 @@ class Finding:
         return asdict(self)
 
 
-def check(path=None, *, today=None):
+def check(path=None, *, today=None, views=True):
     """The findings on the ledger nearest `path`, in file order. `today`
-    (default: the date now) is what a price's age is counted from. A
-    malformed entry raises, as `load` does."""
+    (default: the date now) is what a price's age is counted from.
+    `views=False` leaves out stale views, for a caller that doesn't run
+    `render`. A malformed entry raises, as `load` does."""
     ledger = load(path=path)
     today = datetime.date.today() if today is None else today
     findings = []
@@ -59,10 +60,10 @@ def check(path=None, *, today=None):
         findings += [Finding(code, level, e.name, message)
                      for code, level, message in found]
     return findings + [Finding(code, "error", entry, message)
-                       for code, entry, message in _project(ledger)]
+                       for code, entry, message in _project(ledger, views)]
 
 
-def _project(ledger):
+def _project(ledger, views):
     """The findings on the budgets as a whole and on the project's
     markdown: a breach, a breached REQ whose traceability row is not
     failed (when that file exists), a line in another unit from its
@@ -95,7 +96,7 @@ def _project(ledger):
                            f"{t.name} is breached, and its row in {TRACE} "
                            + ("is missing" if status is None
                               else f"reads {status!r}, not failed"))
-    for view, message in stale(ledger):
+    for view, message in stale(ledger) if views else ():
         yield "view.stale", view, message
 
 
