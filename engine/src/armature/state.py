@@ -140,20 +140,38 @@ class State:
                         _frozen(data.site_xmat[sid].reshape(3, 3)),
                         _closure(model, data), "mj_kinematics")
 
-    def jacobian(self, site):
+    def jacobian(self, site=None, *, body=None, point=None):
         """∂(site velocity)/∂(dof rates), linear and angular, in the base
         frame. Columns follow `dofs`. On a closed chain those include the
         dependent dofs, so the mechanism's Jacobian, on its independent
-        rates, is `jacobian(site).linear @ closure_basis().G`."""
+        rates, is `jacobian(site).linear @ closure_basis().G`.
+
+        With `body` and `point` in place of `site`, it is the Jacobian of
+        `body`'s material point that is at `point` (base frame) at this
+        state: a point no site rides, such as where a wheel touches the
+        ground, which a site fixed on the wheel would roll away from."""
         model = self.compiled.model
-        sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
+        if (site is None) == (body is None) or (body is None) != (
+                point is None):
+            raise TypeError("jacobian takes a site, or a body and a point")
         linear, angular = np.zeros((3, model.nv)), np.zeros((3, model.nv))
         with self._scratch() as data:
-            mujoco.mj_jacSite(model, data, linear, angular, sid)
+            if site is not None:
+                sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site,
+                             model.nsite)
+                mujoco.mj_jacSite(model, data, linear, angular, sid)
+                label, method = site, "mj_jacSite"
+            else:
+                bid = _named(model, mujoco.mjtObj.mjOBJ_BODY, body,
+                             model.nbody)
+                at = np.asarray(point, dtype=float).reshape(3)
+                mujoco.mj_jac(model, data, linear, angular, at, bid)
+                label, method = f"{body} at {tuple(at.tolist())}", "mj_jac"
             turned = tangent(self.compiled, data)[0]
-            return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
+            return Jacobian(label, self.compiled.dofs,
+                            _frozen(linear @ turned),
                             _frozen(angular @ turned), _closure(model, data),
-                            "mj_jacSite")
+                            method)
 
     def closure_basis(self):
         """G, every dof's rate per unit rate of the independent dofs, with
@@ -785,8 +803,9 @@ class Pose:
 
 @dataclass(frozen=True, eq=False)
 class Jacobian:
-    """A site's `linear` (m per unit rate) and `angular` (rad per unit rate)
-    Jacobians, 3 × len(dofs), in the base frame."""
+    """A site's, or a body point's, `linear` (m per unit rate) and
+    `angular` (rad per unit rate) Jacobians, 3 × len(dofs), in the base
+    frame. `site` names what it is of."""
     site: str
     dofs: tuple
     linear: np.ndarray

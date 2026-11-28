@@ -281,9 +281,12 @@ class Band(Interval):
 class Coordinates(_Axis):
     """A mechanism's independent coordinates, as a ready `State` at rest:
     `Coordinates(mechanism, params, within=None, poses=None,
-    rest_on=None)`, with `within`, `poses` and `rest_on` as
+    rest_on=None, fixed=None)`, with `within`, `poses` and `rest_on` as
     `armature.sample` takes them. Name the axis `state` and `fn` reads
-    `p.state`.
+    `p.state`. `fixed` holds coordinates a margin cannot depend on at one
+    value and out of the axes, a floating body's placement by its joint's
+    name: a leg's Jacobian over its own hips, with the base and the other
+    leg `fixed`, searches two axes, not twelve and 4,096 corners.
 
     Each point is mapped by the sampler's `unit_cube`: every hinge and
     slide over its joint range or `within`, every loop closed, every
@@ -345,9 +348,10 @@ class Coordinates(_Axis):
     """
 
     def __init__(self, mechanism, params, within=None, poses=None,
-                 rest_on=None):
+                 rest_on=None, fixed=None):
         self.mechanism, self.params = mechanism, MappingProxyType(dict(params))
         self.within = MappingProxyType(dict(within or {}))
+        self.fixed = MappingProxyType(dict(fixed or {}))
         self.poses = MappingProxyType(dict(poses or {}))
         self.rest_on = MappingProxyType(dict(rest_on or {}))
         self._nominal = self._last = None  # each a (band values, UnitCube)
@@ -394,7 +398,7 @@ class Coordinates(_Axis):
                 return kept[1]
         cube = unit_cube(compile(self.mechanism, {**self.params, **bands}),
                          poses=self.poses, within=self.within,
-                         rest_on=self.rest_on)
+                         rest_on=self.rest_on, fixed=self.fixed)
         if self._nominal is None and not key:
             self._nominal = (key, cube)
             return cube

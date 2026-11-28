@@ -359,13 +359,16 @@ class UnitCube:
         return point
 
 
-def unit_cube(compiled, *, poses=None, within=None, rest_on=None):
+def unit_cube(compiled, *, poses=None, within=None, rest_on=None,
+              fixed=None):
     """The `UnitCube` mapping a point in [0, 1]^d to a state of `compiled`,
     with `poses`, `within` and `rest_on` as `sample` takes them and checked
-    as it checks them. `axes` gives the order of a point's values, and `d`
+    as it checks them. `fixed` holds coordinates at a value and out of the
+    axes: a hinge's or a slide's number, or a floating body's placement by
+    its joint's name. `axes` gives the order of a point's values, and `d`
     their number."""
-    poses, within, rest_on = (dict(poses or {}), dict(within or {}),
-                              dict(rest_on or {}))
+    poses, within, rest_on, fixed = (dict(poses or {}), dict(within or {}),
+                                     dict(rest_on or {}), dict(fixed or {}))
     description = compiled.description
     floating = {j.name: j for j in description.joints if j.kind == "free"}
     scalar = {n: compiled._coordinate[n][0] for n in compiled.coordinates
@@ -402,13 +405,24 @@ def unit_cube(compiled, *, poses=None, within=None, rest_on=None):
     if unknown:
         raise ValueError(f"poses: no floating body's joint named {unknown}; "
                          f"this mechanism has {sorted(floating)}")
+    for name in fixed:
+        if name in floating and name in compiled.independent:
+            continue
+        _drawable(compiled, name, "fixed")
+        if name not in scalar:
+            raise ValueError(f"fixed: {name!r} is part of a floating body "
+                             f"its variant rebuilds; lock it in the variant")
+        if name in within or name in solved:
+            raise ValueError(f"fixed: {name!r} is also drawn or solved")
 
     gravity = np.array(description.gravity, dtype=float)
     up = -gravity / np.linalg.norm(gravity) if gravity.any() else None
     steps = []  # each spans its axes and fills its part of the posture
     for name in compiled.independent:
         joint, component = compiled._coordinate[name]
-        if joint.kind != "free":
+        if name in fixed:
+            steps.append(_Fixed(name, fixed[name]))
+        elif joint.kind != "free":
             lo, hi = within.get(name, tuple(float(v) for v in joint.range))
             steps.append(_Solved() if name in solved
                          else _Uniform(name, lo, hi))
@@ -474,6 +488,20 @@ class _Solved:
 
     def place(self, u, values):
         pass
+
+
+class _Fixed:
+    """A coordinate `fixed` holds at its value: no axis, no draw."""
+    axes = ()
+
+    def __init__(self, name, value):
+        self.name, self.value = name, value
+
+    def draw(self, rng):
+        return []
+
+    def place(self, u, values):
+        values[self.name] = self.value
 
 
 class _Free:

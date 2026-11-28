@@ -127,3 +127,28 @@ def test_an_event_without_loops_records_none():
                 1000.0, drive=drive(("motor",), 1.0)).events[0].run
     assert dict(run.loops) == {}
     assert set(run.joints) == {"pivot"}
+
+
+
+@pytest.mark.parametrize("arm, start", [(0.4, 0.2), (-0.4, 1.0)])
+def test_a_joint_limit_records_the_load_it_holds(arm, start):
+    """An arm level at home, 0.5 rad, between stops at 0.2 and 1.0, coasting
+    on the stop gravity drives it into: the limit carries the gravity
+    torque m g r cos(q − home), upward off the lower stop and downward off
+    the upper (#209), which neither `contacts` nor `joints` records."""
+    def stopped_arm(p):
+        return [body("arm", mass=1.0, com=(arm, 0, 0),
+                     inertia=np.diag([1e-3] * 3)),
+                joint("pivot", "hinge", parent="world", child="arm",
+                      axis=(0, 0, 1), point=(0, 0, 0), range=(0.2, 1.0),
+                      home=0.5),
+                actuator("motor", joint="pivot"),
+                gravity((0, -9.81, 0))]
+    m = armature.compile(stopped_arm, {})
+    run = trace(m, Mission("rest", [event(m.at(q={"pivot": start}),
+                                          {"motor": "coast"}, 0.2)]),
+                1000.0, drive=drive(("motor",), 1.0)).events[0].run
+    held = run.limits["pivot"]
+    assert held.shape == (len(run.trace.t),)
+    want = math.copysign(9.81 * abs(arm) * math.cos(start - 0.5), arm)
+    assert float(np.mean(held[-50:])) == pytest.approx(want, rel=0.02)

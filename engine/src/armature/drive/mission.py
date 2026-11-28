@@ -802,7 +802,7 @@ def _event_run(m, mission, i, event, step, run, actuators):
     return Run(step, alone, run.v, run.contacts,
                MappingProxyType(run.tripped), MappingProxyType(run.slack),
                MappingProxyType(run.snaps), MappingProxyType(run.loops),
-               MappingProxyType(run.joints))
+               MappingProxyType(run.joints), MappingProxyType(run.limits))
 
 
 def _event_halved(m, mission, i, event, step, simulate, actuators):
