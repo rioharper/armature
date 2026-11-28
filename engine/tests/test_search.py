@@ -99,7 +99,9 @@ def floor_from_the_potential(point, m):
     v = potential(point, m, rest)
     start = minimize(v, np.zeros(6), method="BFGS", options={"gtol": 1e-10})
     found = root(lambda x: gradient(v, x), start.x, tol=1e-14)
-    assert found.success and np.max(np.abs(gradient(v, found.x))) < 1e-6
+    # The gradient is the test, not `success`: hybr can stall short of its
+    # 1e-14 on one platform's floating point with the gradient at 5e-7.
+    assert np.max(np.abs(gradient(v, found.x))) < 1e-6, found.message
     rot = Rotation.from_rotvec(found.x[3:]).as_matrix()
     span = np.linalg.norm(ANCHORS - (point + found.x[:3] + ATTACH @ rot.T),
                           axis=1)
