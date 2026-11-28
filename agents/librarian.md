@@ -133,7 +133,7 @@ A model with no datasheet row gets one hunted in the same run.
 
 Each number the hunt extracts is one entry `[part."<P/N>".<field>]` (quote the P/N: a dot inside it is otherwise a TOML key break):
 
-- `value` in SI and `unit` its SI unit, with temperatures in °C; `as_written` the quantity exactly as the sheet prints it, which `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger check` converts and holds to `value`. pint parses `mohm`, not `mOhm`.
+- `value` in SI and `unit` its SI unit, with temperatures in °C; `as_written` the quantity exactly as the sheet prints it, which `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" ledger check --no-views` converts and holds to `value`; `--no-views` because `render` is the main conversation's, so the views your appends leave stale aren't yours to fix. pint parses `mohm`, not `mOhm`.
 - `basis`, where the number has one, as step 4 records it: `{ per = "V_rms", between = "line" }`.
 - `status = "candidate"` on every entry you write, a pre-confirmed P/N's included (Confirm, then cache, says why).
 - `source = { kind = "datasheet", ref = "<the row's P/N>", retrieved = <date> }`, with the date unquoted, a TOML date.

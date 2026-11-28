@@ -7,7 +7,7 @@ description: Turn a bench test or bring-up task into an executable bash procedur
 
 A **procedure** is a bash script under `docs/testing/` that walks the operator through a bench test stage by stage, gates the irreversible, and records every measurement into the test's report. The plan's phase 5–6 leaves name these procedure/report files in their `Done when`; this skill makes them executable. Bash only (Git Bash on Windows).
 
-The runner UX is already solved by [procedure.template.sh](procedure.template.sh): stage N-of-M progress, the step/confirm/capture human-loop primitive, and report writing — completed and aborted runs both land in the report's Data section, and every captured value prints as `KEY=VALUE` at the end for you to read. Your job is only to scope the procedure and author its stages. The library above the STAGES marker is identical in every procedure: never hand-edit it.
+The runner UX is already solved by [procedure.template.sh](procedure.template.sh): stage N-of-M progress, the step/confirm/capture human-loop primitive, and report writing — completed and aborted runs both land in the report's Data section, and every captured value prints as `KEY=VALUE` at the end. Your job is only to scope the procedure and author its stages. The library above the STAGES marker is identical in every procedure: never hand-edit it.
 
 ## 1. Scope
 
@@ -31,7 +31,7 @@ Verify statically — the script blocks on a human, so trace it instead of rehea
 
 ## 3. Run and report
 
-Run the script with the operator at the bench: `bash docs/testing/<test-id>.sh`. It blocks on their prompts; the run ends with the captured `KEY=VALUE` block and the report path.
+The operator runs the script in their own terminal at the bench: give them `bash docs/testing/<test-id>.sh`. Your shell has no terminal, so the script refuses to start from it. When they say the run is over, read its run in the report's Data section, or the `KEY=VALUE` block they paste back.
 
 Then close the loop on the report (`references/test-report-template.md` in **armature-plan** is the shape; the runner has already written the header and Data):
 

@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
-# Human-loop primitive: the agent runs this script; the human follows the
-# prompts at the bench. Bash only (Git Bash on Windows).
+# Human-loop primitive: the human runs this script in their own terminal and
+# follows its prompts at the bench. Bash only (Git Bash on Windows).
 #
-# Copy this file, edit between the markers, and run: bash <copy>.sh
+# Copy this file, edit between the markers, and hand the human: bash <copy>.sh
 #
 # Helpers:
 #   step "<instruction>"      show an instruction, wait for Enter
 #   confirm "<gate>"          require exactly "y" to continue; anything else aborts
 #   capture VAR "<question>"  read the human's answer into VAR
 #
-# Every captured value prints as KEY=VALUE at the end, where the agent reads
-# it — so capture observations (measurements, y/n outcomes), and leave actions
+# Every captured value prints as KEY=VALUE at the end, for the human to paste
+# back to the agent — so capture observations (measurements, y/n outcomes), and leave actions
 # with nothing to record as a step. Gate irreversible actions (first battery
 # connect, first torque command) with confirm.
 
 set -euo pipefail
+
+if [ ! -t 0 ]; then
+  printf 'No terminal on stdin: the human runs this in their own terminal: bash %s\n' "$0" >&2
+  exit 2
+fi
 
 step() {
   printf '\n>>> %s\n' "$1"

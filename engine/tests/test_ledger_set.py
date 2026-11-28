@@ -138,6 +138,28 @@ def test_new_entries_go_at_the_end_under_no_one_elses_comment(tmp_path):
     assert check(tmp_path) == []
 
 
+DATED = LEDGER + """
+[part.M3-12.length]
+value = 0.012
+unit = "m"
+as_written = "12 mm"
+source = { kind = "datasheet", ref = "M3-12", retrieved = 2026-10-24 }
+"""
+
+
+def test_set_leaves_every_other_entrys_bytes_alone(tmp_path):
+    # tomlkit's whole-file dump drops the space before `}` in an inline
+    # table ending in a date; an entry set never touched keeps its text.
+    part = project(tmp_path, ledger=DATED)
+    set_from_part("part.ARM-BRK-001", part, path=tmp_path)
+    text = (tmp_path / "ledger.toml").read_text(encoding="utf-8")
+    assert text.startswith(DATED), text
+    moved = project(tmp_path, PROPS | {"mass": 0.1102}, ledger=text)
+    set_from_part("part.ARM-BRK-001", moved, path=tmp_path)
+    after = (tmp_path / "ledger.toml").read_text(encoding="utf-8")
+    assert after == text.replace("value = 0.1047\n", "value = 0.1102\n")
+
+
 @pytest.mark.parametrize("newline", ["\n", "\r\n"])
 def test_the_files_line_endings_are_kept(tmp_path, newline):
     part = project(tmp_path)

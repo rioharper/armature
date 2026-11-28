@@ -11,9 +11,11 @@ export, `python <file> --mass-properties`, which prints one JSON object:
 It writes `<name>.mass`, `<name>.com` and `<name>.inertia` with
 `source = { kind = "cad", ref = "<file>@<rev>" }` and `status =
 "candidate"`, the tensor with its `point` and `axes` and the COM with its
-`origin` as `point`. It writes through tomlkit, so the file's comments,
-order and every field it does not own survive, a band included: a CAD
-value outside an estimate's band is then `check`'s finding.
+`origin` as `point`. It edits an entry through tomlkit and splices only
+that entry's body back into the file, so every other byte survives, and
+in the entry its comments and every field it does not own, a band
+included: a CAD value outside an estimate's band is then `check`'s
+finding.
 """
 
 import json
@@ -54,15 +56,17 @@ def set_from_part(name, part_file, *, path=None, python=None):
     raw = ledger.read_bytes()
     text, newline = newlines.split(raw.decode("utf-8"))   # the file's, kept
     doc = tomlkit.parse(text)
-    changed, new = [], []
+    changed, new, edited = [], [], {}
     for key, fields in _entries(props, ref):
         table = doc.get("part", {}).get(pn, {}).get(key)
         if table is None:
             new.append(_toml_table(pn, key, fields))
-        elif not _update(table, fields, f"{name}.{key}"):
+        elif _update(table, fields, f"{name}.{key}"):
+            edited[("part", pn, key)] = table
+        else:
             continue
         changed.append(f"{name}.{key}")
-    out = tomlkit.dumps(doc)
+    out = _splice(text, edited, doc)
     if new:   # at the end, where no comment above it is anyone else's
         out = out.rstrip("\n") + "\n\n" + "\n\n".join(new) + "\n"
     if out != text:
@@ -73,6 +77,42 @@ def set_from_part(name, part_file, *, path=None, python=None):
             ledger.write_bytes(raw)
             raise
     return changed
+
+
+def _splice(text, edited, doc):
+    """`text` with each edited table's body, by its key path, swapped for
+    the table's new text, every other line kept as written: tomlkit's
+    whole-file dump reformats tables it never touched. Falls back to that
+    dump where an edited table has no header line of its own."""
+    lines = text.splitlines(keepends=True)
+    heads = [(i, path) for i, line in enumerate(lines)
+             if line.lstrip().startswith("[")
+             and (path := _header(line)) is not False]
+    ends = [i for i, _ in heads[1:]] + [len(lines)]
+    spans = {path: (i + 1, end) for (i, path), end in zip(heads, ends)}
+    if not all(path in spans for path in edited):
+        return tomlkit.dumps(doc)
+    for path in sorted(edited, key=lambda p: -spans[p][0]):
+        start, end = spans[path]
+        lines[start:end] = [edited[path].as_string()]
+    out = "".join(lines)
+    if tomlkit.parse(out).unwrap() != doc.unwrap():   # a header misread
+        return tomlkit.dumps(doc)
+    return out
+
+
+def _header(line):
+    """A table header line's key path, None for an array of tables', or
+    False where the line is no header, such as a tensor's row."""
+    try:
+        node = tomlkit.parse(line).unwrap()
+    except tomlkit.exceptions.TOMLKitError:
+        return False
+    path = []
+    while isinstance(node, dict) and len(node) == 1:
+        key, node = next(iter(node.items()))
+        path.append(key)
+    return tuple(path) if node == {} else None
 
 
 def _part_number(name):
