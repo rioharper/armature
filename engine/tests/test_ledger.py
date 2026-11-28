@@ -745,6 +745,34 @@ def test_the_symbols_view_is_the_mechanism_and_drive_entries(tmp_path):
                           "1.6 mm wall")
 
 
+def test_a_named_symbols_view_shows_the_part_numbers_the_mechanism_reads(
+        tmp_path):
+    """`symbols:<names>` renders the entries named, or a section's, in the
+    symbols table's columns, by their full names (#181)."""
+    text = (entry("part.body.track", value="0.3", unit='"m"',
+                  note='"the tyres\' track"',
+                  source='{ kind = "chosen", ref = "spec §5" }')
+            + entry("part.torso.size", value="0.2", unit='"m"',
+                    source='{ kind = "chosen", ref = "spec §5" }')
+            + entry("part.torso.mass", value="2.0", unit='"kg"',
+                    source='{ kind = "chosen", ref = "spec §5" }'))
+    root = project(tmp_path, text, {
+        "CONTEXT.md": marked("symbols:part.body.track,part.torso")})
+    render(path=root)
+    rows = table((root / "CONTEXT.md").read_text(encoding="utf-8"))
+    assert [r[0] for r in rows[1:]] == ["`part.body.track`",
+                                        "`part.torso.size`",
+                                        "`part.torso.mass`"]
+    assert rows[1][1:4] == ["the tyres' track", "0.3", "m"]
+
+
+def test_a_named_symbols_view_naming_nothing_raises(tmp_path):
+    root = project(tmp_path, PROJECT,
+                   {"CONTEXT.md": marked("symbols:part.nowhere")})
+    with pytest.raises(LedgerError, match="part.nowhere"):
+        render(path=root)
+
+
 def test_a_tensor_names_the_point_and_axes_it_is_about(tmp_path):
     root = project(tmp_path, entry(
         "mechanism.I2", value="[[1e-4, 0, 0], [0, 6e-3, 0], [0, 0, 6e-3]]",

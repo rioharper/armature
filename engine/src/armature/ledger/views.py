@@ -7,7 +7,10 @@ project's markdown, so a number shown there is read, never copied.
 
 The views are `budget.<kind>`, `bom` (every `part.*` entry), `req` (the
 spec's requirements, `req.*`) and `symbols` (`CONTEXT.md`'s symbol table,
-the `mechanism` and `drive` entries). A row's prose is its entry's `note`;
+the `mechanism` and `drive` entries). `symbols:<names>` is the same table
+of the entries named, a comma-separated list of entry names or sections,
+such as `symbols:part.body.track,part.torso`: a part's number the
+mechanism reads, which no `mechanism` entry holds. A row's prose is its entry's `note`;
 the prose around a table is the author's, and `render` leaves it alone.
 The project's markdown is every `.md` file below the ledger's folder,
 except in a folder whose name starts with a dot or that holds a ledger of
@@ -29,7 +32,7 @@ END = re.compile(r"<!--\s*/ledger\s*-->")
 MARKER = re.compile(rb"<!--\s*/?ledger")   # a file worth reading
 FENCE = re.compile(r"(`{3,}|~{3,})")
 BUDGET_VIEW = re.compile(r"budget\.[^.\s]+")
-VIEWS = "budget.<kind>, bom, req and symbols"
+VIEWS = "budget.<kind>, bom, req, symbols and symbols:<names>"
 SYMBOL_SECTIONS = ("mechanism", "drive")
 SKIPPED = {"node_modules", "__pycache__"}
 
@@ -80,7 +83,17 @@ def view_table(ledger, view):
     if view == "req":
         return _req(ledger)
     if view == "symbols":
-        return _symbols(ledger)
+        return _symbols(ledger, lambda e: e.section in SYMBOL_SECTIONS)
+    if view.startswith("symbols:"):
+        names = [n for n in view.removeprefix("symbols:").split(",") if n]
+        rows = [e for e in ledger if any(
+            e.name == n or e.name.startswith(n + ".") for n in names)]
+        missing = [n for n in names if not any(
+            e.name == n or e.name.startswith(n + ".") for e in rows)]
+        if not names or missing:
+            raise LedgerError(f"ledger:{view} names no entry or section "
+                              f"{missing or '(none given)'}")
+        return _symbols(ledger, lambda e: e in rows)
     if BUDGET_VIEW.fullmatch(view):
         return _budget(ledger, view)
     raise LedgerError(f"ledger:{view} is not a view; the views are {VIEWS}")
@@ -211,11 +224,12 @@ def _req(ledger):
                    "Status"], rows)
 
 
-def _symbols(ledger):
-    rows = [[f"`{e.key}`", e.note or "", _value(ledger, e, unit=False),
+def _symbols(ledger, shown):
+    rows = [[f"`{e.key if e.section in SYMBOL_SECTIONS else e.name}`",
+             e.note or "", _value(ledger, e, unit=False),
              ledger.unit(e.name), _band(ledger, e), _source(ledger, e),
              _status(e)]
-            for e in ledger if e.section in SYMBOL_SECTIONS]
+            for e in ledger if shown(e)]
     return _table(["Symbol", "Meaning", "Value", "Unit", "Band", "Source",
                    "Status"], rows)
 

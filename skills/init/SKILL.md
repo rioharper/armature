@@ -230,7 +230,9 @@ it appears.
   docs/01-spec/budgets.md's header carries the debit and reserve rules.
 - Every design decision gets a line in docs/decisions.md. One that is hard to
   reverse, surprising without context, and a real trade-off also gets a
-  paragraph-long ADR in docs/adr/NNNN-slug.md, linked from that line.
+  paragraph-long ADR in docs/adr/NNNN-slug.md, linked from that line. A
+  branch writes its ADR as docs/adr/XXXX-slug.md and takes the next free
+  number when it merges to main, so two branches can't both take one.
 - docs/environment.md records what each machine has installed. Read it before
   assuming a tool; refresh it with the plugin's scripts/env-probe.sh.
 - Every artifact write ends in a git commit.

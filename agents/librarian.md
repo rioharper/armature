@@ -102,13 +102,13 @@ cat >> ledger.toml <<'ENTRIES'
 ENTRIES
 ```
 
-The blank line keeps the first table off the end of the last. A row or an entry that later proves wrong is corrected by the main conversation with the user, never by an edit from a run.
+The blank line keeps the first table off the end of the last. In a checkout whose files are CRLF (`file ledger.toml` says so; Git for Windows' `core.autocrlf` makes them), a here-document's LF lines leave the file mixed: append the block through `sed 's/$/\r/'` in the same single write, `sed 's/$/\r/' <<'ROW' >> docs/datasheets/index.md`. A row or an entry that later proves wrong is corrected by the main conversation with the user, never by an edit from a run.
 
 ### Source kinds
 
 Many parts publish no PDF. Save whatever the vendor does publish, and let the `File` cell name the kind:
 
-- **PDF** — `curl -fsSL -o docs/datasheets/<PN>.pdf <url>`. `File`: the filename.
+- **PDF** — `curl -fsSL -o docs/datasheets/<PN>.pdf <url>`. `File`: the filename. `Read` opens a PDF of ten pages whole; past that, its `pages` needs poppler (`PDFTOPPM` in `docs/environment.md`). Without it, or for a drawing, whose numbers are in a picture no text extraction reaches, render the page and `Read` the image: `uv run --no-project --with pypdfium2 --with pillow python -I -c "import sys, pypdfium2 as p; d = p.PdfDocument(sys.argv[1]); d[int(sys.argv[2]) - 1].render(scale=float(sys.argv[4])).to_pil().save(sys.argv[3])" <pdf> <page> <out.png> <scale>`, at scale 4–6 for a drawing's dimensions.
 - **HTML snapshot** — a documentation page is the only source: write `docs/datasheets/<subject>-<date>.html` yourself, holding the table or block you read under a lead paragraph giving the source URL, the retrieval date, and why the page was kept. `File`: `<filename> (HTML snapshot)`.
 - **Image** — the numbers live in a picture (an FPV vendor's thrust-test report, a scanned table): `curl` the image, then transcribe it into `docs/datasheets/<image-basename>-transcript.md` beside it. Later agents read the transcript; the image is the receipt. `File`: `<image> + <transcript> (transcribed image)`.
 - **Nothing saveable** — a live page behind a fetch block, or a per-part sheet behind a generator: transcribe the verbatim strings into this run's file and point `File` at the file and section, `T1.3-spring-stock-fallback.md §2 (product page only)`.
@@ -143,7 +143,7 @@ Each number the hunt extracts is one entry `[part."<P/N>".<field>]` (quote the P
 
 ## Merge
 
-For the main conversation, once the user has confirmed a candidate part: run the section's `Fetch:` line, append its `Row` to the index and its entries to `ledger.toml` with the same shell appends, and mark the section `merged`. Then `render` and `check`, as `CLAUDE.md`'s standing rule on a changed number says, and settle each error on the new entries with the user before anything reads them; a section a run merged itself gets the same when its run reports. Each entry stays `candidate` until the user confirms that number, which sets `status = "confirmed"` on it. A confirmation that changed the P/N re-dispatches the librarian with the confirmed P/N instead. When every section is merged or discarded, delete the staging file; a survey file stays where it is, its sections marked in place. A staging file with `Status: running` from a dead run merges the same way; what it found stands.
+For the main conversation, once the user has confirmed a candidate part: run the section's `Fetch:` line, append its `Row` to the index and its entries to `ledger.toml` with the same shell appends, and mark the section `merged`. Then `render` and `check`, as `CLAUDE.md`'s standing rule on a changed number says, and settle each error on the new entries with the user before anything reads them; a section a run merged itself gets the same when its run reports. Each entry stays `candidate` until the user confirms that number, which sets `status = "confirmed"` on it. A confirmation that changed the P/N re-dispatches the librarian with the confirmed P/N instead. When every section is merged or discarded, first move each open item the file carries that is no entry (a `Not published:` line, an answer with no number, a conflict with an existing entry) to a home that outlives it: the entry's `note`, a `docs/decisions.md` line, or a comment on the tracker issue that owns it. Then delete the staging file; a survey file stays where it is, its sections marked in place. A staging file with `Status: running` from a dead run merges the same way; what it found stands.
 
 ## Not found
 
