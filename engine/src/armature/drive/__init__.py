@@ -41,8 +41,8 @@ from .bus import (AGREE, BrakeResistor, Bus, Charged, Drive, Source,
                   charge)
 from .electrical import (Checked, Current, Curve, Driver, DriveError,
                          Electrical, Envelope, FluxBrake, Gearbox, Ke, Kt,
-                         Motor, Resistance, Thermal, check, electrical,
-                         envelope, kt_from_kv)
+                         Motor, Resistance, Thermal, Torque, check,
+                         electrical, envelope, kt_from_kv)
 from .event import (EVENT_STEP, After, Carried, Event, Moved, Run, Simulated,
                     Snap, after, event)
 from .margins import CHECK_AGREE, Energy, Reviewed, energy, margins, review
@@ -53,7 +53,7 @@ from .thermal import Heated, Repeated, heat, repeat, rms_torque
 
 __all__ = ["Checked", "Current", "Curve", "DriveError", "Driver",
            "Electrical", "Envelope", "FluxBrake", "Gearbox", "Ke", "Kt",
-           "Motor", "Resistance", "Thermal", "check", "electrical",
+           "Motor", "Resistance", "Thermal", "Torque", "check", "electrical",
            "envelope", "kt_from_kv"]
 __all__ += ["Heated", "Repeated", "heat", "repeat", "rms_torque"]
 __all__ += ["CONFIRM_RATE", "Duty", "Follow", "Hold", "Limits", "Mission",

@@ -304,12 +304,16 @@ class State:
 
         On a closed chain the loops are MuJoCo's soft constraints, at the
         solver parameters the compiler sets. `residual` is how far open they
-        are at rest, and a settle that leaves one open past 1e-6 m raises.
+        are at rest, and a settle that comes to rest with one open past
+        1e-6 m raises.
 
         Contacts are MuJoCo's, with the noslip solver wherever friction acts,
         and `contacts` reports what each touching one carries at rest, read
-        from the solver. A rigid contact sunk in past 1e-6 m raises; a
-        compliant one sinks by its normal force over its stiffness.
+        from the solver. A rigid contact sunk in past 1e-6 m at rest raises;
+        a compliant one sinks by its normal force over its stiffness. Both
+        bounds judge a rest: a settle that runs out of steps still moving
+        returns `stable = False`, its `residual` and its contacts'
+        penetration as they were (#199).
         """
         with self._scratch() as data:
             return self._settle(data, hold, loads, min_steps, max_steps)
@@ -330,7 +334,8 @@ class State:
         carried = from_solver(self.compiled, data)
         for c in self.compiled.description.contacts:
             sunk = carried[c.name].penetration if c.name in carried else 0.0
-            if (c.name not in compliant_contacts(self.compiled.description)
+            if (stable and c.name not in compliant_contacts(
+                    self.compiled.description)
                     and not sunk <= PENETRATION_BOUND):
                 raise RuntimeError(
                     f"the settle left contact {c.name!r} sunk in {sunk:.3g} "
@@ -338,7 +343,7 @@ class State:
                     f"soft contact is not holding it, so the rest pose is "
                     f"not the mechanism's")
         closure = self.compiled.closure
-        if closure:
+        if closure and stable:
             which, gap = closure.worst(closure.rows(data)[0])
             if not gap <= CLOSURE_BOUND:
                 raise RuntimeError(

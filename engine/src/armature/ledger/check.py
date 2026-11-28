@@ -233,6 +233,11 @@ def _of(ledger, e):
         return
     if e.source is not None:
         yield from _ref(e)
+    if e.status == "candidate" and all(
+            c.effective_status == "confirmed" for c in chain[1:]):
+        yield ("status.candidate-stale", "warning",
+               f"written candidate, though everything it reads is "
+               f"confirmed: delete its status line to take theirs")
     if e.effective_status != "confirmed":
         return
     for cited in chain[1:]:

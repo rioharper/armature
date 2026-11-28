@@ -384,6 +384,20 @@ def test_a_confirmed_line_citing_a_candidate_directly_is_found(tmp_path):
         ("status.candidate-cited", "budget.mass.arm")]
 
 
+@pytest.mark.parametrize("status, found", [("confirmed", True),
+                                           ("candidate", False)])
+def test_an_of_left_candidate_over_a_confirmed_chain_is_found(
+        tmp_path, status, found):
+    """Written candidate, it stays one after what it reads is confirmed
+    (#169), and the confirmed `arm` reading it is still caught; over a
+    candidate chain only that."""
+    text = CHAIN.format(status=status).replace(
+        'qty = 2\n', 'qty = 2\nstatus = "candidate"\n')
+    stale = [("status.candidate-stale", "budget.mass.pair")] if found else []
+    assert codes(tmp_path, text) == stale + [
+        ("status.candidate-cited", "budget.mass.arm")]
+
+
 def test_an_of_naming_nothing_is_found(tmp_path):
     text = entry("budget.mass.arm", of='"part.X-1.mass"')
     assert codes(tmp_path, text) == [("of.dangling", "budget.mass.arm")]

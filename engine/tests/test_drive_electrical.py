@@ -13,8 +13,8 @@ import pint
 import pytest
 
 from armature.drive import (Current, Curve, Driver, DriveError, Gearbox, Ke, Kt,
-                            Motor, Resistance, check, electrical, envelope,
-                            kt_from_kv)
+                            Motor, Resistance, Torque, check, electrical,
+                            envelope, kt_from_kv)
 
 SQ3 = math.sqrt(3)
 
@@ -300,6 +300,24 @@ def test_a_curve_names_its_side_and_tolerance():
         Curve(speed=SPEED, torque=TORQUE, voltage=VOLTS, agree=0.05)
     with pytest.raises(TypeError, match="'agree'"):
         Curve(speed=SPEED, torque=TORQUE, voltage=VOLTS, side="motor")
+
+
+@pytest.mark.parametrize("peak, side, n, want", [
+    (1.5, "motor", 10, 1.5 * 10 * 0.8),   # under Kt·i_peak = 2 N·m: binds
+    (12.0, "output", 10, 12.0),
+    (3.0, "motor", 10, 2.0 * 10 * 0.8),   # past Kt·i_peak: i_peak binds
+])
+def test_a_printed_peak_torque_caps_the_envelopes_stall(peak, side, n, want):
+    """Stall is Kt·i_peak·N·η = 0.1·20·10·0.8 = 16 N·m at the output, unless
+    the printed peak comes first (#173)."""
+    m = motor(torque_peak=Torque(peak, side=side))
+    assert envelope(m, n, 48.0, gearbox=Gearbox(forward=0.8)).stall_torque == \
+        pytest.approx(want, rel=1e-12)
+
+
+def test_a_peak_torque_alone_is_a_current_limit():
+    m = motor(i_peak=None, torque_peak=Torque(1.5, side="motor"))
+    assert envelope(m, 1, 48.0).stall_torque == pytest.approx(1.5, rel=1e-12)
 
 
 def test_an_envelope_without_a_current_limit_raises_naming_it():

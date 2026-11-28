@@ -258,10 +258,22 @@ def test_rigid_needs_a_compliant_contact():
 
 def test_a_rigid_contact_sunk_past_its_bound_raises():
     m = armature.compile(incline, PARAMS)
-    m.model.pair_solref[0] = (0.5, 1.0)    # as soft as a sponge
+    m.model.pair_solref[0] = (0.05, 1.0)   # soft: it rests 15 mm in
     m.model.pair_solimp[0] = (0.1, 0.2, 0.1, 0.5, 2)
     with pytest.raises(RuntimeError, match="contact 'tyre' sunk in"):
         m.at().settle({"hub_motor": REF["torque"]})
+
+
+def test_a_settle_cut_off_mid_motion_returns_unstable_not_raising():
+    """The same sunk contact, the settle stopped after a few steps while it
+    still sinks: `stable` is False and the penetration is reported, where a
+    settle that came to rest raises (#199, #52)."""
+    m = armature.compile(incline, PARAMS)
+    m.model.pair_solref[0] = (0.5, 1.0)
+    m.model.pair_solimp[0] = (0.1, 0.2, 0.1, 0.5, 2)
+    settled = m.at().settle({"hub_motor": REF["torque"]}, min_steps=20,
+                            max_steps=20)
+    assert not settled.stable and settled.steps == 20
 
 
 # --- inverse ------------------------------------------------------------------

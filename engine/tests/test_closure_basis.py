@@ -130,3 +130,4 @@ def test_on_a_floating_base_g_is_in_the_views_rates():
     order = [b.coordinates.index(n) for n in sym.coordinates]
     columns = [b.independent.index(n) for n in sym.independent]
     assert got == pytest.approx(b.G[np.ix_(order, columns)], abs=1e-9)
+

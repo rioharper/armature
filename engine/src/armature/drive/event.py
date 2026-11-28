@@ -117,8 +117,8 @@ from ..contact import from_solver
 from ..state import State, _frozen, _load_force, _loads
 from .bus import (BRAKE, SOURCE, TRIPPED_SOURCE, _brake_capacity,
                   _flux_capacity, _levels, _substep)
-from .electrical import (_current_limit, _electrical, _hot, _positive,
-                         _resolve)
+from .electrical import (_current_limit, _efficiencies, _electrical, _hot,
+                         _positive, _resolve)
 
 EVENT_STEP = 1e-4  # s: an event's timestep, unless it gives one; a shorted
     # flywheel whose time constant is 1 s reads exp(−t) to 5e-5 at 1 s
@@ -460,8 +460,8 @@ def _actuated(m, ev, drive, actuators, temperature):
         if mode not in PASSIVE and driver.flux_brake is not None:
             flux = (driver.flux_brake.onset,
                     _flux_capacity(driver, motor, r))
-        out.append(_Actuated(a, mode, dof, n, j_m, c, r,
-                             _current_limit(c, motor, driver), eta, box,
+        limit = _current_limit(c, motor, driver, n, _efficiencies(box)[0])
+        out.append(_Actuated(a, mode, dof, n, j_m, c, r, limit, eta, box,
                              driver, flux))
     return out
 
