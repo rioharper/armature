@@ -59,7 +59,8 @@ def write_views(part, path_stem: str, views=("front", "top", "right", "iso")) ->
 
         exporter = ExportSVG(unit=Unit.MM)  # scale left at 1: true 1:1
         exporter.add_layer("Visible")
-        exporter.add_layer("Hidden", line_color=(99, 99, 99), line_type=LineType.ISO_DOT)
+        exporter.add_layer("Hidden", line_color=(0.39, 0.39, 0.39),  # 0-1: 0.13 deprecates 0-255
+                           line_type=LineType.ISO_DOT)
         exporter.add_shape(visible, layer="Visible")
         exporter.add_shape(hidden, layer="Hidden")
 

@@ -117,8 +117,7 @@ def view():
 def equations():
     """M q̈ + C q̇ + g = τ of `DERIVED`, formed by the engine on the view
     (`armature.equations`, ADR 0012), BANDS kept as keywords: what
-    dynamics/equations.py adds this machine's rotors to, and whose `numeric`
-    every numeric function here is."""
+    dynamics/equations.py adds this machine's rotors to."""
     return armature.equations(DERIVED, PARAMS, BANDS)
 
 
@@ -134,9 +133,11 @@ def numeric(expr, rates=False):
     when `rates` — with PARAMS substituted for the parameters. A parameter
     with a tolerance band in BANDS stays a keyword, at its nominal unless
     given, so a margin evaluates the derivation at the band value its truth
-    model was compiled with: `g_num(*q, m2=0.88)`. The engine's, which swaps
-    by `xreplace` and lambdifies with `cse=True`."""
-    return equations().numeric(expr, rates)
+    model was compiled with: `g_num(*q, m2=0.88)`. The engine's
+    `armature.numeric`, on the view alone, so a kinematic expression is
+    lambdified without forming the equations of motion."""
+    return armature.numeric(view(), expr, PARAMS, BANDS, rates)
+
 
 
 def bands():

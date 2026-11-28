@@ -198,6 +198,18 @@ def in_view(s):
     return q
 
 
+def reduced(state, generalised):
+    """Gᵀ times `generalised`, in EQ.independent's order: the force the
+    reduced equations answer. On a closed chain `generalised` is over every
+    dof, the dependent ones among them, and the equations over the
+    independent ones; G, `state.closure_basis()`, projects one onto the other.
+    On an open chain G is the identity and this is `generalised` itself."""
+    basis = state.closure_basis()
+    full = np.array([generalised[c] for c in basis.coordinates])
+    by_name = dict(zip(basis.independent, basis.G.T @ full))
+    return np.array([by_name[c] for c in EQ.independent])
+
+
 def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     """The mandatory Milestone 2 truth check: tau = M qdd + C qd + g against
     the truth model's inverse dynamics, `s.inverse(qdd)`, at sampled states.
@@ -219,25 +231,31 @@ def test_truth_inverse_dynamics(n=24, seed=DEFAULT_SEED, tol=1e-9):
     In the view's coordinates (`at(view=True)`): a free joint's rates there
     are its turns', where the truth model's are the angular velocity, and the
     two agree only at home. With no free joint the state is the sampled one.
+    On a closed chain both sides are over the independent coordinates: the
+    state is made from them and the truth side projected by `reduced`.
     """
     samples = armature.sample_states(truth(), n, seed, qd_limits=QD_LIMITS,
                                      qdd_limits=QDD_LIMITS)
+    ind = EQ.independent
     worst, worst_at = 0.0, None
     for s, accel in zip(samples, samples.qdd):
-        qv, qdv, qddv = vector(in_view(s)), vector(s.qd), vector(accel)
+        qv, qdv = vector(in_view(s)), vector(s.qd)
         Mn = np.asarray(M_num(*qv), dtype=float)
         cqd = np.asarray(Cqd_num(*qv, *qdv), dtype=float).flatten()
         gn = np.asarray(g_num(*qv), dtype=float).flatten()
-        tau_model = Mn @ qddv + cqd + gn
-        viewed = truth().at(q=named(qv), qd=named(qdv), view=True)
-        tau_truth = vector(viewed.inverse(qdd=named(qddv)).generalised)
+        qdd_ind = {c: float(accel[c]) for c in ind}
+        tau_model = Mn @ np.array(list(qdd_ind.values())) + cqd + gn
+        viewed = truth().at(q={c: v for c, v in named(qv).items() if c in ind},
+                            qd={c: v for c, v in named(qdv).items() if c in ind},
+                            view=True)
+        tau_truth = reduced(viewed, viewed.inverse(qdd=qdd_ind).generalised)
         gap = float(np.max(np.abs(tau_model - tau_truth)))
         if gap > worst:
             worst, worst_at = gap, (qv, qdv)
         assert gap < tol, (
             f"tau = M qdd + C qd + g reads {tau_model} where the truth model's "
             f"inverse dynamics reads {tau_truth} at q={qv}, qd={qdv}, "
-            f"qdd={qddv}")
+            f"qdd={qdd_ind}")
     print(f"  [PASS] tau matches the truth model's inverse dynamics over "
           f"{samples}")
     print(f"         worst |dtau| {worst:.2e} N m, at q = "

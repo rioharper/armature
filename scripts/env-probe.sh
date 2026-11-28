@@ -7,7 +7,8 @@
 #   bash scripts/env-probe.sh ros2 gazebo cuda     # core plus a named tier
 #
 # Core is always checked: the working python invocation and whether SymPy,
-# SciPy, NumPy and MuJoCo import under it (informational; derive needs uv); uv, git, gh; host, OS, bash, WSL.
+# SciPy, NumPy and MuJoCo import under it (informational; derive needs uv); uv, git, gh,
+# pdftoppm; host, OS, bash, WSL.
 #
 # Each argument adds a check. ros2, colcon, gazebo, cuda, wsl, pinocchio and
 # solidworks have real checks; any other name falls back to `command -v` plus
@@ -100,6 +101,9 @@ py_modules sympy scipy numpy mujoco
 tool UV  uv  --version
 tool GIT git --version
 tool GH  gh  --version
+# Read pages a PDF past its tenth page only through poppler's pdftoppm; where
+# it is absent, the librarian renders a page with pypdfium2 instead.
+tool PDFTOPPM pdftoppm -v
 
 # --- named checks -------------------------------------------------------
 

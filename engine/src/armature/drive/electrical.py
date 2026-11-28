@@ -9,7 +9,8 @@ catch a slip between them:
 - `Ke(value, per="V_rms/krpm" | ..., between="line" | "phase", side=...)`;
 - `Resistance(value, between="line" | "phase", at=25.0)`, and the motor's
   `wiring`, `"wye"` or `"delta"`;
-- `Current(value, per="A_rms" | "A_peak")`, a line current.
+- `Current(value, per="A_rms" | "A_peak")`, a line current;
+- `Torque(value, side="motor" | "output")`, a printed peak torque.
 
 "Phase" is the winding: line to neutral in a wye, line to line in a delta.
 An output-side constant is the motor's times the gear ratio N, with no
@@ -117,6 +118,21 @@ class Current:
     def dq(self, wiring):
         """The current as a d-q magnitude in the winding (A)."""
         return self.value * _amps(self.per, wiring)
+
+
+@dataclass(frozen=True)
+class Torque:
+    """A torque in N·m, on the motor's shaft or the actuator's output
+    (`side`): a motor's printed peak torque. An output-side one is what the
+    output delivers, the gearbox's efficiency included."""
+    value: float
+    _: KW_ONLY
+    side: str
+
+    def __post_init__(self):
+        object.__setattr__(self, "value",
+                           _number("a torque", "value", self.value))
+        _among("a torque", "side", self.side, SIDES)
 
 
 @dataclass(frozen=True)
@@ -236,14 +252,18 @@ class Curve:
 class Motor:
     """A motor's data, each constant with its basis. One of `kt` and `ke` is
     needed; given both, they must agree within 2 % (`check`). `i_peak` and
-    `i_continuous` are its current ratings, `curve` an optional published
-    torque–speed curve, and `thermal` its winding's RC, where published."""
+    `i_continuous` are its current ratings, `torque_peak` its printed peak
+    torque, `curve` an optional published torque–speed curve, and `thermal`
+    its winding's RC, where published. A sheet prints a peak torque below
+    Kt·i_peak, since torque per amp falls toward the peak; the envelope
+    stops at it."""
     r: Resistance
     wiring: str
     kt: Kt = None
     ke: Ke = None
     i_peak: Current = None
     i_continuous: Current = None
+    torque_peak: Torque = None
     curve: Curve = None
     thermal: Thermal = None
 
@@ -253,7 +273,8 @@ class Motor:
             raise TypeError("a motor needs kt=Kt(...) or ke=Ke(...), or both")
         _kind("a motor", "r", self.r, Resistance)
         for name, kind in (("kt", Kt), ("ke", Ke), ("i_peak", Current),
-                           ("i_continuous", Current), ("curve", Curve),
+                           ("i_continuous", Current),
+                           ("torque_peak", Torque), ("curve", Curve),
                            ("thermal", Thermal)):
             _kind("a motor", name, getattr(self, name), kind, optional=True)
 
@@ -416,25 +437,33 @@ def envelope(motor, n, v_bus, gearbox=None, driver=None, temperature=None):
     ratio `n`, motoring. In d-q the winding's current is bounded by the
     lower of the motor's and the driver's `i_peak`, and its voltage
     R_φ(T)·i + Ke·ω_m by k_mod·V_bus, so no-load speed is k_mod·V_bus/Ke
-    and stall is the current limit. The gearbox's forward efficiency
-    applies; R_φ is at `temperature` (°C), by default the resistance's T₀.
-    No field weakening: i_d = 0."""
+    and stall is the current limit. A motor's `torque_peak` is a current
+    limit too, the current at which the envelope reaches it, so stall is
+    never past the printed peak. The gearbox's forward efficiency applies;
+    R_φ is at `temperature` (°C), by default the resistance's T₀. No field
+    weakening: i_d = 0."""
     n = _number("envelope", "the gear ratio n", n)
     v_bus = _number("envelope", "v_bus", v_bus)
     c = _resolve(motor, n, gearbox)
-    limit = _current_limit(c, motor, driver)
+    eta = _efficiencies(gearbox)[0]
+    limit = _current_limit(c, motor, driver, n, eta)
     if limit is None:
         raise DriveError("the envelope needs a current limit: the motor's "
-                         "i_peak or the driver's i_peak")
-    return _bound(c, n, v_bus, _efficiencies(gearbox)[0], limit,
-                  float(_hot(c, temperature)))
+                         "i_peak or torque_peak, or the driver's i_peak")
+    return _bound(c, n, v_bus, eta, limit, float(_hot(c, temperature)))
 
 
-def _current_limit(c, motor, driver):
-    """The winding's current limit (d-q A): the lower of the motor's
-    `i_peak` and the driver's, None where neither is given."""
+def _current_limit(c, motor, driver, n, eta):
+    """The winding's current limit (d-q A): the lowest of the motor's
+    `i_peak`, the driver's, and the current at which the motor reaches its
+    `torque_peak` through gear `n` at forward efficiency `eta`; None where
+    none is given."""
     limits = [c.i_peak] + ([] if driver is None
                            else [driver.i_peak.dq(motor.wiring)])
+    peak = motor.torque_peak
+    if peak is not None:
+        limits.append(peak.value / (c.kt * (n * eta if peak.side == "output"
+                                            else 1.0)))
     limits = [i for i in limits if i is not None]
     return min(limits) if limits else None
 

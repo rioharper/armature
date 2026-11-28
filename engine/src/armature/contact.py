@@ -20,6 +20,10 @@ Settle reads the solver's own contact forces instead, at rest, where the
 noslip solver has made them exact; the queries that solve never do. The
 linearisation's roots come from the one-step map at two contact stiffnesses,
 and `split` keeps those that hold between them.
+
+`armature.contact` is the element function, so this module is reached by
+`from armature.contact import ...` or `sys.modules["armature.contact"]`,
+never by attribute (#251).
 """
 
 import math

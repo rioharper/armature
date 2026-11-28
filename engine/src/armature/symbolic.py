@@ -20,6 +20,7 @@ angles' rates; the two agree at home, and a state made with
 equations by Kane's method; the view itself does not form equations.
 """
 
+import functools
 from dataclasses import dataclass
 from types import MappingProxyType
 
@@ -172,6 +173,52 @@ def symbolic(mechanism, params):
                     _ro(com), _ro({b.name: sp.sympify(b.mass) for b in d.bodies}),
                     _ro(tensors), _ro(axes), _ro(anchors), _ro(sites),
                     _vector(d.gravity, world), _ro(closures))
+
+
+def numeric(view, expr, params, bands=(), rates=False):
+    """`expr`, written in `view`'s coordinates (and their rates), as a NumPy
+    function of every coordinate's value in `view.coordinates` order, then
+    every rate's when `rates`, with `params`' numbers substituted. A
+    parameter named in `bands` (a mapping's keys or names) stays a keyword,
+    at its nominal unless given: `g_num(*q, m2=0.88)`. An unknown keyword
+    raises `TypeError`. It reads the view alone, so a kinematic expression
+    is lambdified without forming the equations of motion."""
+    bands = tuple(bands)
+    t = dynamicsymbols._t
+    qs = sp.symbols(f"x0:{len(view.q)}")
+    vs = sp.symbols(f"v0:{len(view.q)}")
+    coordinates = list(view.q.values())
+    swap = {**{c.diff(t): v for c, v in zip(coordinates, vs)},
+            **{c: x for c, x in zip(coordinates, qs)},
+            **view.numbers({k: x for k, x in params.items()
+                            if k not in bands})}
+    f = sp.lambdify(list(qs + vs if rates else qs)
+                    + [view.params[k] for k in bands],
+                    _substitute(sp.sympify(expr), swap), "numpy",
+                    cse=functools.partial(sp.cse, order="none", list=False))
+    nominal = [params[k] for k in bands]
+
+    def at(*x, **band):
+        unknown = sorted(set(band) - set(bands))
+        if unknown:
+            raise TypeError(f"{unknown} have no band; the banded "
+                            f"parameters are {sorted(bands)}")
+        return f(*x, *(band.get(k, v) for k, v in zip(bands, nominal)))
+    return at
+
+
+def _substitute(expr, swap):
+    """`expr.xreplace(swap)`, visiting each distinct subexpression once: the
+    equations share subexpressions, and walked as a tree a free body's C q̇
+    took 140 s where this takes 0.3 s (#201)."""
+    memo = dict(swap)
+
+    def walk(e):
+        if e not in memo:
+            args = tuple(walk(a) for a in e.args)
+            memo[e] = e.func(*args) if args != e.args else e
+        return memo[e]
+    return expr.applyfunc(walk) if isinstance(expr, sp.MatrixBase) else walk(expr)
 
 
 def _floating(j, b, q, locks, world, origin, axes):

@@ -117,8 +117,8 @@ from ..contact import from_solver
 from ..state import State, _frozen, _load_force, _loads
 from .bus import (BRAKE, SOURCE, TRIPPED_SOURCE, _brake_capacity,
                   _flux_capacity, _levels, _substep)
-from .electrical import (_current_limit, _electrical, _hot, _positive,
-                         _resolve)
+from .electrical import (_current_limit, _efficiencies, _electrical, _hot,
+                         _positive, _resolve)
 
 EVENT_STEP = 1e-4  # s: an event's timestep, unless it gives one; a shorted
     # flywheel whose time constant is 1 s reads exp(−t) to 5e-5 at 1 s
@@ -203,7 +203,13 @@ class Run:
     reports one; and `joints` each hinge's and slide's `Carried`, the
     wrench it carried at each sample, both from MuJoCo's solution of that
     step. Under an actuation seam the transmission pulls through
-    generalised forces with no point to act at, so `joints` is empty."""
+    generalised forces with no point to act at, so `joints` is empty.
+
+    `limits` gives, for each joint with a `range`, the generalised force
+    (N·m on a hinge, N on a slide) its limit exerted at each sample, from
+    MuJoCo's limit rows: zero off the stop, positive pushing the joint up
+    off its lower end, negative down off its upper. It is the load a hard
+    stop carries, which neither `contacts` nor `joints` holds."""
     timestep: float
     trace: object
     v: np.ndarray
@@ -213,6 +219,7 @@ class Run:
     snaps: MappingProxyType = MappingProxyType({})
     loops: MappingProxyType = MappingProxyType({})
     joints: MappingProxyType = MappingProxyType({})
+    limits: MappingProxyType = MappingProxyType({})
 
 
 class Carried(NamedTuple):
@@ -306,8 +313,8 @@ class _Simulation(NamedTuple):
     its driver is on}), bus voltage `v` and `contacts`; the time (s) each
     driver or the source `tripped` in it; and, for each actuator whose
     cable pulls only, whether it was `slack` at each sample and its
-    `snaps`; each loop's force at each sample (`loops`) and each joint's
-    `Carried` (`joints`)."""
+    `snaps`; each loop's force at each sample (`loops`), each joint's
+    `Carried` (`joints`) and each joint limit's force (`limits`)."""
     t: np.ndarray
     rows: list
     driven: list
@@ -318,6 +325,7 @@ class _Simulation(NamedTuple):
     snaps: dict
     loops: dict
     joints: dict
+    limits: dict
 
 
 class _Carriers:
@@ -344,6 +352,10 @@ class _Carriers:
         self.roots = model.body_rootid[self.bodies]
         j = len(self.names)
         self.k = 0
+        self.limited = {model.joint(i).name: i for i in range(model.njnt)
+                        if model.jnt_limited[i]}
+        self.limit_column = {i: c for c, i in enumerate(self.limited.values())}
+        self.limit_force = np.zeros((n, len(self.limited)))
         self.loop_force = np.zeros((n, len(self.loops), 3))
         self.cfrc = np.zeros((n, j, 6))
         self.xpos = np.zeros((n, j, 3))
@@ -373,6 +385,15 @@ class _Carriers:
         self.k += 1
         if self.loops:
             self.loop_force[k] = data.efc_force[self._loop_rows(data)]
+        if self.limited:
+            limit = mujoco.mjtConstraint.mjCNSTR_LIMIT_JOINT
+            for row in np.flatnonzero(data.efc_type[:int(data.nefc)] == limit):
+                joint = int(data.efc_id[row])
+                low, high = model.jnt_range[joint]
+                at = data.qpos[model.jnt_qposadr[joint]]
+                side = 1.0 if at - low < high - at else -1.0  # pushes inward
+                self.limit_force[k, self.limit_column[joint]] += (
+                    side * float(data.efc_force[row]))
         if not self.names:
             return
         put = _loads(model, loads) if loads else []
@@ -394,13 +415,16 @@ class _Carriers:
         np.take(data.subtree_com, self.roots, axis=0, out=self.com[k])
 
     def done(self):
-        """The loops' forces and the joints' `Carried`, over the samples:
+        """The loops' forces, the joint limits' and the joints' `Carried`,
+        over the samples:
         each joint's point from its body's frame, the force from
         `cfrc_int`, and its torque moved from the subtree's COM, about
         which MuJoCo writes it, to the point."""
         n = self.k
         loops = {name: _frozen(self.loop_force[:n, i])
                  for i, name in enumerate(self.loops)}
+        limits = {name: _frozen(self.limit_force[:n, c])
+                  for c, name in enumerate(self.limited)}
         joints = {}
         if self.names:
             turned = self.xmat[:n].reshape(n, -1, 3, 3)
@@ -413,7 +437,7 @@ class _Carriers:
                 joints[name] = Carried(_frozen(force[:, i]),
                                        _frozen(torque[:, i]),
                                        _frozen(point[:, i]))
-        return loops, joints
+        return loops, limits, joints
 
 
 def _actuated(m, ev, drive, actuators, temperature):
@@ -460,8 +484,8 @@ def _actuated(m, ev, drive, actuators, temperature):
         if mode not in PASSIVE and driver.flux_brake is not None:
             flux = (driver.flux_brake.onset,
                     _flux_capacity(driver, motor, r))
-        out.append(_Actuated(a, mode, dof, n, j_m, c, r,
-                             _current_limit(c, motor, driver), eta, box,
+        limit = _current_limit(c, motor, driver, n, _efficiencies(box)[0])
+        out.append(_Actuated(a, mode, dof, n, j_m, c, r, limit, eta, box,
                              driver, flux))
     return out
 
@@ -895,13 +919,13 @@ def _simulate(m, start, ev, drive, actuators, temperature, capacitance,
                                 cap)
     times = np.arange(steps + 1) * step
     times[-1] = ev.duration
-    loops, joints = carriers.done()
+    loops, limits, joints = carriers.done()
     return _Simulation(times, rows, driven, _frozen(np.array(volts)),
                        tuple(carried),
                        {key: float(times[k]) for key, k in latched.items()},
                        {a: _flags(slack[a]) for a in sorted(slack)},
                        {a: tuple(snaps[a]) for a in sorted(snaps)},
-                       loops, joints)
+                       loops, joints, limits)
 
 
 def _flags(values):

@@ -4,7 +4,7 @@ The independent computation is MuJoCo's own: `State.inverse` assembles
 M q̈ + bias − passive from `mj_fullM`, `qfrc_bias` and `qfrc_passive`, with
 the dependent accelerations solved from the closures. On a closed chain both
 sides are projected onto the independent dofs by G, the dofs' motion per unit
-of the independent ones, from MuJoCo's own closure Jacobians. MuJoCo's M
+of the independent ones, from MuJoCo's own closure Jacobians (`State.closure_basis`). MuJoCo's M
 carries each actuator's reflected rotor inertia as the dof's armature, which
 the equations leave to the derivation, so it is taken off.
 """
@@ -12,23 +12,14 @@ the equations leave to the derivation, so it is taken off.
 import numpy as np
 
 import armature
-from armature.assembly import tangent
 
 
 def reduced(state):
     """(M, C q̇ + g) of `state`'s compiled model there, over its
     independent dofs."""
-    compiled = state.compiled
-    model = compiled.model
-    with state._scratch() as data:
-        turned = tangent(compiled, data)[0]
-        if compiled.closure:
-            _, jac = compiled.closure.rows(data)
-            basis = compiled.closure.basis(jac @ turned)
-        else:
-            basis = np.eye(model.nv)
-    independent = ([compiled.dofs[k] for k in compiled.closure.independent_dofs]
-                   if compiled.closure else compiled.dofs)
+    model = state.compiled.model
+    closure = state.closure_basis()
+    basis, independent = closure.G, closure.independent
     rest = np.array(list(state.inverse().generalised.values()))
     columns = []
     for d in independent:

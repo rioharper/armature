@@ -20,7 +20,8 @@ searched worst case, the table at the end, found by the same discovery
 `run_all.py` runs them by.
 
 **This is also the only place a symbolic result is simplified.** The build
-never is (ADR 0012): each entry prints `trigsimp`'d where its operation count
+never is (ADR 0012): each entry prints with the ledger's numbers in,
+`trigsimp`'d where its operation count
 is at most SIMPLIFY_CAP, and as the coordinates it depends on where it is
 over, so the report stays readable at six joints.
 """
@@ -31,8 +32,8 @@ import sympy as sp
 import armature
 from armature.sampler import DEFAULT_SEED
 
-from params import SIGMA_MIN, WORKSPACE
-from mechanism import COORDINATES, truth, vector
+from params import PARAMS, SIGMA_MIN, WORKSPACE
+from mechanism import COORDINATES, truth, vector, view
 from kinematics import J, T_EE, singular_values
 from dynamics.equations import G_SYM, M_SYM, q
 from dynamics.statics import static_torques
@@ -57,8 +58,13 @@ SIMPLIFY_CAP = 200
 
 
 def print_entries(name, matrix):
-    """Each entry of `matrix`, `trigsimp`'d where it is at most SIMPLIFY_CAP
-    operations, otherwise as the coordinates it depends on."""
+    """Each entry of `matrix`, the parameters' numbers substituted, then
+    `trigsimp`'d where it is at most SIMPLIFY_CAP operations, otherwise as
+    the coordinates it depends on. With the parameters symbolic, `trigsimp`'s
+    time hangs on Python's hash seed: 2.7 s on one 129-operation entry at one
+    seed, unfinished after 150 s at another; with numbers, 0.5 s at each
+    (#198)."""
+    matrix = matrix.xreplace(view().numbers(PARAMS))
     for i in range(matrix.rows):
         for j in range(matrix.cols):
             at = f"{name}[{i}, {j}]" if matrix.cols > 1 else f"{name}[{i}]"

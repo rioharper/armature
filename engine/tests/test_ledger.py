@@ -384,6 +384,20 @@ def test_a_confirmed_line_citing_a_candidate_directly_is_found(tmp_path):
         ("status.candidate-cited", "budget.mass.arm")]
 
 
+@pytest.mark.parametrize("status, found", [("confirmed", True),
+                                           ("candidate", False)])
+def test_an_of_left_candidate_over_a_confirmed_chain_is_found(
+        tmp_path, status, found):
+    """Written candidate, it stays one after what it reads is confirmed
+    (#169), and the confirmed `arm` reading it is still caught; over a
+    candidate chain only that."""
+    text = CHAIN.format(status=status).replace(
+        'qty = 2\n', 'qty = 2\nstatus = "candidate"\n')
+    stale = [("status.candidate-stale", "budget.mass.pair")] if found else []
+    assert codes(tmp_path, text) == stale + [
+        ("status.candidate-cited", "budget.mass.arm")]
+
+
 def test_an_of_naming_nothing_is_found(tmp_path):
     text = entry("budget.mass.arm", of='"part.X-1.mass"')
     assert codes(tmp_path, text) == [("of.dangling", "budget.mass.arm")]
@@ -729,6 +743,34 @@ def test_the_symbols_view_is_the_mechanism_and_drive_entries(tmp_path):
     assert rows[3][2:5] == ["1.6", "kg", "[1.44, 1.76]"]
     assert rows[3][5] == ("2 × `mechanism.m2` → estimate: aluminium tube, "
                           "1.6 mm wall")
+
+
+def test_a_named_symbols_view_shows_the_part_numbers_the_mechanism_reads(
+        tmp_path):
+    """`symbols:<names>` renders the entries named, or a section's, in the
+    symbols table's columns, by their full names (#181)."""
+    text = (entry("part.body.track", value="0.3", unit='"m"',
+                  note='"the tyres\' track"',
+                  source='{ kind = "chosen", ref = "spec §5" }')
+            + entry("part.torso.size", value="0.2", unit='"m"',
+                    source='{ kind = "chosen", ref = "spec §5" }')
+            + entry("part.torso.mass", value="2.0", unit='"kg"',
+                    source='{ kind = "chosen", ref = "spec §5" }'))
+    root = project(tmp_path, text, {
+        "CONTEXT.md": marked("symbols:part.body.track,part.torso")})
+    render(path=root)
+    rows = table((root / "CONTEXT.md").read_text(encoding="utf-8"))
+    assert [r[0] for r in rows[1:]] == ["`part.body.track`",
+                                        "`part.torso.size`",
+                                        "`part.torso.mass`"]
+    assert rows[1][1:4] == ["the tyres' track", "0.3", "m"]
+
+
+def test_a_named_symbols_view_naming_nothing_raises(tmp_path):
+    root = project(tmp_path, PROJECT,
+                   {"CONTEXT.md": marked("symbols:part.nowhere")})
+    with pytest.raises(LedgerError, match="part.nowhere"):
+        render(path=root)
 
 
 def test_a_tensor_names_the_point_and_axes_it_is_about(tmp_path):

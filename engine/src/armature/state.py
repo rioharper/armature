@@ -140,18 +140,64 @@ class State:
                         _frozen(data.site_xmat[sid].reshape(3, 3)),
                         _closure(model, data), "mj_kinematics")
 
-    def jacobian(self, site):
+    def jacobian(self, site=None, *, body=None, point=None):
         """∂(site velocity)/∂(dof rates), linear and angular, in the base
-        frame. Columns follow `dofs`."""
+        frame. Columns follow `dofs`. On a closed chain those include the
+        dependent dofs, so the mechanism's Jacobian, on its independent
+        rates, is `jacobian(site).linear @ closure_basis().G`.
+
+        With `body` and `point` in place of `site`, it is the Jacobian of
+        `body`'s material point that is at `point` (base frame) at this
+        state: a point no site rides, such as where a wheel touches the
+        ground, which a site fixed on the wheel would roll away from."""
         model = self.compiled.model
-        sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
+        if (site is None) == (body is None) or (body is None) != (
+                point is None):
+            raise TypeError("jacobian takes a site, or a body and a point")
         linear, angular = np.zeros((3, model.nv)), np.zeros((3, model.nv))
         with self._scratch() as data:
-            mujoco.mj_jacSite(model, data, linear, angular, sid)
+            if site is not None:
+                sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site,
+                             model.nsite)
+                mujoco.mj_jacSite(model, data, linear, angular, sid)
+                label, method = site, "mj_jacSite"
+            else:
+                bid = _named(model, mujoco.mjtObj.mjOBJ_BODY, body,
+                             model.nbody)
+                at = np.asarray(point, dtype=float).reshape(3)
+                mujoco.mj_jac(model, data, linear, angular, at, bid)
+                label, method = f"{body} at {tuple(at.tolist())}", "mj_jac"
             turned = tangent(self.compiled, data)[0]
-            return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
+            return Jacobian(label, self.compiled.dofs,
+                            _frozen(linear @ turned),
                             _frozen(angular @ turned), _closure(model, data),
-                            "mj_jacSite")
+                            method)
+
+    def closure_basis(self):
+        """G, every dof's rate per unit rate of the independent dofs, with
+        the loops, couples and rigid cables held closed: ∂q_dep/∂q_ind =
+        −Φ_dep⁻¹ Φ_ind from the compiled model's own closure rows, the
+        identity on an open chain. A dof Jacobian times G is the
+        mechanism's Jacobian on its independent rates, and Gᵀ times
+        `inverse().generalised` is the force the reduced equations of
+        motion, `armature.equations`, answer. On a state made in the view's
+        coordinates (`at(..., view=True)`), G is in the view's rates."""
+        compiled = self.compiled
+        dofs, closure = compiled.dofs, compiled.closure
+        if closure:
+            with self._scratch() as data:
+                _, jac = closure.rows(data)
+                g = closure.basis(jac @ tangent(compiled, data)[0])
+            independent = closure.independent_dofs
+        else:
+            g, independent = np.eye(len(dofs)), list(range(len(dofs)))
+        if self.view:
+            viewed = self._from_view(None)[1]  # dofs' rates per view rate
+            g = (np.linalg.solve(viewed, g)
+                 @ viewed[np.ix_(independent, independent)])
+        dependent = [k for k in range(len(dofs)) if k not in independent]
+        return ClosureBasis(dofs, tuple(dofs[k] for k in independent),
+                            tuple(dofs[k] for k in dependent), _frozen(g))
 
     def inverse(self, qdd=None, loads=None):
         """The actuator torques that move this state at accelerations `qdd`
@@ -276,12 +322,16 @@ class State:
 
         On a closed chain the loops are MuJoCo's soft constraints, at the
         solver parameters the compiler sets. `residual` is how far open they
-        are at rest, and a settle that leaves one open past 1e-6 m raises.
+        are at rest, and a settle that comes to rest with one open past
+        1e-6 m raises.
 
         Contacts are MuJoCo's, with the noslip solver wherever friction acts,
         and `contacts` reports what each touching one carries at rest, read
-        from the solver. A rigid contact sunk in past 1e-6 m raises; a
-        compliant one sinks by its normal force over its stiffness.
+        from the solver. A rigid contact sunk in past 1e-6 m at rest raises;
+        a compliant one sinks by its normal force over its stiffness. Both
+        bounds judge a rest: a settle that runs out of steps still moving
+        returns `stable = False`, its `residual` and its contacts'
+        penetration as they were (#199).
         """
         with self._scratch() as data:
             return self._settle(data, hold, loads, min_steps, max_steps)
@@ -302,7 +352,8 @@ class State:
         carried = from_solver(self.compiled, data)
         for c in self.compiled.description.contacts:
             sunk = carried[c.name].penetration if c.name in carried else 0.0
-            if (c.name not in compliant_contacts(self.compiled.description)
+            if (stable and c.name not in compliant_contacts(
+                    self.compiled.description)
                     and not sunk <= PENETRATION_BOUND):
                 raise RuntimeError(
                     f"the settle left contact {c.name!r} sunk in {sunk:.3g} "
@@ -310,7 +361,7 @@ class State:
                     f"soft contact is not holding it, so the rest pose is "
                     f"not the mechanism's")
         closure = self.compiled.closure
-        if closure:
+        if closure and stable:
             which, gap = closure.worst(closure.rows(data)[0])
             if not gap <= CLOSURE_BOUND:
                 raise RuntimeError(
@@ -752,14 +803,27 @@ class Pose:
 
 @dataclass(frozen=True, eq=False)
 class Jacobian:
-    """A site's `linear` (m per unit rate) and `angular` (rad per unit rate)
-    Jacobians, 3 × len(dofs), in the base frame."""
+    """A site's, or a body point's, `linear` (m per unit rate) and
+    `angular` (rad per unit rate) Jacobians, 3 × len(dofs), in the base
+    frame. `site` names what it is of."""
     site: str
     dofs: tuple
     linear: np.ndarray
     angular: np.ndarray
     residual: float
     method: str
+
+
+@dataclass(frozen=True, eq=False)
+class ClosureBasis:
+    """G, ∂q/∂q_ind: each of `coordinates`' rates (its rows) per unit rate of
+    each of `independent` (its columns), with every closure held. `dependent`
+    are the rest. `State.closure_basis` gives it in NumPy over the dofs;
+    `armature.closure_basis`, in SymPy over the view's coordinates."""
+    coordinates: tuple
+    independent: tuple
+    dependent: tuple
+    G: object
 
 
 @dataclass(frozen=True, eq=False)

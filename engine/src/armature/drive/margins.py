@@ -423,8 +423,9 @@ class _Setup:
                 n = self.gear_of(a)
                 box = first.gearboxes.get(a)
                 c = _resolve(motor, n, box)
-                stall = (c.kt * _current_limit(c, motor, driver) * n
-                         * _efficiencies(box)[0])
+                eta = _efficiencies(box)[0]
+                stall = (c.kt * _current_limit(c, motor, driver, n, eta) * n
+                         * eta)
                 out.append(_Check(f"{a}: envelope at V_min", "N·m", PEAK,
                                   "envelope", a, stall, "torque-speed"))
                 out.append(_Check(f"{a}: driver peak current",
@@ -692,15 +693,15 @@ class _Setup:
         v_min = ran.v_min
         if d.bus.source is None:  # drained below its trip, the driver is off
             v_min = max(v_min, driver.undervoltage)
-        i_max = _current_limit(c, motor, driver)
+        eta = _efficiencies(box)[0]
+        i_max = _current_limit(c, motor, driver, n, eta)
         v_max = c.k_mod * v_min
         back = c.ke * e.omega
         hi = np.minimum(i_max, (v_max - back) / r)
         lo = np.maximum(-i_max, (-v_max - back) / r)
         within = np.minimum(e.current - lo, hi - e.current)
-        scale = c.kt * n * _efficiencies(box)[0]
-        return (scale * float(np.min(within)),
-                _bound(c, n, v_min, _efficiencies(box)[0], i_max, r)
+        return (c.kt * n * eta * float(np.min(within)),
+                _bound(c, n, v_min, eta, i_max, r)
                 if v_min > 0 else None)
 
 
