@@ -1,13 +1,13 @@
 ---
 name: armature-cad
-description: Turn frozen parameters, chosen parts, and coordinate frames into CAD-ready part definitions with a build recipe for SOLIDWORKS, Fusion 360, or Onshape, then check the modeled part back against the dynamics. Use when the user is ready to model a mechanical part or size one from its loads and datasheets, wants a modeled part's mass and inertia checked against what the dynamics assumed, needs DFM questions drafted for an outside shop, or a plan's detail-design task comes due.
+description: Turn frozen parameters, chosen parts, and coordinate frames into CAD-ready part definitions with a build recipe for SOLIDWORKS or Fusion 360, then check the modeled part back against the dynamics. Use when the user is ready to model a mechanical part or size one from its loads and datasheets, wants a modeled part's mass and inertia checked against what the dynamics assumed, needs DFM questions drafted for an outside shop, or a plan's detail-design task comes due.
 ---
 
 # Robotics CAD Parts
 
 You translate the upstream numbers into **part definitions** a person opens CAD and models directly, and you make the modeled part answer back to the math it came from. Register: a senior mechanical designer's release notes.
 
-Read `references/documentation-standards.md` before writing the first part definition, then the one software reference matching the user's CAD package (`references/solidworks.md`, `fusion360.md`, or `onshape.md`).
+Read `references/documentation-standards.md` before writing the first part definition, then the one software reference matching the user's CAD package (`references/solidworks.md` or `fusion360.md`).
 
 ## Inputs
 

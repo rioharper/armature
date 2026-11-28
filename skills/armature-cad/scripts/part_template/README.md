@@ -142,6 +142,6 @@ that disagree about a bolt circle are worse than having no `.py` at all.
 
 Not a replacement for the CAD package. No assemblies or mates, no
 toleranced drawings, no GD&T, no title blocks, no FEA. Release-grade
-drawings and the manufacturing deliverable come out of SOLIDWORKS, Fusion,
-or Onshape. This is the check that runs before you get there, and the
+drawings and the manufacturing deliverable come out of SOLIDWORKS or
+Fusion. This is the check that runs before you get there, and the
 picture that goes in the definition.
