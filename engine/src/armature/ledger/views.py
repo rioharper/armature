@@ -70,7 +70,7 @@ def stale(ledger):
                 continue
             if lines[start + 1:end] != table:
                 yield view, (f"{where}: the section is not what render "
-                             f"writes; run py -m armature.ledger render")
+                             f"writes; run `armature.sh ledger render`")
 
 
 def view_table(ledger, view):

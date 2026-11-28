@@ -236,7 +236,21 @@ def test_a_rating_no_driver_carries_is_the_lowest_trip(free_wheel):
     peak = math.sqrt(24.0 ** 2 + 2 * returned(STOP) / C_STOP)
     assert worst.value == pytest.approx(40.0 - peak, rel=1e-9)
     assert str(worst).startswith(
-        f"bus: peak V: {worst.value:.7g} V against power board (40 V) at ")
+        f"bus: peak V: slack {worst.value:.7g} V against power board (40 V) at ")
+
+
+def test_every_bus_row_names_the_limit_its_slack_is_held_against(free_wheel):
+    """A brake's pulse energy row prints a slack in joules, which reads as
+    the energy taken unless the row says what it is held against (#236)."""
+    brake = BrakeResistor(threshold=30.0, r=30.0 ** 2 / 20.0, energy=100.0,
+                          power=100.0)
+    ms = named(margins(stopping(brake=brake), [STOPPED], model=free_wheel))
+    assert ms["bus: brake pulse energy"].against == (
+        "the brake's pulse rating (100 J)")
+    assert ms["bus: minimum V"].against == "the undervoltage trip (10 V)"
+    assert ms["bus: source power"].against == "the source's peak (500 W)"
+    assert str(search(ms["bus: brake pulse energy"])).startswith(
+        "bus: brake pulse energy: slack ")
 
 
 def test_each_bus_configuration_names_its_own_lowest_trip(free_wheel):
@@ -502,7 +516,7 @@ def test_a_driver_that_trips_fails_the_peak_and_the_review_marks_it(
     margin = named(margins(d, [SWING_MISSION], model=m))["bus: peak V"]
     worst = search(margin)
     assert not worst.passes and worst.value == 0.0
-    assert "bus: peak V: 0 V against" in str(worst)
+    assert "bus: peak V: slack 0 V against" in str(worst)
     charged = charge(trace(m, SWING_MISSION, CONFIRM_RATE), d)
     when = charged.tripped["motor"]
     reviewed, = review([margin], tmp_path)

@@ -102,3 +102,5 @@ same 2/3. Rejected: a bare baseline arm, since `claude plugin eval` gives a
 scaffold nothing that names its arm (a separate issue), and red-team cases
 for the new traps, until #138 makes the dispatch consistent. A release now
 costs about $117 of plan usage and 4.3 h of wall time.
+
+**Amended 2026-11-21:** tier 2 no longer gates a version bump. It is run on demand, when a change to derive, the red team or the review checklist is one worth measuring. A release needs tier 1 and the script and eval-harness tests. Why: the no-plugin baseline catches every trap (#137), so a passing run did not show what the skills add, and 4.0.0, 4.1.0 and 4.1.1 each shipped without the run anyway. Revisit when the suite separates the plugin from the baseline.

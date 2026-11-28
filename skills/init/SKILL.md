@@ -10,9 +10,9 @@ The current folder is the project root.
 
 ## 1. Guard
 
-If a `ledger.toml` sits here at the root, this is an Armature project: report where it stands, `CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA}" bash "${CLAUDE_PLUGIN_ROOT}/scripts/armature.sh" gate status`, and stop. A `CLAUDE.md` here with no `ledger.toml` beside it is somebody else's file: ask through AskUserQuestion whether to merge the template into it or replace it, and carry that answer into step 4.
+If a `ledger.toml` sits here at the root, this is an Armature project: report what `docs/decisions.md`'s last entries and `git log --oneline -10` say about where it stands, and stop. A `CLAUDE.md` here with no `ledger.toml` beside it is somebody else's file: ask through AskUserQuestion whether to merge the template into it or replace it, and carry that answer into step 4.
 
-The stop carries two repairs. Where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`; a project that has no `.mcp.json` wanted none. Where `analysis/model/` exists, run `bash "${CLAUDE_PLUGIN_ROOT}/scripts/engine-source.sh" check analysis/model` and report its line, acting on it as armature-derive's checkpoint does. Report and repair is the whole of a re-run.
+The stop carries one repair. Where `.mcp.json` names a `mcp/solidworks/server.py` path that no longer exists — a plugin update moved it — offer to rewrite that path from the current `${CLAUDE_PLUGIN_ROOT}`; a project that has no `.mcp.json` wanted none. Report and repair is the whole of a re-run.
 
 ## 2. Probe the machine
 
@@ -74,7 +74,7 @@ Create (bash):
 
 ```bash
 mkdir -p docs/00-concept docs/01-spec docs/02-plan docs/testing \
-         docs/reviews docs/research docs/datasheets docs/agents docs/orders \
+         docs/reviews docs/research docs/datasheets docs/agents \
          analysis/derivation analysis/model \
          cad/parts cad/assemblies cad/ots-parts
 ```
@@ -84,14 +84,6 @@ Seed these files:
 - `docs/decisions.md`: header `# Decision log`, one column-format line
   `<!-- date · decision · why · supersedes -->`, and its first entry — the
   project init itself.
-- `waivers.toml`, the gates' exemptions, which starts with none:
-
-```toml
-# Exemptions from an item of a gate's evidence (merge or buy), one [[waiver]]
-# each: gate, item (its id as the gate prints it), scope (a branch, or
-# "standing"), reason, and confirmed (the date the user confirmed it). Only
-# the user confirms a waiver; one with no confirmed date is ignored.
-```
 - `ledger.toml`: one comment line, `# Every input number, once: mechanism, drive,
   req, budget.<kind> and part.<pn> entries.`, and no entry.
 - `docs/datasheets/index.md`: header, the legend comment
@@ -132,8 +124,6 @@ __pycache__/
 *.bak
 # absolute path into this machine's plugin install
 .mcp.json
-# the gate's run_all stamps: a cache on this machine, keyed by content
-.armature/
 ```
 
 - `CLAUDE.md` from the template below, with the setup answers filled in.
@@ -142,8 +132,7 @@ __pycache__/
 
 Then `git init -b main` (if not already a repo), stage only the files this
 scaffold created or changed, and commit as `Initialize Armature project
-scaffold`. The gates merge into `main`: in a repo whose branch has another name,
-ask before renaming it with `git branch -m main`. Done when `git ls-files` lists
+scaffold`. Done when `git ls-files` lists
 every scaffolded directory.
 
 ## 4a. Bootstrap the tracker
@@ -157,7 +146,7 @@ named an existing remote, `git push -u origin main`. Confirm with `gh repo view`
 a failure here stops init the way a missing `gh` does, because everything below
 writes to that repo.
 
-**The labels.** Create all sixteen from the table in the tracker doc you just
+**The labels.** Create all seventeen from the table in the tracker doc you just
 copied, each with its colour and description:
 
 ```bash
@@ -166,7 +155,7 @@ gh label create "plan:leaf" --color BFD4F2 --description "Plan leaf (one session
 
 `gh label create` fails on a label that already exists, which is the right
 behaviour on a re-run — pass `--force` only to repair a colour or description,
-never to blank one. Done when `gh label list` shows all sixteen.
+never to blank one. Done when `gh label list` shows all seventeen.
 
 **Sub-issues and dependencies.** Check once that both are available on this
 repo, since the plan's three-level shape and its blocking edges rest on them.
@@ -181,9 +170,8 @@ it is a degradation, not a failure.
 
 <one-line description>
 
-Where the project stands is computed, never written here: run
-`bash "<plugin root>/scripts/armature.sh" gate status`, `<plugin root>` being
-the Armature plugin's folder, the one every Armature skill's paths start from.
+Where the project stands is never written here: read the last entries of
+docs/decisions.md and the open plan leaves.
 
 ## Purpose
 
@@ -211,19 +199,22 @@ it appears.
   row in docs/datasheets/index.md saying what was verified. An entry whose
   `status` is `candidate` carries no decision until the user confirms it.
 - After a number changes, edit its ledger entry, the one place it is written,
-  then run `py -m armature.ledger render`, then `py -m armature.ledger check`,
-  and settle every error before anything reads the number.
-- Two actions are gated: `merge`, a work branch into main, and `buy`, the
-  merge of an order branch adding docs/orders/<date>-<name>.toml. Work that
-  touches a ledger number, the model, the derivation, a part definition, spec
-  or plan text, or an order lands on a branch, armature/<kind>-<name>, and
-  merges only when its gate passes; the stage skills name the call, and the
-  plugin's references/gates.md routes what fails. A commit on main only
-  re-renders the ledger's sections or adds and edits candidate entries.
-- A `confirmed` ledger entry, an `accepted` review finding and a waiver in
-  waivers.toml are the user's decisions: write one only on the user's word.
-- A plan leaf's Executor names the skill that works it: call the Skill tool
-  with that name before starting the leaf.
+  then run `bash "<plugin root>/scripts/armature.sh" ledger render`, then
+  `bash "<plugin root>/scripts/armature.sh" ledger check`, and settle every
+  error before anything reads the number.
+- Before a commit that changes a number, the model, the derivation or a part,
+  run the project's check, `bash "<plugin root>/scripts/armature.sh" check`
+  (`<plugin root>` being the Armature plugin's folder): `ledger check` and
+  every run_all.py. Nothing enforces it, and work may land on main.
+- A red-team review is advice, asked for when the spec is finished, before
+  money or a drawing leaves the project, and whenever the user wants one.
+  Buying a part and sending a drawing out are the user's to do.
+- A `confirmed` ledger entry is the user's decision: write one only on the
+  user's word, and name the decision in the commit message.
+- A plan leaf's Executor names who works it. Before starting the leaf,
+  call the Skill tool with that name for a skill, or dispatch an agent
+  (armature-librarian, armature-red-team, armature-inventor) with the Agent
+  tool.
 - The plan and every wayfinder map are GitHub Issues, never a markdown file.
   Read docs/agents/issue-tracker.md before touching the tracker.
 - A change to a mass, power draw, or cost is debited in the same session;

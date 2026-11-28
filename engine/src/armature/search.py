@@ -54,12 +54,29 @@ the search reports, and the caller's check fails on it.
 Probed on 2026-10-11, pure sampling never landed on either golden worst
 case even at 10⁴ points; this method matched both closed forms in about
 650 evaluations.
+
+A search long enough to be worth it runs its evaluations on forked worker
+processes, `ARMATURE_WORKERS` of them (default: every CPU; 1 runs it all
+here). The workers only work ahead: they evaluate every combination's
+global set and corners, and each polish start as far as its own cap, and
+the search above then runs exactly as written, reading each evaluation a
+worker already made instead of making it again. So the result is the same
+to the bit, `n` and `rejected` included, with or without workers. The
+`Point` behind the worst is rebuilt here for `check`, and a point where
+`fn` raised in a worker is evaluated again here. `fn` must give the same slack at the
+same point every time, as it already must for the search to be seeded.
 """
 
 import itertools
 import math
+import os
+import time
+import warnings
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
+from multiprocessing import get_context
 from types import MappingProxyType
 from typing import NamedTuple
 
@@ -84,6 +101,10 @@ REACH = 0.05          # how far past each face of the unit cube the polish
 SNAP = 1e-15          # a direction's component this small is zero, so an
                       # axis direction reads exactly
 PLANES = {"xy": (0, 1), "xz": (0, 2), "yz": (1, 2)}
+PARALLEL_FROM = 1.0   # s: the serial time a search is estimated to take,
+                      # from its first evaluation, before workers are forked
+CHUNKS_PER_WORKER = 4  # the global set is dealt out in this many pieces per
+                       # worker, so a slow region does not hold one up
 
 
 class Infeasible(Exception):
@@ -623,7 +644,7 @@ class Worst:
             return (f"{self.margin}: UNCHECKED, FAILS; missing "
                     + ", ".join(self.unchecked))
         held = f" against {self.against}" if self.against else ""
-        text = (f"{self.margin}: {self.value:.7g} {self.unit}{held} at "
+        text = (f"{self.margin}: slack {self.value:.7g} {self.unit}{held} at "
                 f"{_written(self.at)}, "
                 f"{'passes' if self.passes else 'FAILS'}; pre-polish "
                 f"{self.pre_polish:.7g}; coverage {self.coverage:.1%}; "
@@ -683,10 +704,12 @@ def search(margin, seed=DEFAULT_SEED):
         cube, corners, cap, starts = np.zeros((1, 0)), np.zeros((0, 0)), 0, 0
     choices = {n: a.values for n, a in space.axes.items()
                if isinstance(a, Choice)}
+    combinations = [dict(zip(choices, c))
+                    for c in itertools.product(*choices.values())]
+    _ahead(run, combinations, cube, corners, starts, cap)
     cases, found, pre = [], [], None
-    for combination in itertools.product(*choices.values()):
-        fixed = dict(zip(choices, combination))
-        best, before = run.combination(fixed, cube, corners, starts, cap)
+    for k, fixed in enumerate(combinations):
+        best, before = run.combination(k, fixed, cube, corners, starts, cap)
         cases.append(Case(fixed, best[0], best[1]))
         found.append(best)
         if pre is None or before[0] < pre[0]:
@@ -717,6 +740,8 @@ def _confirm(margin, worst, pre):
     if margin.check is None:
         return None
     read = {}
+    worst, pre = ((v, at, p.get() if isinstance(p, _Lazy) else p)
+                  for v, at, p in (worst, pre))
     for value, at, point in (worst, pre):
         if id(point) in read:
             continue
@@ -749,6 +774,7 @@ class _Run:
         self.margin, self.space = margin, space
         self.n, self.rejected = 0, Counter()
         self.covered = self.counted = 0
+        self.known = {}  # (combination, u's bytes): what a worker read there
 
     def point(self, fixed, u):
         """Each axis's value at unit coordinates `u`, the `Coordinates`'
@@ -772,18 +798,32 @@ class _Run:
                 if isinstance(a, Band) and a.compiled})
         return values
 
-    def evaluate(self, fixed, u):
-        """`fn` at unit coordinates `u`: its slack, or None where it raised
-        `Infeasible`; with the point as a plain dict, and the `Point` `fn`
-        read."""
-        self.n += 1
+    def read(self, fixed, u):
+        """`fn` at unit coordinates `u`, uncounted: (slack, the point as a
+        plain dict, the `Point` `fn` read, None), or (None, None, None,
+        reason) where it raised `Infeasible`."""
         try:
             values = self.point(fixed, u)
             at = {n: self.space.axes[n].plain(v) for n, v in values.items()}
             point = Point(values)
-            slack = float(self.margin.fn(point))
+            return float(self.margin.fn(point)), at, point, None
         except Infeasible as refused:
-            self.rejected[refused.reason] += 1
+            return None, None, None, refused.reason
+
+    def evaluate(self, k, fixed, u):
+        """`fn` at unit coordinates `u` in combination `k`, or what a worker
+        read there: its slack, or None where it raised `Infeasible`; with
+        the point as a plain dict, and the `Point` `fn` read (a `_Lazy`
+        one, where a worker read it)."""
+        self.n += 1
+        known = self.known.pop((k, u.tobytes()), None)
+        slack, at, point, reason = known or self.read(fixed, u)
+        if known and reason is None:
+            at = {n: fixed[n] if n in fixed else at[n]
+                  for n in self.space.axes}
+            point = point or _Lazy(self, fixed, u)
+        if reason is not None:
+            self.rejected[reason] += 1
             return None, None, None
         if math.isnan(slack):
             raise ValueError(f"margin {self.margin.name!r} is nan at "
@@ -791,9 +831,9 @@ class _Run:
                              f"raises Infeasible(reason)")
         return slack, at, point
 
-    def combination(self, fixed, cube, corners, starts, cap):
-        """The least slack of one combination, and the least before the
-        polish, each as (value, at, point)."""
+    def combination(self, k, fixed, cube, corners, starts, cap):
+        """The least slack of combination `k`, `fixed`, and the least before
+        the polish, each as (value, at, point)."""
         best = None
         ranked = []   # (slack, order, u) of every feasible point so far
         seen = {}
@@ -803,7 +843,7 @@ class _Run:
             key = u.tobytes()
             if key in seen:
                 return seen[key]
-            slack, at, point = self.evaluate(fixed, u)
+            slack, at, point = self.evaluate(k, fixed, u)
             seen[key] = slack
             if glob and slack is not None:
                 self.counted += 1
@@ -853,6 +893,157 @@ class _Run:
             except _Found:
                 break
         return best, before
+
+
+class _Lazy:
+    """The `Point` a worker read, rebuilt here only if it is asked for."""
+    __slots__ = ("run", "fixed", "u", "point")
+
+    def __init__(self, run, fixed, u):
+        self.run, self.fixed, self.u, self.point = run, fixed, u, None
+
+    def get(self):
+        if self.point is None:
+            self.point = Point(self.run.point(self.fixed, self.u))
+        return self.point
+
+
+# --- working ahead, on forked workers -----------------------------------------
+_AHEAD = None  # in a worker: (the run, its combinations), forked with it
+
+
+def _ahead(run, combinations, cube, corners, starts, cap):
+    """Fills `run.known` with what the search will read, evaluated on forked
+    workers, where its first evaluation says the search will take at least
+    `PARALLEL_FROM` here: every combination's global set and corners, then
+    each polish start up to its cap. Leaves it at that first evaluation
+    otherwise. The search reads `known` in its own order, and evaluates
+    anything missing from it, so this changes how long it takes, nothing
+    else."""
+    global _AHEAD
+    given = os.environ.get("ARMATURE_WORKERS")
+    workers = (1 if _AHEAD is not None or not hasattr(os, "fork")  # a worker
+               else max(1, int(given)) if given
+               else getattr(os, "process_cpu_count", os.cpu_count)() or 1)
+    points = list(cube) + [np.array(c, dtype=float) for c in corners]
+    started = time.perf_counter()
+    run.known[0, points[0].tobytes()] = run.read(combinations[0], points[0])
+    per = time.perf_counter() - started
+    total = len(combinations) * (len(points) + starts * cap / 2)
+    if workers < 2 or per * total < PARALLEL_FROM:
+        return
+    tasks, queued = [], set(run.known)
+    for k in range(len(combinations)):
+        for u in points:
+            if (k, u.tobytes()) not in queued:
+                queued.add((k, u.tobytes()))
+                tasks.append((k, u))
+    workers = min(workers, len(tasks) or 1)
+    size = max(1, math.ceil(len(tasks) / (workers * CHUNKS_PER_WORKER)))
+    chunks = [tasks[i:i + size] for i in range(0, len(tasks), size)]
+    pool = ProcessPoolExecutor(workers, get_context("fork"))
+    try:
+        _AHEAD = (run, combinations)
+        try:  # the workers fork at the first submit, holding the run
+            with warnings.catch_warnings():  # MuJoCo and NumPy fork cleanly
+                warnings.simplefilter("ignore", DeprecationWarning)
+                pending = [pool.submit(_read_ahead, c) for c in chunks]
+        finally:
+            _AHEAD = None
+        for future in pending:
+            run.known.update(future.result())
+        polishes = _starts(run, combinations, points, starts, cap)
+        for found in pool.map(_polish_ahead, polishes):
+            run.known.update(found)
+    except (BrokenProcessPool, OSError):
+        pass  # what is not known yet is evaluated here
+    finally:
+        pool.shutdown(cancel_futures=True)
+
+
+def _starts(run, combinations, points, starts, cap):
+    """Each combination's polish starts, as `combination` will choose them
+    from what the workers read: (k, start, the infeasible stand-in, cap,
+    the slack at every global point), leaving out a combination the
+    workers could not read in full, or one whose polish will not run."""
+    out = []
+    for k in range(len(combinations)):
+        ranked, seen = [], {}
+        for u in points:
+            key = u.tobytes()
+            if key in seen:
+                continue
+            known = run.known.get((k, key))
+            if known is None or (known[0] is not None
+                                 and math.isnan(known[0])):
+                break
+            seen[key] = known[0]
+            if known[0] is not None:
+                ranked.append((known[0], len(ranked), u))
+        else:
+            if not ranked or not math.isfinite(min(ranked)[0]):
+                continue
+            top = max(s for s, _, _ in ranked if math.isfinite(s))
+            last = top + 1.0 + abs(top)
+            out += [(k, u, last, cap, seen) for _, _, u
+                    in sorted(ranked, key=lambda r: r[:2])[:starts]]
+    return out
+
+
+def _read(run, fixed, k, u):
+    """`((k, u's bytes), (slack, at, None, reason))` from `fn` at `u`, `at`
+    without the choices, or None where `fn` raised anything else, so the
+    search evaluates it again, here, and raises as it would."""
+    try:
+        slack, at, _, reason = run.read(fixed, u)
+    except Exception:
+        return None
+    if at is not None:
+        at = {n: v for n, v in at.items() if n not in fixed}
+    return (k, u.tobytes()), (slack, at, None, reason)
+
+
+def _read_ahead(chunk):
+    """In a worker: `fn` at each (k, u) of `chunk`."""
+    run, combinations = _AHEAD
+    found = (_read(run, combinations[k], k, u) for k, u in chunk)
+    return [f for f in found if f is not None]
+
+
+def _polish_ahead(task):
+    """In a worker: one polish start, run as `combination` runs it but
+    counting only its own points against its cap, so it stops no later
+    than the search's will, short only of what an earlier start already
+    read; and stopping where `fn` raised or read nan."""
+    k, u, last, cap, seen = task
+    run, combinations = _AHEAD
+    fixed, found, spent = combinations[k], [], 0
+
+    def objective(x):
+        nonlocal spent
+        x = np.clip(x, 0.0, 1.0)
+        key = x.tobytes()
+        if key not in seen:
+            if spent >= cap:
+                raise _Spent
+            spent += 1
+            read = _read(run, fixed, k, x)
+            if read is None or (read[1][0] is not None
+                                and math.isnan(read[1][0])):
+                raise _Spent
+            found.append(read)
+            seen[key] = read[1][0]
+        slack = seen[key]
+        if slack == -math.inf:
+            raise _Found
+        return slack if slack is not None and math.isfinite(slack) \
+            else last
+
+    try:
+        _powell(objective, u)
+    except (_Spent, _Found):
+        pass
+    return found
 
 
 def _powell(f, x):

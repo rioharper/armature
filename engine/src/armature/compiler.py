@@ -183,6 +183,15 @@ class Compiled:
                 for i in range(model.njnt)}
 
     @cached_property
+    def _address(self):
+        """Each coordinate's (qpos address, dof address), looked up once:
+        a closure writes and solves them at every Newton step."""
+        model = self.model
+        return {model.joint(i).name: (int(model.jnt_qposadr[i]),
+                                      int(model.jnt_dofadr[i]))
+                for i in range(model.njnt)}
+
+    @cached_property
     def _turning(self):
         """Each free joint's (dof address, body, point-to-COM offset),
         looked up once, for `tangent`."""
@@ -256,7 +265,7 @@ class Compiled:
         i = FREE_COMPONENTS.index(component)
         return float(point[i]) if i < 3 else 0.0
 
-    def at(self, q=None, qd=None, *, view=False):
+    def at(self, q=None, qd=None, *, view=False, _near=None):
         """The state with coordinates `q`, keyed by coordinate name, and rates
         `qd`, keyed by dof. An omitted coordinate is at its home value, an
         omitted rate is zero. A floating body's value is a `Placement`, or a
@@ -276,7 +285,11 @@ class Compiled:
         within 1e-10 m, on the branch reached from home, and their rates so
         that the loops stay closed. A posture that cannot close raises a
         `ClosureError` naming the loop, or the joint closing would put
-        outside its range."""
+        outside its range.
+
+        `_near`, the engine's own, is a closed posture (every coordinate by
+        name) the loops are walked from instead of home: a solve that
+        steps a little way from a state it already closed."""
         q, qd = dict(q or {}), dict(qd or {})
         turns = self._from_view(q, qd) if view and self._free else None
         for given, names, label in ((q, self.coordinates, "coordinate"),
@@ -308,7 +321,7 @@ class Compiled:
             values[name] = value
         rates = {name: float(qd.get(name, 0.0)) for name in self.dofs}
         if self.closure:
-            values, rates = self._close(values, rates)
+            values, rates = self._close(values, rates, _near)
         return State(self, MappingProxyType(values), MappingProxyType(rates),
                      turns)
 
@@ -337,10 +350,10 @@ class Compiled:
             turns[name] = (tuple(angles), tuple(rates))
         return MappingProxyType(turns)
 
-    def _close(self, values, rates):
+    def _close(self, values, rates, near=None):
         """`values` and `rates` with the dependent coordinates and rates
-        solved."""
-        solved = self.closure.assemble(values)
+        solved, walked from home, or from the closed posture `near`."""
+        solved = self.closure.assemble(values, near)
         for name, value in solved.items():
             lo, hi = (float(v) for v in self._coordinate[name][0].range)
             if not lo <= value <= hi:

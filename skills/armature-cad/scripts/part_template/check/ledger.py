@@ -12,7 +12,7 @@ contract's side of check/__init__.py. Read one with `value`, which follows
 an `of` line to the entry it reads, `qty` times.
 
 `export` is what `python <part>.py --mass-properties` prints, and what
-`py -m armature.ledger set part.<pn> --from-part <part>.py` writes back:
+`python -m armature.ledger set part.<pn> --from-part <part>.py` writes back:
 the measured mass, COM and inertia, with the frame they are in.
 """
 

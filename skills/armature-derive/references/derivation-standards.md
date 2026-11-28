@@ -95,13 +95,13 @@ A blank cell is the failure mode the column exists to make visible. Rule 7's fla
 A note and its module each carry what the other cannot, and a sentence said in both is paid for on every read of the module. Narrative, derivation, physical argument, and revision history — the story of a correction included — live in the note. The module carries the computation and the least prose a caller needs:
 
 - **Function docstring**: one sentence of what the function computes; the note's equation or section it implements; and anything a *caller* needs that the note does not say — units, sign conventions, failure modes, why a default is what it is.
-- **Module docstring**: orientation in about ten lines — the note and sections it mirrors, where its checks live, what it imports — pointing at the note for the argument.
+- **Module docstring**: orientation in about ten lines — the note it goes with, where its checks live, what it imports — pointing at the note for the argument.
 
 A derivation, a justification of the physics, or the history of a fix belongs in the note, with the docstring citing it. The test for any sentence in a docstring: would it be wrong to say this in the note? If not, it belongs in the note.
 
 ## Length is a signal, not a target
 
-This governs the notes; the modules are held to a hard budget instead (the plugin's `references/model-layout.md`). A milestone file that's short because the mechanism is simple is correct. A milestone file that's long because every step is doing real work is also correct. A milestone file that's long because of hedging, restated interpretation, or an equation shown three ways when one would do is the failure mode to catch on re-read — trim it before moving to the next milestone, not at the end when trimming means re-touching four files instead of one.
+This governs the notes; nothing counts a module's lines either (the plugin's `references/model-layout.md`). A milestone file that's short because the mechanism is simple is correct. A milestone file that's long because every step is doing real work is also correct. A milestone file that's long because of hedging, restated interpretation, or an equation shown three ways when one would do is the failure mode to catch on re-read — trim it before moving to the next milestone, not at the end when trimming means re-touching four files instead of one.
 
 ## References
 

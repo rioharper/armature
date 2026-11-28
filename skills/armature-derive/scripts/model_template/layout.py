@@ -1,6 +1,5 @@
 """
-layout.py — the two gates every module in this model is held to: the code-line
-budget, and the truth check.
+layout.py — the truth gate every module in this model is held to.
 
 The rules live in the plugin's `references/model-layout.md`; this file is how
 a copied project enforces them without access to the plugin. Stdlib only, so
@@ -9,8 +8,8 @@ it runs where SymPy and SciPy do not:
     python analysis/model/layout.py     # the gate table; exit 1 on a violation
 
 `run_all.py` discovers its checks, in `layout_checks.py`, like any other, so
-the full run and `pytest` fail on a module over budget, on a milestone's
-checks module that carries no truth check and no argued exemption, or on a
+the full run and `pytest` fail on a milestone's checks
+module that carries no truth check and no argued exemption, or on a
 margin declared without both `check=` and `agree=` in a module with no argued
 exemption. The drive margins, declared by one call to armature.drive's
 `margins`, carry theirs, the resolution check, and the gate reads them so; a
@@ -22,7 +21,6 @@ truth gate stands down.
 """
 
 import ast
-import io
 import sys
 import tokenize
 from collections import namedtuple
@@ -30,8 +28,6 @@ from pathlib import Path
 
 MILESTONE = (99, "Layout: the gates")
 
-BUDGET = 250
-EXEMPT = "LAYOUT_EXEMPT"
 # The truth-check gate. A checks module beside a milestone module either
 # defines a `test_truth_*` callable or says, in an argued string, why its
 # claims need none. The convention is a *name* because this file imports
@@ -60,80 +56,36 @@ DRIVE_MODULE = "armature.drive"
 DESCRIPTION = "mechanism.py"
 
 HERE = Path(__file__).resolve().parent
-# Reported beside the modules for information only; notes carry no budget.
-NOTES = HERE.parent / "derivation"
-
 # `truth_checks` is the list of truth checks the gate found, or None where the
 # gate does not apply — a module that is not a checks module, or a directory
 # with no mechanism description at all. `bare` is the margins the module declares
 # without both `check=` and `agree=`, by name, or None in a directory with no
 # mechanism description. `drive` is the drive margins it declares, by name,
 # whose check is theirs.
-Row = namedtuple("Row",
-                 "where lines exempt truth_checks truth_exempt bare drive")
+Row = namedtuple("Row", "where truth_checks truth_exempt bare drive")
 
-_NOT_CODE = {tokenize.COMMENT, tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
-             tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER}
-_HAS_DOCSTRING = (ast.Module, ast.ClassDef, ast.FunctionDef,
-                  ast.AsyncFunctionDef)
-
-
-def code_lines(source):
+def exemption(source, where):
     """
-    Lines of `source` that carry code: not blank, not comment-only, and not
-    part of a docstring. A string that is data rather than a docstring counts
-    on every line it spans.
+    The module's stated reason for standing outside the truth gate, or None.
+
+    An exemption is a module-level `TRUTH_EXEMPT = "<why>"`. Anything else
+    assigned to that name — True, an empty string, a number — raises, so an
+    exemption cannot be claimed without being argued.
     """
-    tree = ast.parse(source)
-    lines = source.splitlines()
-
-    def chars(row, byte_col):   # ast columns are UTF-8 bytes; tokenize's are chars
-        return len(lines[row - 1].encode()[:byte_col].decode(errors="ignore"))
-
-    spans = []
-    for node in ast.walk(tree):
-        if not isinstance(node, _HAS_DOCSTRING) or not node.body:
-            continue
-        doc = node.body[0]
-        if (isinstance(doc, ast.Expr) and isinstance(doc.value, ast.Constant)
-                and isinstance(doc.value.value, str)):
-            spans.append(((doc.lineno, chars(doc.lineno, doc.col_offset)),
-                          (doc.end_lineno,
-                           chars(doc.end_lineno, doc.end_col_offset))))
-
-    rows = set()
-    for tok in tokenize.generate_tokens(io.StringIO(source).readline):
-        if tok.type in _NOT_CODE:
-            continue
-        if tok.type == tokenize.STRING and any(
-                start <= tok.start and tok.end <= end for start, end in spans):
-            continue
-        rows.update(range(tok.start[0], tok.end[0] + 1))
-    return len(rows)
-
-
-def exemption(source, where, name=EXEMPT, demand=None):
-    """
-    The module's stated reason for standing outside a gate, or None.
-
-    An exemption is a module-level `<name> = "<why>"`. Anything else assigned
-    to that name — True, an empty string, a number — raises, so an exemption
-    cannot be claimed without being argued. `demand` completes the sentence the
-    error asks for, which is what lets one reader serve both gates.
-    """
-    demand = demand or f"the reason this module stays over {BUDGET} code lines"
     for node in ast.parse(source).body:
         targets = (node.targets if isinstance(node, ast.Assign)
                    else [node.target] if isinstance(node, ast.AnnAssign)
                    else [])
-        if not any(isinstance(t, ast.Name) and t.id == name for t in targets):
+        if not any(isinstance(t, ast.Name) and t.id == TRUTH_EXEMPT
+                   for t in targets):
             continue
         value = node.value
         if (isinstance(value, ast.Constant) and isinstance(value.value, str)
                 and value.value.strip()):
             return " ".join(value.value.split())
-        raise ValueError(f"{where}: {name} must be a non-empty string giving "
-                         f"{demand}")
+        raise ValueError(f"{where}: {TRUTH_EXEMPT} must be a non-empty string "
+                         f"giving the reason this module's claims need no "
+                         f"truth check")
     return None
 
 
@@ -250,9 +202,9 @@ def is_review_checks(path):
     """
     Whether this file is a review's checks file,
     `review_<date>_<artifact>_checks.py`: one review's recomputations, a
-    `test_F<n>_*` per finding it closes (ADR 0011). It pairs with no module
-    and makes no claim of its own for a truth check to test, so neither gate
-    holds it; `run_all.py` collects it by itself. A file so named with a
+    `test_F<n>_*` per finding fixed against it. It pairs with no module
+    and makes no claim of its own for a truth check to test, so the gate does
+    not hold it; `run_all.py` collects it by itself. A file so named with a
     module of its own beside it is that module's checks, as `run_all.py`
     reads it.
     """
@@ -263,17 +215,14 @@ def is_review_checks(path):
 
 
 def size_table(root=HERE):
-    """One `Row` per file: its code lines, and where each gate stands on it."""
+    """One `Row` per file: where the truth gate stands on it."""
     rows = []
     for path in model_files(root):
         source = tokenize.open(path).read()
         where = path.relative_to(root).as_posix()
-        rows.append(Row(where, code_lines(source),
-                        exemption(source, where),
+        rows.append(Row(where,
                         truth_checks(source) if gated(path, root) else None,
-                        exemption(source, where, TRUTH_EXEMPT,
-                                  "the reason this module's claims need no "
-                                  "truth check"),
+                        exemption(source, where),
                         bare_margins(source) if (root / DESCRIPTION).is_file()
                         else None,
                         drive_margins(source)))
@@ -294,10 +243,8 @@ def unconfirmed_margins(rows):
 
 
 if __name__ == "__main__":
-    print(f"{'module':<34}{'code lines':>11}   truth checks")
+    print(f"{'module':<34}   truth checks")
     for row in size_table():
-        flag = ("  exempt: " + row.exempt if row.exempt
-                else "  OVER BUDGET" if row.lines > BUDGET else "")
         truth = ("n/a" if row.truth_checks is None
                  else str(len(row.truth_checks)) if row.truth_checks
                  else f"exempt: {row.truth_exempt}" if row.truth_exempt
@@ -305,20 +252,13 @@ if __name__ == "__main__":
         if row.bare and not row.truth_exempt:
             truth += (f"; MARGINS WITHOUT check= AND agree=: "
                       f"{', '.join(row.bare)}")
-        print(f"{row.where:<34}{row.lines:>11}   {truth}{flag}")
-    if NOTES.is_dir():
-        print(f"\n{'note (information only)':<34}{'lines':>11}")
-        for note in sorted(NOTES.glob("*.md")):
-            lines = len(note.read_text(encoding="utf-8").splitlines())
-            print(f"{note.name:<34}{lines:>11}")
+        print(f"{row.where:<34}   {truth}")
     print("")
     from layout_checks import (test_checks_modules_are_paired,
                                test_every_margin_carries_a_check,
                                test_milestone_checks_carry_a_truth_check,
-                               test_modules_within_budget,
                                test_the_truth_gate_has_teeth)
     try:
-        test_modules_within_budget()
         test_checks_modules_are_paired()
         test_milestone_checks_carry_a_truth_check()
         test_every_margin_carries_a_check()

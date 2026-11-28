@@ -56,39 +56,22 @@ a lookup scoped too wide, and the fix is a narrower run, not a bigger model.
 
 ## Dispatching the red team
 
-**Commit first.** A review is of a commit, and the red team refuses a dispatch that names
-none, names one that is not `HEAD`, or whose artifacts have uncommitted changes, with
-"commit first". The commit's SHA is the review's `reviewed`, and the gate counts a review
-only when that SHA is on the branch being merged: a review of a working tree no commit
-holds can never close anything. Commit on the work branch, then dispatch:
+A review is advice, and it gates nothing. Dispatch one where a mistake is expensive to
+find later: when a spec is finished, before money or a drawing leaves the project, and
+whenever the user asks. A derive milestone, a plan, a report or a CAD batch gets one only
+when the user asks or the result surprised you.
 
 ```
-Review at commit 51dfa1d on armature/spec-rev2: docs/01-spec/spec.md,
-docs/01-spec/budgets.md, ledger.toml. It gates the merge of the spec revision.
-Accepted already: <risk>. Report to docs/reviews/2026-10-21-spec-review.md.
+Review docs/01-spec/spec.md, docs/01-spec/budgets.md and ledger.toml. It informs
+whether the spec is ready to plan against. Accepted already: <risk>.
+Report to docs/reviews/2026-10-21-spec-review.md.
 ```
 
-The review ends in a block of findings, every one `open`. Closing each BLOCKER and MAJOR
-is the dispatching conversation's work: a `check` in the review's checks file that passes,
-a recheck, or the user's acceptance (`gates.md`, *Closing a finding*). Write the closure
-into the review's block yourself; the red team never writes one. The block is the one
-record of how a finding closed: a report's **Review** line or a routed item's row points
-at the finding's closure there, and never restates it.
-
-**A recheck** is for a finding no test can hold: a judgment, an argument, a requirement's
-reading. Commit the fix, then dispatch it with the review, the finding ids and the fix
-diff, and nothing else:
-
-```
-Recheck at commit 8260560 on armature/spec-rev2: findings F1 and F2 of
-docs/reviews/2026-10-21-spec-review.md, over the fix diff 51dfa1d..8260560.
-```
-
-It writes `docs/reviews/<date>-<artifact>-recheck.md`, marking each id `holds` or
-`reopened`. A finding that holds closes with `recheck = "<that path>"`; a reopened one is
-open again and goes back to its fix. Never send a recheck the fix's reasoning: the finding
-as written and the diff are what it judges, and the argument for the fix is what fresh
-context exists to be free of.
+Read the findings, fix what you agree is wrong, and take each BLOCKER or MAJOR you would
+leave standing to the user with your reason. Note what was done about each in
+`docs/decisions.md`, one line a finding. Nobody re-reviews a fix: a number the review
+recomputed is worth keeping as a `test_*` in the folder's checks, so `run_all.py` holds
+it from then on. Dispatch a second review only when the user asks for one.
 
 ## Splitting a red-team review
 
@@ -109,12 +92,12 @@ cost more in total than one run would have.
 **Run the passes sequentially, and don't chain them.** Sequential because concurrency is
 what burns the session budget and trips the stall watchdog. Not chained because feeding
 one pass's findings into the next re-inflates the context the split just cut, and biases
-the second pass toward confirming the first. Each pass is dispatched at the same commit and
-writes its own staging file under `docs/reviews/staging/`, with no block.
+the second pass toward confirming the first. Each pass writes its own staging
+file under `docs/reviews/staging/`.
 
 **Close with the merge pass**, the one chained step, which reads findings rather than
 sources: it takes the staging files, adds what only a whole-set view can see, drops the
-duplicates several passes raised, writes the single report with its one block, and deletes
+duplicates several passes raised, writes the single report, and deletes
 what it merged.
 **Routing stays here** — the report names each fix's owner, and only the dispatching
 conversation can act on them.

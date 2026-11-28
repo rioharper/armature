@@ -13,7 +13,7 @@ each of those callables is one check. Nothing in this file lists modules or
 tests, so a module added later — a `spring.py` for a plan task — is collected
 the moment it lands, and so is a test added to a checks module that already
 exists. A review's checks file, `review_<date>_<artifact>_checks.py`, has
-no module beside it and is collected by itself, last (ADR 0011).
+no module beside it and is collected by itself, last.
 
 That is deliberate. A hardcoded list is a list you forget to add to, and the
 self-tests you forget are exactly the ones that then never run.
@@ -44,8 +44,8 @@ During development run one milestone by name — a module or a package:
     uv run python run_all.py kinematics
 
 It runs that milestone's checks without rebuilding the symbolic models of the
-milestones it isn't checking, and without the code-line budget in `layout.py`,
-which only the full run enforces. The same file ships in armature-cad's part
+milestones it isn't checking, and without `layout.py`'s gate, which only the
+full run enforces. The same file ships in armature-cad's part
 template, where the modules it collects are part files and libraries.
 """
 
@@ -88,10 +88,9 @@ def is_model_module(stem):
 def is_review_checks(path):
     """
     Whether `path` is a review's checks file,
-    `review_<date>_<artifact>_checks.py`: one review's recomputations, a
-    `test_F<n>_*` per finding it closes (ADR 0011). It has no module of its
-    own beside it, so it is collected as a module by itself, and a
-    `fixed` closure's `check` passes when this run does.
+    `review_<date>_<artifact>_checks.py`: the recomputations a review's
+    findings were fixed against, a `test_F<n>_*` each. It has no module of
+    its own beside it, so it is collected as a module by itself.
     """
     stem = path.stem
     return (path.suffix == ".py" and stem.startswith("review_")
@@ -331,19 +330,41 @@ def ledger_check():
 
 
 def _run(title, checks):
+    """Run every check under `title`, a failing one printing its FAIL row
+    and the run going on; the names of those that failed."""
     print(f"=== {title} ===")
+    failed = []
     for check in checks:
-        check()
+        try:
+            check()
+        except Exception as e:
+            kind = ("" if isinstance(e, AssertionError)
+                    else f"{type(e).__name__}: ")
+            print(f"  [FAIL] {check.__name__}: {kind}{e}")
+            failed.append(f"{title}: {check.__name__}")
+    return failed
+
+
+def _report(failed):
+    """End the run: nonzero, naming each failed check, where any failed."""
+    if failed:
+        print(f"{len(failed)} check(s) failed:")
+        for name in failed:
+            print(f"  {name}")
+        raise SystemExit(1)
 
 
 def main(names=None):
-    """Run the named milestones, or every one, in order; the first failure raises."""
+    """Run the named milestones, or every one, in order. A failing check
+    prints its FAIL row and the rest still run; the run exits nonzero at
+    the end, naming each one that failed."""
     unknown = [name for name in names or []
                if not (HERE / f"{name}.py").is_file()
                and not (HERE / name / "__init__.py").is_file()]
     assert not unknown, f"no module or package named {unknown} in {HERE}"
     ledger = ledger_check()
-    _run(LEDGER_TITLE, [ledger] if ledger else [])
+    # A ledger error stops the run: nothing is sized on a number it distrusts.
+    _report(_run(LEDGER_TITLE, [ledger] if ledger else []))
     if ledger is None:
         print(f"  no ledger.toml at or above {HERE}, or no engine to check "
               f"one with")
@@ -351,12 +372,16 @@ def main(names=None):
     milestones = discover_milestones(names)
     assert milestones, (f"no milestone modules named {names} in {HERE}" if names
                         else f"no milestone modules found in {HERE}")
+    failed = []
     for title, _module, checks in milestones:
-        _run(title, checks)
+        failed += _run(title, checks)
         print("")
+    _report(failed)
     print(f"All self-tests passed across {'; '.join(names)}." if names
           else "All self-tests passed across all milestones.")
 
 
 if __name__ == "__main__":
+    # Rows show as they print, even with the output sent to a file.
+    sys.stdout.reconfigure(line_buffering=True)
     main(sys.argv[1:] or None)
