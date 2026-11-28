@@ -33,7 +33,8 @@ from __future__ import annotations
 import os
 
 from .annotate import annotate
-from .com import MM, NOTHING, SwError, close, default_template, doubles, get, new_doc, open_doc, save_as
+from .com import (MM, NOTHING, SwError, close, default_template, doubles, get, new_doc, open_doc,
+                  require_closed, save_as)
 from .exchange import export_copy
 from .layout import SERIES, Rooms, arrangement, first_scale, iso_scale, numbered
 from .measure import reach, solid_bodies
@@ -75,6 +76,7 @@ class Drawing:
         self.first_angle = bool(p[4])
         self.size = (p[5] / MM, p[6] / MM)
         self.views = {}
+        self._loaded = set()     # the parts its views loaded, which close() may close
 
     def scale(self, num, den):
         """The sheet's scale; the paper, format and projection kept."""
@@ -83,6 +85,8 @@ class Drawing:
 
     def model_view(self, part, name, at=(100.0, 100.0)):
         """A named model view of `part` ("*Front", "*Back", "*Isometric", ...) at `at` mm."""
+        require_closed(self.app, part)
+        self._loaded.add(os.path.normcase(os.path.abspath(part)))
         v = self.doc.CreateDrawViewFromModelView3(os.path.abspath(part), name, at[0] * MM, at[1] * MM, 0)
         if v is None:
             raise SwError(f"view {name} of {part} not made")
@@ -162,10 +166,10 @@ class Drawing:
         save_as(self.doc, path)
 
     def close(self, part=None):
-        """Close the drawing, and the part it loaded if given."""
+        """Close the drawing, and the part if given and its views loaded it."""
         self.app.CloseDoc(self.doc.GetTitle)
-        if part:
-            want = os.path.normcase(os.path.abspath(part))
+        want = os.path.normcase(os.path.abspath(part)) if part else None
+        if want in self._loaded:
             for d in list(self.app.GetDocuments or []):
                 if os.path.normcase(d.GetPathName or "") == want:
                     self.app.CloseDoc(d.GetTitle)
@@ -176,9 +180,9 @@ def draw_part(app, part, stem, template=None, show=("*Top", "*Right"), main=None
     """A part's drawing end to end: views fitted, `dims` annotated, `notes` placed, exported to
     `stem` + each of `exports`, and saved as `stem`.SLDDRW when `native`. Returns
     (paths written, the scale)."""
+    box = part_box(app, part)
     d = Drawing(app, template)
     try:
-        box = part_box(app, part)
         d.standard_views(part, show=show, main=main)
         rooms = rooms or Rooms.for_sheet(*d.size, dims=bool(dims))
         scale = d.fit(box, rooms, show)

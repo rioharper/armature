@@ -44,7 +44,7 @@ Ask through the AskUserQuestion tool:
 
 1. Project name, a one-line description, and the goal behind the project —
    why its builder wants it, which the description does not carry.
-2. CAD package: SOLIDWORKS / Fusion 360 / Onshape / undecided.
+2. CAD package: SOLIDWORKS / Fusion 360 / undecided.
 3. On SOLIDWORKS only: connect the SolidWorks MCP server to this project? It
    lets armature-cad's Done-when checks measure the live model instead of
    asking you to transcribe numbers. Two of its three prerequisites are
@@ -55,7 +55,7 @@ Ask through the AskUserQuestion tool:
    never true in advance, so it stays a question. Yes seeds
    `.mcp.json` in step 4, and Claude Code asks you to approve it on the next
    start. Every other answer leaves the project with no MCP server, which is
-   why a Fusion, Onshape, or undecided project never sees one fail.
+   why a Fusion or undecided project never sees one fail.
 4. Builder profile: solo or team; fabrication access (printer, machining, hand
    tools); experience level; related work — the other repos or projects of
    theirs this one touches, or none.

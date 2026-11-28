@@ -29,6 +29,10 @@
 
 On an 18-core M5 Max, the wheel-leg's two hold margins, its skid and the cable platform's tension floor searched in 2.1 s against 15.4 s (8.4 s in one process), and the wheel-leg's 12 drive margins over one space in 5.1 s against 32.5 s (21.3 s in one process). Without the `rest_on` change, each of the 671 `Worst`s and `Samples` the engine's suite makes read the same to the bit as before, with or without workers; with it, workers still read the same to the bit as one process.
 
+### Onshape is no longer a CAD package armature-cad targets
+
+The Onshape reference (`skills/armature-cad/references/onshape.md`) and its live-check research note are gone, and `init` offers SOLIDWORKS, Fusion 360 or undecided. An Onshape project still gets part definitions, worked from the closest reference, as armature-cad's *Scope* says.
+
 ### swkit: SOLIDWORKS part, drawing and check automation
 
 `skills/armature-cad/scripts/swkit/` is a Python kit for driving a running SOLIDWORKS through COM with pywin32. It builds a part from its build recipe with design intent: named planes, typed globals, every driven dimension an equation of them, and every sketch fully defined. It reads the part back exactly: extents, faces found by geometry, and mass properties in SI. It runs the *Done when* checks: rebuild errors, bosses that merged away with no faces, and a rebuild at ±10 %. It draws the part to its critical features, with fits, tolerances, datums and frames on the views and edges picked by model geometry, then section and detail views. It exports STEP AP214 with the schema read back, plus PDF and DXF. It also mates assemblies with computed alignments and runs Simulation's linear statics. It was extracted and generalized from the scripts Ibex used to build, draw and check its leg's parts (T3.3–T5.2a). Each SOLIDWORKS quirk those scripts paid for is written into the module that guards it. `references/solidworks.md` §10 points to the kit.
@@ -36,6 +40,7 @@ On an 18-core M5 Max, the wheel-leg's two hold margins, its skid and the cable p
 - **Two fixes found while extracting it.**
   - Selecting a drawing view's edge by its sheet point (`SelectByID2("", "EDGE", x, y)`) selects the view and not the edge, so a datum or flag placed that way attaches to the view. `annotate.spot` and `section.flags` now find the edge through a model point among the view's visible edges, which include a section's cut edges.
   - The faceless-boss audit now skips bosses upstream of an active Delete Body feature, so a mirrored configuration no longer reads every boss as faceless.
+- **A part the seat already shows is refused.** `OpenDoc6` returns an open document with the same file name from any folder. So `audit`, `rebuild`, `step`, `draw_part` and `Asm.insert` could read the wrong file, or close the user's window unsaved. `com.require_closed` now refuses both cases, and a drawing closes only the parts its own views loaded.
 - **Tested** on SOLIDWORKS 2026 SP4.1. `python -m swkit.smoke` passes 27 checks against hand-worked numbers: volumes, exact extents, an L-section's inertia tensor including its products' sign, the ±10 % rebuild's volume change, and a drawing reopened to count its annotations. It also checks two section distances read at their model value, one of them on a 2:1 detail on a 1:2 sheet, an assembly's mates, and Simulation's bar within 0.2 % of beam theory. `swkit/tests` covers the pure modules (expressions, inertia, sheet layout) and runs anywhere. The STEP read-back (`--import`) was not run, because the seat's screen was asleep, the state in which an import once crashed SOLIDWORKS.
 
 ## 4.1.1 — 2026-11-18

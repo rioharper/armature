@@ -227,10 +227,27 @@ def no_value_prompt(app):
 DOC_TYPES = {".sldprt": "swDocPART", ".sldasm": "swDocASSEMBLY", ".slddrw": "swDocDRAWING"}
 
 
+def require_closed(app, path):
+    """Refuse a file SOLIDWORKS already holds in a window, or another folder's file of the same
+    name. OpenDoc6 hands back an open document of that file name, whatever its folder, so a
+    script would read the wrong file, or close the user's window unsaved when done. A hidden
+    one, a reference an earlier view or open loaded, passes."""
+    path = os.path.abspath(path)
+    for d in app.GetDocuments or []:
+        held = d.GetPathName or ""
+        if os.path.basename(held).lower() != os.path.basename(path).lower():
+            continue
+        if os.path.normcase(held) != os.path.normcase(path):
+            raise SwError(f"SOLIDWORKS holds {held}, of the same name as {path}: close it first")
+        if d.Visible:
+            raise SwError(f"{path} is open in SOLIDWORKS: save and close it first")
+
+
 def open_doc(app, path, config=""):
     """A native document opened silently, in configuration `config` (its last saved if empty).
-    An open document of the same file name is used first, whatever its folder."""
+    Refuses one the user has open, or a namesake (`require_closed`)."""
     path = os.path.abspath(path)
+    require_closed(app, path)
     kind = DOC_TYPES.get(os.path.splitext(path)[1].lower())
     if kind is None:
         raise SwError(f"{path}: not a SOLIDWORKS part, assembly or drawing")

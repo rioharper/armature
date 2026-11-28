@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import os
 
-from .com import (C, MM, NOTHING, SwError, byref_long, close, get, new_doc, open_doc, save,
-                  save_as, set_props)
+from .com import (C, MM, NOTHING, SwError, byref_long, close, get, new_doc, open_doc, require_closed,
+                  save, save_as, set_props)
 from .exchange import import_step, light_part
 from .measure import find_face
 
@@ -39,6 +39,7 @@ class Asm:
     def insert(self, path, at=(0, 0, 0), config=""):
         """A component of the part at `path` (mm placement), in configuration `config` (its
         last-saved one when empty), opened in that configuration only."""
+        require_closed(self.app, path)
         err, warn = byref_long(), byref_long()
         part = self.app.OpenDoc6(os.path.abspath(path), C["swDocPART"], C["swOpenDocOptions_Silent"],
                                  config, err, warn)
