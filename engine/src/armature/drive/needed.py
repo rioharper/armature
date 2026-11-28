@@ -83,7 +83,7 @@ def capacitance_needed(margins, worsts=None, *, tolerance=TOLERANCE):
     for margin in peak:
         worst = found.get(margin.name) or search(margin)
         out += [_needed(margin.fn.evaluator, case, tolerance)
-                for case in worst.cases]
+                for case in worst.cases if case.rejected is None]
     return tuple(out)
 
 

@@ -31,6 +31,7 @@ model template, where the modules it collects are milestones.
 """
 
 import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -204,7 +205,16 @@ def checks_for(module):
     sibling = Path(module.__file__).with_name(
         Path(module.__file__).stem + "_checks.py")
     if sibling.is_file():
-        modules.append(importlib.import_module(module.__name__ + "_checks"))
+        # By path, not by name: a folder put ahead of this one on sys.path,
+        # as the sweep puts analysis/model/, can hold a same-named file.
+        name = module.__name__ + "_checks"
+        loaded = sys.modules.get(name)
+        file = getattr(loaded, "__file__", None)
+        if not (file and Path(file).resolve() == sibling.resolve()):
+            spec = importlib.util.spec_from_file_location(name, sibling)
+            loaded = sys.modules[name] = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(loaded)
+        modules.append(loaded)
     checks = [check for m in modules for check in checks_in(m)]
     margins = []
     for margin in (margin for m in modules for margin in margins_in(m)):

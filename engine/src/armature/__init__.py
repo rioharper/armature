@@ -103,7 +103,7 @@ _FROM = {
                 "pose_envelope", "sample", "sample_states"],
     "search": ["Band", "Budget", "Case", "Choice", "Confirmed",
                "Coordinates", "Direction", "Infeasible", "Interval",
-               "Margin", "Point", "Space", "Worst", "search"],
+               "Margin", "Point", "Refused", "Space", "Worst", "search"],
     "state": ["Inverse", "Jacobian", "Linearised", "Placement", "Pose",
               "Released", "Settled", "State", "Wrench"],
     "symbolic": ["Symbolic", "symbolic"],
@@ -155,5 +155,5 @@ __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
             "pose_envelope", "sample", "sample_states"]
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
             "Margin", "Point", "Space", "Worst", "search"]
-__all__ += ["Band", "Confirmed", "Coordinates"]
+__all__ += ["Band", "Confirmed", "Coordinates", "Refused"]
 __all__ += ["Equations", "equations"]

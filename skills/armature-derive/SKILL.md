@@ -188,7 +188,7 @@ Any milestone checkpoint is a clean stopping point: the check passed, files comm
 
 When a Milestone 3 finding sends work upstream, say which number broke and what it collides with, then route: a requirement, part, or BOM number must change → call the Skill tool with "armature-spec"; a mechanism gap → dispatch the **armature-inventor** agent, then re-derive on the surviving candidate. Update `docs/decisions.md` when the change is accepted.
 
-As each REQ's analysis lands, move its row in `docs/01-spec/traceability.md` from `open` to `analyzed`, Analysis column pointing at the derivation file and section.
+As each REQ's analysis lands, write its row in `docs/01-spec/traceability.md`, Analysis column pointing at the derivation file and section: `analyzed` when the analysis shows the REQ met, `failed` when it shows the REQ unmet, the Analysis cell naming where the shortfall was routed. The same holds for a later analysis of a row already `analyzed`. `ledger check` catches only a breached budget's REQ, so the row is yours to write. One case is neither: evidence that shows a REQ met by exhibiting one solution (a found trajectory, a stored set of runs) and that a later reading invalidates. That shows the evidence lapsed, not that no solution exists, so the row stays `analyzed` with "evidence lapsed at <reading>; re-solve routed to <leaf>" in its Analysis cell. Write `failed` only when the analysis shows no solution exists or a bound every solution must meet is passed.
 
 When Milestone 3's checkpoint has passed, append a `docs/decisions.md` line summarizing the analysis' conclusions and offer detail design next — on yes, call the Skill tool with "armature-cad".
 

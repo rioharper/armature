@@ -584,16 +584,34 @@ def test_the_holds_energy_is_its_copper_loss_through_the_driver(m):
     assert report.regenerated == pytest.approx(0.0, abs=1e-12)
 
 
+HELD = 100  # steps: a fixed horizon, since the stance is unstable
+
+
 def test_settle_under_the_static_torques_stays(m):
-    """Held at the virtual-work torques, not the engine's own `inverse`,
-    the leg stands where it was put, on its wheel."""
+    """Held at the virtual-work torques, not the engine's own `inverse`, the
+    leg stands where it was put, on its wheel, as long as it does at the
+    engine's own torques. The stance is an unstable equilibrium under held
+    torques: even `inverse`'s fold the leg by step ~5,000, so a settle run
+    to rest measures the fall, and a hold of `min_steps` passes or folds on
+    rounding (#200). So each is held for the same fixed horizon, and judged
+    against the other, and against a torque 1 % off, which departs
+    about 4e4 times as far."""
     s = _standing(m, 0.0, *STAND)
-    settled = s.settle(dict(zip(ACTUATORS, static_torque(0.0, *STAND))))
-    assert settled.stable
-    assert settled.residual <= 1e-6
-    for name in m.coordinates:
-        assert abs(settled.moved[name]) < 1e-5
-    assert settled.contacts["tyre"].normal == pytest.approx(
+    exact = s.inverse()
+
+    def held(torques):
+        out = s.settle(dict(zip(ACTUATORS, torques)),
+                       min_steps=HELD, max_steps=HELD)
+        return out, max(abs(v) for v in out.moved.values())
+
+    derived, departed = held(static_torque(0.0, *STAND))
+    _, own = held([exact.torque[a] for a in ACTUATORS])
+    off = static_torque(0.0, *STAND) * np.array([1.01, 1.0, 1.0])
+    _, wrong = held(off)
+    assert departed <= 5 * own < 1e-5
+    assert wrong >= 1000 * own
+    assert derived.residual <= 1e-6
+    assert derived.contacts["tyre"].normal == pytest.approx(
         weight_carried(), rel=1e-3)
 
 

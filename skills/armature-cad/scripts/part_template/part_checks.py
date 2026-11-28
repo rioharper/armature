@@ -163,7 +163,9 @@ def test_set_from_part_writes_the_measurement_back():
             return done.stdout.splitlines(), Path(tmp, ledger.FILENAME).read_bytes()
 
         said, first = run()
-        assert said == [f"set {name}.{k}" for k in ("mass", "com", "inertia")], said
+        # A project's ledger already holds them once the part is written back.
+        assert said in ([f"set {name}.{k}" for k in ("mass", "com", "inertia")],
+                        [f"{name}: unchanged"]), said
         errors = [f for f in check(tmp) if f.level == "error"]
         assert errors == [], errors
         props = mass_properties(part.build(), part.DENSITY, about=part.ABOUT)
@@ -176,6 +178,37 @@ def test_set_from_part_writes_the_measurement_back():
         # A second run of the same part changes nothing.
         assert run() == ([f"{name}: unchanged"], first)
     print("  [PASS] set --from-part writes three cad entries check passes, and a re-run changes nothing")
+
+
+def _flat(x):
+    return [v for row in x for v in _flat(row)] if isinstance(x, list) else [x]
+
+
+def test_the_cad_entries_are_this_recipes_measurement():
+    """The part's `cad` entries, once written back, are what the recipe
+    weighs now. The recipe reads the ledger (its density, at least), so an
+    edit there moves the measurement while the entries, and the budget line
+    pointed at them, keep the old one; nothing else notices."""
+    found = ledger.entries(part.LEDGER)
+    name = f"part.{part.PART_ID}"
+    written = {k: found[f"{name}.{k}"] for k in ("mass", "com", "inertia")
+               if f"{name}.{k}" in found
+               and found[f"{name}.{k}"].get("source", {}).get("kind") == "cad"}
+    if not written:
+        print(f"  [PASS] {name} has no cad entries yet: nothing to go stale")
+        return
+    now = ledger.export(mass_properties(part.build(), part.DENSITY, about=part.ABOUT),
+                        part.PART_ID, part.ORIGIN, part.AXES)
+    stale = [k for k, entry in written.items()
+             if not all(math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-15)
+                        for a, b in zip(_flat(entry["value"]), _flat(now[k])))]
+    assert not stale, (
+        f"{', '.join(f'{name}.{k}' for k in stale)} no longer match what the "
+        f"recipe weighs (mass {now['mass']:.6g} kg against the entry's "
+        f"{written['mass']['value'] if 'mass' in written else '-'}): an entry "
+        f"it reads, such as {part.DENSITY_ENTRY}, has moved. Re-run "
+        f"`armature.ledger set {name} --from-part {Path(part.__file__).name}`")
+    print(f"  [PASS] {name}'s cad entries are the recipe's current measurement")
 
 
 def test_the_export_is_one_json_line():

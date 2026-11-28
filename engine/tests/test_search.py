@@ -99,7 +99,9 @@ def floor_from_the_potential(point, m):
     v = potential(point, m, rest)
     start = minimize(v, np.zeros(6), method="BFGS", options={"gtol": 1e-10})
     found = root(lambda x: gradient(v, x), start.x, tol=1e-14)
-    assert found.success and np.max(np.abs(gradient(v, found.x))) < 1e-6
+    # The gradient is the test, not `success`: hybr can stall short of its
+    # 1e-14 on one platform's floating point with the gradient at 5e-7.
+    assert np.max(np.abs(gradient(v, found.x))) < 1e-6, found.message
     rot = Rotation.from_rotvec(found.x[3:]).as_matrix()
     span = np.linalg.norm(ANCHORS - (point + found.x[:3] + ATTACH @ rot.T),
                           axis=1)
@@ -484,6 +486,50 @@ def test_an_infeasible_region_is_rejected_and_never_the_worst():
     assert set(worst.rejected) == {"below the line"}
     assert worst.rejected["below the line"] > 0
     assert "below the line" in str(worst)
+
+
+def test_each_rejected_point_is_kept_with_where_it_was():
+    def fn(p):
+        if p.x < 0.2:
+            raise Infeasible("no solution found")
+        return 1.0 + p.x
+
+    worst = search(margin(fn, x=Interval(0, 1)))
+    assert worst.passes
+    assert len(worst.refused) == worst.rejected["no solution found"] > 0
+    assert all(r.reason == "no solution found" and r.at["x"] < 0.2
+               for r in worst.refused)
+    assert f"first at x = {worst.refused[0].at['x']:.6g}" in str(worst)
+
+
+def test_rejects_fail_fails_a_margin_on_any_rejected_point():
+    def fn(p):
+        if p.x < 0.2:
+            raise Infeasible("no solution found")
+        return 1.0 + p.x
+
+    worst = search(Margin("slack", fn, "N", over=Space(x=Interval(0, 1)),
+                          rejects_fail=True))
+    assert worst.value > 0 and not worst.passes
+    clean = search(Margin("slack", lambda p: 1.0, "N",
+                          over=Space(x=Interval(0, 1)), rejects_fail=True))
+    assert clean.passes
+
+
+def test_a_combination_with_no_feasible_point_fails_and_keeps_its_reasons():
+    def fn(p):
+        if p.case == "climb":
+            raise Infeasible("no recovery inside the window")
+        return 1.0 - p.x
+
+    worst = search(margin(fn, case=Choice(("walk", "climb")),
+                          x=Interval(0.0, 0.5)))
+    walk, climb = worst.cases
+    assert (walk.value, walk.rejected) == (pytest.approx(0.5), None)
+    assert math.isnan(climb.value) and climb.at == {}
+    assert dict(climb.rejected) == {"no recovery inside the window": 66}
+    assert worst.value == pytest.approx(0.5) and not worst.passes
+    assert "NO FEASIBLE POINT at case = climb" in str(worst)
 
 
 def test_a_space_with_no_feasible_point_raises_with_the_reasons():
