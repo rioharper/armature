@@ -22,8 +22,10 @@ past its face is `stop(name, joint=..., face=..., stiffness=..., side=...)`.
 `armature.equations(rigid, PARAMS)` forms M q̈ + C q̇ + g = τ on that view
 by Kane's method (ADR 0012): closures as holonomic constraints, the
 equations reduced onto the independent coordinates, springs and elastic
-cables carried, nothing simplified; `numeric` lambdifies an expression and
-`christoffel()` forms C on demand.
+cables carried, nothing simplified; `christoffel()` forms C on demand.
+`armature.numeric(view, expr, params)` lambdifies an expression off the
+view alone, and `armature.closure_basis` and `State.closure_basis` give a
+closed chain's G = ∂q/∂q_ind, symbolic and numeric.
 
 The reductions are `lock`, `couple`, `planar`, `lump` and `rigid`;
 `release(hold, quantity=...)` sizes each one by name, and
@@ -97,7 +99,7 @@ _FROM = {
     "description": ["Description", "describe"],
     "elements": ["DescriptionError", "actuator", "body", "cable", "contact",
                  "gravity", "joint", "loop", "shape", "site", "stop"],
-    "equations": ["Equations", "equations"],
+    "equations": ["Equations", "closure_basis", "equations"],
     "review": ["Frames", "Review", "frames", "render", "review"],
     "sampler": ["PoseEnvelope", "Rejected", "Samples", "clearance",
                 "pose_envelope", "sample", "sample_states"],
@@ -105,8 +107,8 @@ _FROM = {
                "Coordinates", "Direction", "Infeasible", "Interval",
                "Margin", "Point", "Refused", "Space", "Worst", "search"],
     "state": ["Inverse", "Jacobian", "Linearised", "Placement", "Pose",
-              "Released", "Settled", "State", "Wrench"],
-    "symbolic": ["Symbolic", "symbolic"],
+              "Released", "Settled", "State", "Wrench", "ClosureBasis"],
+    "symbolic": ["Symbolic", "numeric", "symbolic"],
     "variants": ["AccountingError", "Variant", "account", "couple", "lock",
                  "lump", "massless", "planar", "reduce", "rigid"],
 }
@@ -156,4 +158,5 @@ __all__ += ["ClosureError", "PoseEnvelope", "Rejected", "Samples", "clearance",
 __all__ += ["Budget", "Case", "Choice", "Direction", "Infeasible", "Interval",
             "Margin", "Point", "Space", "Worst", "search"]
 __all__ += ["Band", "Confirmed", "Coordinates", "Refused"]
-__all__ += ["Equations", "equations"]
+__all__ += ["ClosureBasis", "Equations", "closure_basis", "equations",
+            "numeric"]

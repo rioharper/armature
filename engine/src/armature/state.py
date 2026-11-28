@@ -142,7 +142,9 @@ class State:
 
     def jacobian(self, site):
         """∂(site velocity)/∂(dof rates), linear and angular, in the base
-        frame. Columns follow `dofs`."""
+        frame. Columns follow `dofs`. On a closed chain those include the
+        dependent dofs, so the mechanism's Jacobian, on its independent
+        rates, is `jacobian(site).linear @ closure_basis().G`."""
         model = self.compiled.model
         sid = _named(model, mujoco.mjtObj.mjOBJ_SITE, site, model.nsite)
         linear, angular = np.zeros((3, model.nv)), np.zeros((3, model.nv))
@@ -152,6 +154,32 @@ class State:
             return Jacobian(site, self.compiled.dofs, _frozen(linear @ turned),
                             _frozen(angular @ turned), _closure(model, data),
                             "mj_jacSite")
+
+    def closure_basis(self):
+        """G, every dof's rate per unit rate of the independent dofs, with
+        the loops, couples and rigid cables held closed: ∂q_dep/∂q_ind =
+        −Φ_dep⁻¹ Φ_ind from the compiled model's own closure rows, the
+        identity on an open chain. A dof Jacobian times G is the
+        mechanism's Jacobian on its independent rates, and Gᵀ times
+        `inverse().generalised` is the force the reduced equations of
+        motion, `armature.equations`, answer. On a state made in the view's
+        coordinates (`at(..., view=True)`), G is in the view's rates."""
+        compiled = self.compiled
+        dofs, closure = compiled.dofs, compiled.closure
+        if closure:
+            with self._scratch() as data:
+                _, jac = closure.rows(data)
+                g = closure.basis(jac @ tangent(compiled, data)[0])
+            independent = closure.independent_dofs
+        else:
+            g, independent = np.eye(len(dofs)), list(range(len(dofs)))
+        if self.view:
+            viewed = self._from_view(None)[1]  # dofs' rates per view rate
+            g = (np.linalg.solve(viewed, g)
+                 @ viewed[np.ix_(independent, independent)])
+        dependent = [k for k in range(len(dofs)) if k not in independent]
+        return ClosureBasis(dofs, tuple(dofs[k] for k in independent),
+                            tuple(dofs[k] for k in dependent), _frozen(g))
 
     def inverse(self, qdd=None, loads=None):
         """The actuator torques that move this state at accelerations `qdd`
@@ -760,6 +788,18 @@ class Jacobian:
     angular: np.ndarray
     residual: float
     method: str
+
+
+@dataclass(frozen=True, eq=False)
+class ClosureBasis:
+    """G, ∂q/∂q_ind: each of `coordinates`' rates (its rows) per unit rate of
+    each of `independent` (its columns), with every closure held. `dependent`
+    are the rest. `State.closure_basis` gives it in NumPy over the dofs;
+    `armature.closure_basis`, in SymPy over the view's coordinates."""
+    coordinates: tuple
+    independent: tuple
+    dependent: tuple
+    G: object
 
 
 @dataclass(frozen=True, eq=False)

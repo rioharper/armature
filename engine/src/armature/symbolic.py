@@ -174,6 +174,37 @@ def symbolic(mechanism, params):
                     _vector(d.gravity, world), _ro(closures))
 
 
+def numeric(view, expr, params, bands=(), rates=False):
+    """`expr`, written in `view`'s coordinates (and their rates), as a NumPy
+    function of every coordinate's value in `view.coordinates` order, then
+    every rate's when `rates`, with `params`' numbers substituted. A
+    parameter named in `bands` (a mapping's keys or names) stays a keyword,
+    at its nominal unless given: `g_num(*q, m2=0.88)`. An unknown keyword
+    raises `TypeError`. It reads the view alone, so a kinematic expression
+    is lambdified without forming the equations of motion."""
+    bands = tuple(bands)
+    t = dynamicsymbols._t
+    qs = sp.symbols(f"x0:{len(view.q)}")
+    vs = sp.symbols(f"v0:{len(view.q)}")
+    coordinates = list(view.q.values())
+    swap = {**{c.diff(t): v for c, v in zip(coordinates, vs)},
+            **{c: x for c, x in zip(coordinates, qs)},
+            **view.numbers({k: x for k, x in params.items()
+                            if k not in bands})}
+    f = sp.lambdify(list(qs + vs if rates else qs)
+                    + [view.params[k] for k in bands],
+                    sp.sympify(expr).xreplace(swap), "numpy", cse=True)
+    nominal = [params[k] for k in bands]
+
+    def at(*x, **band):
+        unknown = sorted(set(band) - set(bands))
+        if unknown:
+            raise TypeError(f"{unknown} have no band; the banded "
+                            f"parameters are {sorted(bands)}")
+        return f(*x, *(band.get(k, v) for k, v in zip(bands, nominal)))
+    return at
+
+
 def _floating(j, b, q, locks, world, origin, axes):
     """A floating body's frame and its moving point, built as its compiled
     chain: the point along the base axes, then the locked turns, then the

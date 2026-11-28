@@ -23,9 +23,9 @@ import numpy as np
 import sympy as sp
 from sympy.physics.mechanics import dynamicsymbols
 
-from armature import Coordinates, Margin, Space
+from armature import Coordinates, Margin, Space, closure_basis
 
-from mechanism import TOOL, mechanism, numeric, vector, view
+from mechanism import DERIVED, TOOL, mechanism, numeric, vector, view
 from params import PARAMS, SIGMA_MIN, WORKSPACE
 
 # Run order and heading for `run_all.py`, which discovers this module
@@ -69,6 +69,11 @@ print("  FK and Jacobian built.")
 # --- numeric functions, lambdified, parameterized by params.PARAMS ---
 fk_num = numeric(T_EE)
 J_num = numeric(J)
+# J_v on the independent coordinates, J_v G: the matrix the IK inverts. On a
+# closed chain J's columns include the dependent coordinates, and J_v's own
+# SVD is the open chain's, with the loop's joints free; on this open arm G is
+# the identity and J_v G is J_v.
+Jv_num = numeric(J[:3, :] * closure_basis(DERIVED, PARAMS).G)
 
 
 def singular_values(configs):
@@ -88,17 +93,18 @@ def singular_values(configs):
     — so σ_min σ_max = |l1 l2 sin(elbow)| and the elbow singularity at
     elbow = 0 is visible in the sweep rather than inferred.
     """
-    return np.array([np.linalg.svd(np.asarray(J_num(*qv), dtype=float)[:3, :],
+    return np.array([np.linalg.svd(np.asarray(Jv_num(*qv), dtype=float),
                                    compute_uv=False)
                      for qv in np.atleast_2d(np.asarray(configs, dtype=float))])
 
 
 def sigma_truth(p):
     """σ_min of the truth model's own site Jacobian at the point's posture,
-    `s.jacobian`'s position rows, less SIGMA_MIN [m/rad]: the rank claim, as
-    slack. SIGMA_MIN carries no derating; it is the rate the requirement
-    asks for."""
-    linear = p.state.jacobian(TOOL).linear
+    `s.jacobian`'s position rows on the independent rates (times
+    `s.closure_basis().G`, the identity on an open chain), less SIGMA_MIN
+    [m/rad]: the rank claim, as slack. SIGMA_MIN carries no derating; it is
+    the rate the requirement asks for."""
+    linear = p.state.jacobian(TOOL).linear @ p.state.closure_basis().G
     return float(np.linalg.svd(linear, compute_uv=False)[-1]) - SIGMA_MIN
 
 

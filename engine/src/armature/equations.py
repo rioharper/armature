@@ -40,7 +40,8 @@ from .assembly import RANK_TOL
 from .compiler import compile
 from .description import compliant_contacts, rigid_cables
 from .elements import WORLD
-from .symbolic import symbolic
+from .state import ClosureBasis
+from .symbolic import numeric, symbolic
 
 t = dynamicsymbols._t
 
@@ -71,31 +72,10 @@ class Equations:
     _christoffel: list = field(default_factory=list, init=False, repr=False)
 
     def numeric(self, expr, rates=False):
-        """`expr`, written in the view's coordinates (and their rates), as a
-        NumPy function of every coordinate's value in `coordinates` order,
-        then every rate's when `rates`, with the parameters substituted. A
-        parameter named in the bands stays a keyword, at its nominal unless
-        given: `g_num(*q, m2=0.88)`. An unknown keyword raises `TypeError`."""
-        view, bands = self.view, self._bands
-        qs = sp.symbols(f"x0:{len(self.coordinates)}")
-        vs = sp.symbols(f"v0:{len(self.coordinates)}")
-        coordinates = list(view.q.values())
-        swap = {**{c.diff(t): v for c, v in zip(coordinates, vs)},
-                **{c: x for c, x in zip(coordinates, qs)},
-                **view.numbers({k: x for k, x in self._params.items()
-                                if k not in bands})}
-        f = sp.lambdify(list(qs + vs if rates else qs)
-                        + [view.params[k] for k in bands],
-                        sp.sympify(expr).xreplace(swap), "numpy", cse=True)
-        nominal = [self._params[k] for k in bands]
-
-        def at(*x, **band):
-            unknown = sorted(set(band) - set(bands))
-            if unknown:
-                raise TypeError(f"{unknown} have no band; the banded "
-                                f"parameters are {sorted(bands)}")
-            return f(*x, *(band.get(k, v) for k, v in zip(bands, nominal)))
-        return at
+        """`armature.numeric` on this view, with these parameters and
+        bands: `expr` as a NumPy function of every coordinate's value in
+        `coordinates` order, then every rate's when `rates`."""
+        return numeric(self.view, expr, self._params, self._bands, rates)
 
     def christoffel(self):
         """C, the Christoffel matrix with C q̇ the velocity-product vector,
@@ -183,6 +163,31 @@ def equations(mechanism, params, bands=()):
                      tuple(c.name for c in d.contacts),
                      MappingProxyType(dict(params)), tuple(bands),
                      basis.xreplace(rates))
+
+
+def closure_basis(mechanism, params):
+    """G = ∂q/∂q_ind over the symbolic view's coordinates, as a
+    `ClosureBasis` of SymPy: the closures' rows differentiated, with
+    ∂q_dep/∂q_ind = −Φ_dep⁻¹ Φ_ind, the dependent coordinates those the
+    compiled model chooses. It forms no equations of motion, so a closed
+    chain's Jacobian on its independent coordinates, `J_v * G`, costs the
+    closures alone. On an open chain G is the identity. It is the same G as
+    `equations(...).basis`, and the truth model's is `State.closure_basis`.
+    """
+    view = symbolic(mechanism, params)
+    names = view.coordinates
+    dependent = (compile(mechanism, params).dependent
+                 if _closed(view.description) else ())
+    independent = tuple(n for n in names if n not in dependent)
+    g = {n: [sp.S.One if n == m else sp.S.Zero for m in independent]
+         for n in independent}
+    if dependent:
+        phi = sp.Matrix(_closures(view, params, dependent))
+        solved = phi.jacobian([view.q[n] for n in dependent]).LUsolve(
+            -phi.jacobian([view.q[n] for n in independent]))
+        g.update(zip(dependent, solved.tolist()))
+    return ClosureBasis(names, independent, tuple(dependent),
+                        sp.Matrix([g[n] for n in names]))
 
 
 def _closed(d):
